@@ -37,7 +37,7 @@ stdoutHandler.setFormatter(logging.Formatter(
 logging.getLogger().addHandler(stdoutHandler)
 
 client = discord.Client()
-conn = psycopg2.connect("dbname=rabbit user=rabbit password=rabbit")
+conn = psycopg2.connect(os.getenv('DB_CONNECTION'))
 cache = TTLCache(maxsize=100, ttl=1)  # TODO: configure.
 
 
@@ -129,6 +129,7 @@ async def set_template(message):
     with conn.cursor() as c:
         name = m.group(1)
         text = m.group(2)
+        # TODO: insert or update existing.
         c.execute(
             'DELETE FROM templates WHERE guild_id = %s AND name = %s', (guild_id, name))
         c.execute('INSERT INTO templates (guild_id, author_id, name, text) VALUES (%s, %s, %s, %s) RETURNING id;',
