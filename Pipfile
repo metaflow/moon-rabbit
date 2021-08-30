@@ -5,6 +5,9 @@ name = "pypi"
 
 [packages]
 discord = "*"
+psycopg2 = "*"
+cachetools = "*"
+jinja2 = "*"
 
 [dev-packages]
 
