@@ -19,6 +19,7 @@
 import discord
 import os
 import random
+import time
 import psycopg2
 import re
 from cachetools import TTLCache
@@ -46,19 +47,30 @@ def load_template(name):
     if ':' not in name:
         logging.error(f"bad template name '{name}'")
         return None
-    guild_id, template_name = name.split(':', 1)
-    with conn.cursor() as cur:
-        cur.execute("SELECT text FROM templates WHERE guild_id = %s AND name = %s;",
-                    [int(guild_id), template_name])
-        z = cur.fetchone()[0]
-        logging.info(f'template {name} = {z}')
-        return z
+    type, guild_id, template_name = name.split(':', 2)
+    if type == 'template':
+        with conn.cursor() as cur:
+            cur.execute("SELECT text FROM templates WHERE guild_id = %s AND name = %s;",
+                        [int(guild_id), template_name])
+            z = cur.fetchone()[0]
+            logging.info(f'template {name} = {z}')
+            return z
 
+@jinja2.pass_eval_context
+def list_filter(eval_ctx, value):
+    if not hasattr(eval_ctx, 'list_filter_cnt'):
+        eval_ctx.list_filter_cnt = 0
+    eval_ctx.list_filter_cnt += 1
+    if eval_ctx.list_filter_cnt > 10:
+        raise 'too many template resolutions'
+    return "list filter " + value + ' ' + str(eval_ctx.v)
 
 templates = SandboxedEnvironment(
     loader=jinja2.FunctionLoader(load_template),
     autoescape=jinja2.select_autoescape(),
 )
+
+templates.filters["list"] = list_filter
 
 with conn.cursor() as cur:
     cur.execute('''CREATE TABLE IF NOT EXISTS test
@@ -148,8 +160,8 @@ async def on_message(message):
     if message.author == client.user:
         return
     txt = message.content
-    # No commands.
     if '+' not in txt:
+        # No commands.
         return
     if txt.startswith('+set-template'):
         await set_template(message)
@@ -160,15 +172,8 @@ async def on_message(message):
     logging.info(f'template names {template_names}')
     for cmd in commands:
         if cmd in template_names:
-            # ids = get_messages_lists(message.guild.id, cmd)
-            # print(ids)
-            # if not ids:
-            #     continue
-            # id = random.choice(ids)
-            # print(id)
-            # t = get_message(id)
             try:
-                t = templates.get_template(f'{message.guild.id}:{cmd}')
+                t = templates.get_template(f'template:{message.guild.id}:{cmd}')
                 if t:
                     await message.channel.send(t.render())
                 else:
