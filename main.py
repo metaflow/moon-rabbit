@@ -14,6 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Permissions integer: 240518548544
+# https://discord.com/api/oauth2/authorize?client_id=880861994788470785&permissions=240518548544&scope=bot
+
+# TODO random mention
+# TODO store variables
+# TODO delete commands / list items
+# TODO debug info: log for last X commands
+# TODO search lists
+
 """Discord bot entry point."""
 
 import discord
@@ -28,8 +37,7 @@ import jinja2
 from jinja2.sandbox import SandboxedEnvironment
 
 logging.basicConfig(
-    filename='main.log',
-    filemode='a',
+    handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
 stdoutHandler = logging.StreamHandler()
@@ -76,15 +84,27 @@ def lists_ids(guild_id, list):
 @jinja2.pass_context
 def list(ctx, a):
     global templates
-    ids = lists_ids(ctx.get('guild_id'), a)
+    msg = ctx.get('_msg')
+    guild_id = msg.guild.id
+    ids = lists_ids(guild_id, a)
     id = random.choice(ids)
     vars = ctx.get_all()
     vars['_render_depth'] += 1
     if vars['_render_depth'] > 5:
         logging.error('rendering depth is > 5')
         return '?'
-    t = templates.get_template(f'list:{ctx.get("guild_id")}:{id}')
+    t = templates.get_template(f'list:{guild_id}:{id}')
     return t.render(vars)
+
+def mention(msg):
+    if msg.mentions:
+        return ' '.join([x.mention for x in msg.mentions])
+    humans = [m for m in msg.channel.members if not m.bot]
+    # online = [m for m in humans where m.status]
+    logging.info(f'humans {humans}, all {msg.channel.members} {[m.status for m in msg.channel.members]}')
+    if humans:
+        return random.choice(humans)
+    return msg.author.mention
 
 templates = SandboxedEnvironment(
     loader=jinja2.FunctionLoader(load_template),
@@ -161,7 +181,7 @@ async def set_template(message):
         logging.info(
             f"guild={guild_id} author={message.author.id} added new template '{name}' '{text}' #{id}")
         templates.cache.clear()
-        await message.channel.send(f"Successfully added new template '{name}' '{text}' #{id}")
+        await message.channel.send(f"Added new command '{name}' '{text}' #{id}")
 
 
 async def add_list(message):
@@ -188,7 +208,7 @@ async def add_list(message):
         logging.info(
             f"guild={guild_id} author={message.author.id} added new list item '{name}' '{text}' #{id}")
         templates.cache.clear()
-        await message.channel.send(f"Successfully added new list item '{name}' '{text}' #{id}")
+        await message.channel.send(f"Added new list '{name}' item '{text}' #{id}")
 
 @client.event
 async def on_message(message):
@@ -205,14 +225,15 @@ async def on_message(message):
     if txt.startswith('+add '):
         await add_list(message)
         return
+    
     commands = [x[1:] for x in txt.split(' ') if x.startswith('+')]
-    logging.info(f'commands {commands}')
     template_names = get_templates(message.guild.id)
-    logging.info(f'template names {template_names}')
     for cmd in commands:
         vars = {
             '_render_depth': 0,
-            'guild_id': message.guild.id,
+            '_msg': message,
+            'author': message.author.mention,
+            'mention': mention(message),
         }
         if cmd in template_names:
             try:
