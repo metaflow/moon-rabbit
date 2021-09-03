@@ -45,7 +45,7 @@ stdoutHandler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s %(message)s'))
 logging.getLogger().addHandler(stdoutHandler)
 
-client = discord.Client()
+client = discord.Client(intents=discord.Intents.all())
 conn = psycopg2.connect(os.getenv('DB_CONNECTION'))
 cache = TTLCache(maxsize=100, ttl=1)  # TODO: configure.
 
@@ -99,11 +99,12 @@ def list(ctx, a):
 def mention(msg):
     if msg.mentions:
         return ' '.join([x.mention for x in msg.mentions])
-    humans = [m for m in msg.channel.members if not m.bot]
-    # online = [m for m in humans where m.status]
-    logging.info(f'humans {humans}, all {msg.channel.members} {[m.status for m in msg.channel.members]}')
+    humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
+    online = [m for m in humans if m.status == discord.Status.online]
+    if online:
+        return random.choice(online).mention
     if humans:
-        return random.choice(humans)
+        return random.choice(humans).mention
     return msg.author.mention
 
 templates = SandboxedEnvironment(
