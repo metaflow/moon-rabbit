@@ -8,6 +8,7 @@ discord = "*"
 psycopg2 = "*"
 cachetools = "*"
 jinja2 = "*"
+twitchio = "*"
 
 [dev-packages]
 
