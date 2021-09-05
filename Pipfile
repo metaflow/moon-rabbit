@@ -9,6 +9,7 @@ psycopg2 = "*"
 cachetools = "*"
 jinja2 = "*"
 twitchio = "*"
+ttldict2 = "*"
 
 [dev-packages]
 

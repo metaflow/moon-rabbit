@@ -22,19 +22,19 @@
 
 """Discord bot entry point."""
 
-import discord
-import os
-import random
-import time
-import psycopg2
-import functools
-import re
 from cachetools import TTLCache
-import logging
-import jinja2
-import argparse
 from jinja2.sandbox import SandboxedEnvironment
 from twitchio.ext import commands
+import argparse
+import discord
+import functools
+import jinja2
+import logging
+import os
+import psycopg2
+import random
+import re
+import ttldict2
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -53,7 +53,7 @@ def new_channel_id():
     with conn.cursor() as cur:
         cur.execute("SELECT MAX(channel_id) FROM channels")
         row = cur.fetchone()
-        if row and row[0]:
+        if row and (row[0] is not None):
             return int(row[0]) + 1
         return 0
 
@@ -141,18 +141,6 @@ def list(ctx, a):
         return '?'
     t = templates.get_template(f'list:{channel_id}:{id}')
     return t.render(vars)
-
-
-def mention(msg):
-    if msg.mentions:
-        return ' '.join([x.mention for x in msg.mentions])
-    humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
-    online = [m for m in humans if m.status == discord.Status.online]
-    if online:
-        return random.choice(online).mention
-    if humans:
-        return random.choice(humans).mention
-    return msg.author.mention
 
 
 templates = SandboxedEnvironment(
@@ -364,7 +352,7 @@ class DiscordClient(discord.Client):
         vars = {
             'author': message.author.mention,
             'author_name': message.author.display_name,
-            'mention': mention(message),
+            'mention': self.mentions(message),
         }
         reply, new_messages = await process_message(il, channel_id, editor, prefix, vars, message.content)
         if reply != '':
@@ -372,30 +360,75 @@ class DiscordClient(discord.Client):
         for m in new_messages:
             await message.channel.send(m)
 
+    def mentions(msg):
+        if msg.mentions:
+            return ' '.join([x.mention for x in msg.mentions])
+        humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
+        online = [m for m in humans if m.status == discord.Status.online]
+        if online:
+            return random.choice(online).mention
+        if humans:
+            return random.choice(humans).mention
+        return msg.author.mention
+
 
 class TwitchBot(commands.Bot):
+    
     def __init__(self, token):
-        super().__init__(token=token, prefix=None)
+        # Random prefix to not use default functionality.
+        super().__init__(token=token, prefix='2f8648a8-8078-43b9-bbc6-0ccc2fd48f8d')
+        self.channels = {}
 
     async def event_ready(self):
         # We are logged in and ready to chat and use commands...
-        print(f'Logged in as | {self.nick}')
-        # TODO: join channels defined in table
-        await self.join_channels(['equanimity_rulez'])
+        logging.info(f'Logged in as | {self.nick}')
+        with conn.cursor() as cur:
+            cur.execute("SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
+            for row in cur.fetchall():
+                id, prefix, name = row
+                if not name:
+                    continue
+                self.channels[name] = {
+                    'id': id,
+                    'prefix': prefix,
+                    'active_users': ttldict2.TTLDict(ttl_seconds=3600.0),
+                }
+        logging.info(f'joining channels: {self.channels.keys()}')
+        await self.join_channels(self.channels.keys())
 
     async def event_message(self, message):
-        # Messages with echo set to True are messages sent by the bot...
-        # For now we just want to ignore them...
+        # Ignore own messages.
         if message.echo:
             return
-
-        # Print the contents of our message to console...
-        logging.info(message.content)
-
-        # Since we have commands and are overriding the default `event_message`
-        # We must let the bot know we want to handle and invoke our commands...
-        # await self.handle_commands(message)
-
+        info = self.channels[message.channel.name]
+        if not info:
+            logging.info(f'unknown channel {message.channel.name}')
+            return
+        il = InvocationLog(f"channel={message.channel.name} ({info['id']})")
+        author = message.author.name
+        info['active_users'][author] = 1
+        il.info(f"active users {info ['active_users'].keys()}")
+        il.info(f'{author} {message.content}')
+        variables = {
+            'author': author,
+            'author_name': author,
+            'mention': self.mentions(message.content, info, author),
+        }
+        reply, new_messages = await process_message(il, info['id'], message.author.is_mod, info['prefix'], variables, message.content)
+        ctx = await self.get_context(message)
+        if reply != '':
+            await ctx.send(reply)
+        for m in new_messages:
+            await ctx.send(m)
+    
+    def mentions(self, txt, info, author):
+        result = re.findall(r'@\S+', txt)
+        if result:
+            return ' '.join(result)
+        users = [x for x in info['active_users'].keys() if x != author]
+        if users:
+            return "@" + random.choice(users)
+        return "@" + author
 
 def init_db():
     with conn.cursor() as cur:
@@ -429,8 +462,6 @@ if __name__ == "__main__":
     parser.add_argument('--twitch', action='store_true')
     parser.add_argument('--discord', action='store_true')
     parser.add_argument('--add_channel', action='store_true')
-    parser.add_argument('--discord_guild_id')
-    parser.add_argument('--discord_command_prefix', default='+')
     parser.add_argument('--twitch_channel_name')
     parser.add_argument('--twitch_command_prefix', default='+')
     parser.add_argument('--channel_id')
@@ -448,12 +479,16 @@ if __name__ == "__main__":
         bot.run()
         os.exit(0)
     if args.add_channel:
+        if not args.twitch_channel_name:
+            print('set --twitch_channel_name')
+            os.exit(1)
         id = args.channel_id
         if not id:
             id = new_channel_id()
         with conn.cursor() as cur:
-            cur.execute('INSERT INTO channels (channel_id, discord_guild_id, discord_command_prefix , twitch_channel_name, twitch_command_prefix) VALUES (%s, %s, %s, %s, %s)',
-                        [id, args.discord_guild_id, args.discord_command_prefix, args.twitch_channel_name, args.twitch_command_prefix])
+            cur.execute('INSERT INTO channels (channel_id, twitch_channel_name, twitch_command_prefix) VALUES (%s, %s, %s)',
+                        [id, args.twitch_channel_name, args.twitch_command_prefix])
             conn.commit()
+        logging.info(f'added new channel #{id} {args.twitch_channel_name}')
         exit(0)
     print('add --twitch or --discord argument to run bot')
