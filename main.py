@@ -14,9 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Permissions integer: 240518548544
-# https://discord.com/api/oauth2/authorize?client_id=880861994788470785&permissions=240518548544&scope=bot
-
 # TODO store variables
 # TODO debug info: log for last X commands
 
@@ -31,6 +28,7 @@ import functools
 import jinja2
 import logging
 import os
+import sys
 import psycopg2
 import random
 import re
@@ -84,7 +82,7 @@ def discord_channel_info(cur, guild_id):
     if row:
         id = row[0]
         prefix = row[1]
-        logging.info(f"got Discord channel ID '{cur}' '{prefix}' #{id}")
+        logging.info(f"got Discord channel ID '{guild_id}' '{prefix}' #{id}")
         return id, prefix
     id = new_channel_id()
     prefix = '+'
@@ -360,7 +358,7 @@ class DiscordClient(discord.Client):
         for m in new_messages:
             await message.channel.send(m)
 
-    def mentions(msg):
+    def mentions(self, msg):
         if msg.mentions:
             return ' '.join([x.mention for x in msg.mentions])
         humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
@@ -472,16 +470,16 @@ if __name__ == "__main__":
         logging.info('starting Discord Bot')
         client = DiscordClient(intents=discord.Intents.all())
         client.run(os.getenv('DISCORD_TOKEN'))
-        os.exit(0)
+        sys.exit(0)
     if args.twitch:
         logging.info('starting Twitch Bot')
         bot = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'))
         bot.run()
-        os.exit(0)
+        sys.exit(0)
     if args.add_channel:
         if not args.twitch_channel_name:
             print('set --twitch_channel_name')
-            os.exit(1)
+            sys.exit(1)
         id = args.channel_id
         if not id:
             id = new_channel_id()
@@ -490,5 +488,5 @@ if __name__ == "__main__":
                         [id, args.twitch_channel_name, args.twitch_command_prefix])
             conn.commit()
         logging.info(f'added new channel #{id} {args.twitch_channel_name}')
-        exit(0)
+        sys.exit(0)
     print('add --twitch or --discord argument to run bot')

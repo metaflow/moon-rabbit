@@ -2,15 +2,17 @@
 
 Custom stateful discord bot.
 
-# development
+[Invite moon-rabbit](https://discord.com/api/oauth2/authorize?client_id=884131362251079730&permissions=240518548544&scope=bot)
 
 You will need [pipenv](https://pipenv.pypa.io/en/latest/). Run pipenv install and then pipenv run.
 
-Create own bot on [discord](https://discord.com/developers/applications) and export `TOKEN` env variable, e.g. by `.env` file:
+Create own bot on [discord](https://discord.com/developers/applications) and export `DISCORD_TOKEN` env variable, e.g. by `.env` file:
 
 ```
-TOKEN=<your token>
+DISCORD_TOKEN=<your token>
 ```
+
+Permissions integer: 240518548544.
 
 ## Contributing
 
