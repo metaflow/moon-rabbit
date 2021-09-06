@@ -16,6 +16,8 @@
 
 # TODO store variables
 # TODO debug info: log for last X commands
+# TODO context - commands only for discord / twitch
+# TODO reactions in discord
 
 """Discord bot entry point."""
 
@@ -24,15 +26,14 @@ from jinja2.sandbox import SandboxedEnvironment
 from twitchio.ext import commands
 import argparse
 import discord
-import functools
 import jinja2
 import logging
 import os
 import sys
-import psycopg2
 import random
 import re
 import ttldict2
+import storage
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -43,94 +44,13 @@ stdoutHandler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s %(message)s'))
 logging.getLogger().addHandler(stdoutHandler)
 
-conn = psycopg2.connect(os.getenv('DB_CONNECTION'))
-cache = TTLCache(maxsize=100, ttl=1)  # TODO: configure.
-
-
-def new_channel_id():
-    with conn.cursor() as cur:
-        cur.execute("SELECT MAX(channel_id) FROM channels")
-        row = cur.fetchone()
-        if row and (row[0] is not None):
-            return int(row[0]) + 1
-        return 0
-
-
-@functools.lru_cache(maxsize=1000)
-def twitch_channel_info(cur, name):
-    cur.execute(
-        "SELECT channel_id, twitch_command_prefix FROM channels WHERE twitch_channel_name = %s", [name])
-    row = cur.fetchone()
-    if row:
-        id = row[0]
-        prefix = row[1]
-        logging.info(f"got Twitch channel ID '{name}' #{id} '{prefix}'")
-        return id, prefix
-    id = new_channel_id()
-    prefix = '+'
-    cur.execute('INSERT INTO channels (channel_id, twitch_channel_name, twitch_command_prefix) VALUES (%s, %s, %s)', [
-                id, name, prefix])
-    logging.info(f"added Twitch channel ID '{name}' #{id} '{prefix}'")
-    return id, prefix
-
-
-@functools.lru_cache(maxsize=1000)
-def discord_channel_info(cur, guild_id):
-    cur.execute(
-        "SELECT channel_id, discord_command_prefix FROM channels WHERE discord_guild_id = %s", [guild_id])
-    row = cur.fetchone()
-    if row:
-        id = row[0]
-        prefix = row[1]
-        logging.info(f"got Discord channel ID '{guild_id}' '{prefix}' #{id}")
-        return id, prefix
-    id = new_channel_id()
-    prefix = '+'
-    cur.execute('INSERT INTO channels (channel_id, discord_guild_id, discord_command_prefix) VALUES (%s, %s, %s)', [
-                id, guild_id, prefix])
-    logging.info(f"added Discord channel ID '{guild_id}' #{id}")
-    return id, prefix
-
-
-def load_template(name):
-    logging.info(f'loading template {name}')
-    if ':' not in name:
-        logging.error(f"bad template name '{name}'")
-        return None
-    type, channel_id, id = name.split(':', 2)
-    if type == 'cmd':
-        with conn.cursor() as cur:
-            cur.execute("SELECT text FROM commands WHERE channel_id = %s AND name = %s;",
-                        [int(channel_id), id])
-            z = cur.fetchone()[0]
-            logging.info(f'template {name} = {z}')
-            return z
-    if type == 'list':
-        with conn.cursor() as cur:
-            cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
-                        [int(channel_id), id])
-            z = cur.fetchone()[0]
-            logging.info(f'template {name} = {z}')
-            return z
-    raise f'unknown template type {type} for name `{name}`'
-
-
-def lists_ids(channel_id, list):
-    key = f'get_lists_{channel_id}_{list}'
-    if not key in cache:
-        print('loading', key)
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM lists WHERE channel_id = %s AND list_name = %s;",
-                        [channel_id, list])
-            cache[key] = [x[0] for x in cur.fetchall()]
-    return cache[key]
-
+db = storage.DB(os.getenv('DB_CONNECTION'))
 
 @jinja2.pass_context
 def list(ctx, a):
     global templates
     channel_id = ctx.get('channel_id')
-    ids = lists_ids(channel_id, a)
+    ids = db.lists_ids(channel_id, a)
     id = random.choice(ids)
     vars = ctx.get_all()
     vars['_render_depth'] += 1
@@ -141,33 +61,11 @@ def list(ctx, a):
     return t.render(vars)
 
 
-templates = SandboxedEnvironment(
-    # loader=jinja2.FunctionLoader(load_template),
-    autoescape=jinja2.select_autoescape(),
-)
-
-templates.loader = jinja2.FunctionLoader(load_template)
+templates = SandboxedEnvironment(autoescape=jinja2.select_autoescape())
+templates.loader = jinja2.FunctionLoader(lambda x : db.load_template(x))
 templates.globals['list'] = list
 
-
-def get_templates(channel_id):
-    key = f'get_templates_{channel_id}'
-    if not key in cache:
-        print('loading', key)
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT name FROM commands WHERE channel_id = %s;", [channel_id])
-            cache[key] = [x[0] for x in cur.fetchall()]
-    return cache[key]
-
-
-def get_message(id):
-    with conn.cursor() as cur:
-        cur.execute("SELECT text FROM lists WHERE id = %s", [id])
-        return cur.fetchone()[0]
-
-
-async def fn_cmd_set(cur, log, channel_id, author, txt):
+async def fn_cmd_set(cur, log, channel_id, variables, txt):
     '''
     txt format '<name> [<value>]'
     missing value will drop the command
@@ -185,28 +83,28 @@ async def fn_cmd_set(cur, log, channel_id, author, txt):
     ON CONFLICT ON CONSTRAINT uniq_name_in_channel DO
     UPDATE SET text = %(text)s RETURNING id;''',
                 {'channel_id': channel_id,
-                 'author': author,
+                 'author': variables['author_name'],
                  'name': name,
-                 'text': text
+                 'text': text,
                  })
     id = cur.fetchone()[0]
-    logging.info(
-        f"channel={channel_id} author={author} added new template '{name}' '{text}' #{id}")
+    log.info(
+        f"channel={channel_id} author={variables['author_name']} added new template '{name}' '{text}' #{id}")
     templates.cache.clear()
     return f"Added new command '{name}' '{text}' #{id}"
 
 
-async def fn_add_list(cur, log, channel_id, author, txt):
+async def fn_add_list(cur, log, channel_id, variables, txt):
     name, text = txt.split(' ', 1)
     cur.execute('INSERT INTO lists (channel_id, author, list_name, text) VALUES (%s, %s, %s, %s) RETURNING id;',
-                (channel_id, author, name, text))
+                (channel_id, variables['author_name'], name, text))
     id = cur.fetchone()[0]
     log.info(f"added new list item '{name}' '{text}' #{id}")
     # TODO cache clear
     return f"Added new list '{name}' item '{text}' #{id}"
 
 
-async def fn_list_search(cur, log, channel_id, _, txt):
+async def fn_list_search(cur, log, channel_id, variables, txt):
     parts = txt.split(' ', 1)
     if len(parts) > 1:
         q = '%' + \
@@ -227,32 +125,19 @@ async def fn_list_search(cur, log, channel_id, _, txt):
         return '\n'.join(rr)
 
 
-async def fn_delete_list_item(cur, log, channel_id, author, id):
-    if id.isnumeric():
+async def fn_delete_list_item(cur, log, channel_id, variables, txt):
+    if txt.isnumeric():
         cur.execute(
-            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, id))
+            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
         return f"Deleted list item #{id}"
-    parts = id.split(' ', 1)
+    parts = txt.split(' ', 1)
     if len(parts) < 2 or parts[0] != 'all':
         return "command format is <number> or 'all <list name>'"
     cur.execute(
         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
     return f"Deleted all items in list '{parts[1]}'"
 
-cmd_set = 'set'
-cmd_list_add = 'list-add'
-cmd_list_rm = 'list-rm'
-cmd_list_search = 'list-search'
-all_commands = {
-    cmd_set: fn_cmd_set,
-    cmd_list_add: fn_add_list,
-    cmd_list_rm: fn_delete_list_item,
-    cmd_list_search: fn_list_search
-}
-
-
 class InvocationLog():
-
     def __init__(self, prefix):
         self.messages = []
         self.prefix = prefix + ' '
@@ -273,8 +158,16 @@ class InvocationLog():
         logging.error(self.prefix + s)
         self.messages.append((logging.ERROR, s))
 
+all_commands = {
+    'set': fn_cmd_set,
+    'list-add': fn_add_list,
+    'list-rm': fn_delete_list_item,
+    'list-search': fn_list_search,
+}
 
-async def process_message(il, channel_id, editor, prefix, vars, txt):
+async def process_message(il, channel_id, variables):
+    txt = variables['text']
+    prefix = variables['prefix']
     il.info(f"message text '{txt}'")
     if prefix not in txt:
         # No commands.
@@ -285,8 +178,8 @@ async def process_message(il, channel_id, editor, prefix, vars, txt):
             admin_command = True
             break
     if admin_command:
-        if not editor:
-            il.warning(f'not editor called an admin command')
+        if not variables['is_mod']:
+            il.warning(f'non mod called an admin command')
             return f"you don't have permissions to do that", ""
         txt = txt[len(prefix):]
         results = []
@@ -297,27 +190,27 @@ async def process_message(il, channel_id, editor, prefix, vars, txt):
                 continue
             il.info(f"running cmd {cmd} '{t}'")
             try:
-                r = await all_commands[cmd](conn.cursor(), il, channel_id, str(vars['author_name']), t)
+                r = await all_commands[cmd](db.conn.cursor(), il, channel_id, variables, t)
                 il.info(f"command result '{r}'")
                 results.append(r)
-                conn.commit()
+                db.conn.commit()
             except Exception as e:
-                conn.rollback()
+                db.conn.rollback()
                 results.append('error occurred')
                 il.error(f'failed to execute {cmd}: {e}')
         reply = '\n'.join(results)
         return reply if reply != '' else 'OK', ''
     commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
-    template_names = get_templates(channel_id)
+    template_names = db.get_templates(channel_id)
     new_messages = []
     for cmd in commands:
-        vars['_render_depth'] = 0
-        vars['channel_id'] = channel_id
+        variables['_render_depth'] = 0
+        variables['channel_id'] = channel_id
         if cmd in template_names:
             try:
                 t = templates.get_template(f'cmd:{channel_id}:{cmd}')
                 if t:
-                    new_messages.append(t.render(vars))
+                    new_messages.append(t.render(variables))
                 else:
                     il.warning(f"'{cmd}' is not defined")
             except Exception as e:
@@ -335,24 +228,28 @@ class DiscordClient(discord.Client):
             return
         logging.info(f'guild id {message.guild.id} {str(message.guild.id)}')
         try:
-            channel_id, prefix = discord_channel_info(
-                conn.cursor(), str(message.guild.id))
-            conn.commit()
+            channel_id, prefix = db.discord_channel_info(
+                db.conn.cursor(), str(message.guild.id))
+            db.conn.commit()
         except Exception as e:
             logging.error(f"'discord_channel_info': {e}")
-            conn.rollback()
+            db.conn.rollback()
             return
         il = InvocationLog(
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
         il.info(f'message {message.content}')
         permissions = message.author.guild_permissions
-        editor = permissions.ban_members or permissions.administrator
-        vars = {
+        variables = {
             'author': message.author.mention,
-            'author_name': message.author.display_name,
+            'author_name': str(message.author.display_name),
             'mention': self.mentions(message),
+            'media': 'discord',
+            'text': message.content,
+            'is_mod': permissions.ban_members or permissions.administrator,
+            'prefix': prefix,
         }
-        reply, new_messages = await process_message(il, channel_id, editor, prefix, vars, message.content)
+        reply, new_messages = await process_message(il, channel_id, variables)
+        db.add_log(channel_id, il)
         if reply != '':
             await message.reply(reply)
         for m in new_messages:
@@ -371,7 +268,6 @@ class DiscordClient(discord.Client):
 
 
 class TwitchBot(commands.Bot):
-    
     def __init__(self, token):
         # Random prefix to not use default functionality.
         super().__init__(token=token, prefix='2f8648a8-8078-43b9-bbc6-0ccc2fd48f8d')
@@ -380,7 +276,7 @@ class TwitchBot(commands.Bot):
     async def event_ready(self):
         # We are logged in and ready to chat and use commands...
         logging.info(f'Logged in as | {self.nick}')
-        with conn.cursor() as cur:
+        with db.conn.cursor() as cur:
             cur.execute("SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
             for row in cur.fetchall():
                 id, prefix, name = row
@@ -408,11 +304,16 @@ class TwitchBot(commands.Bot):
         il.info(f"active users {info ['active_users'].keys()}")
         il.info(f'{author} {message.content}')
         variables = {
-            'author': author,
-            'author_name': author,
+            'author': str(author),
+            'author_name': str(author),
             'mention': self.mentions(message.content, info, author),
+            'media': 'twitch',
+            'text': message.content,
+            'is_mod': message.author.is_mod,
+            'prefix': info['prefix'],
         }
-        reply, new_messages = await process_message(il, info['id'], message.author.is_mod, info['prefix'], variables, message.content)
+        reply, new_messages = await process_message(il, info['id'], variables)
+        db.add_log(il)
         ctx = await self.get_context(message)
         if reply != '':
             await ctx.send(reply)
@@ -428,31 +329,6 @@ class TwitchBot(commands.Bot):
             return "@" + random.choice(users)
         return "@" + author
 
-def init_db():
-    with conn.cursor() as cur:
-        cur.execute('''
-        CREATE TABLE IF NOT EXISTS commands
-            (id SERIAL,
-            channel_id INT,
-            author TEXT,
-            name VARCHAR(50),
-            text TEXT,
-            CONSTRAINT uniq_name_in_channel UNIQUE (channel_id, name));
-        CREATE TABLE IF NOT EXISTS lists
-            (id SERIAL,
-            channel_id INT,
-            author TEXT,
-            list_name varchar(50),
-            text TEXT); 
-        CREATE TABLE IF NOT EXISTS channels
-            (id SERIAL,
-            channel_id INT,
-            discord_guild_id varchar(50),
-            discord_command_prefix varchar(10),
-            twitch_channel_name varchar(50),
-            twitch_command_prefix varchar(10));''')
-    conn.commit()
-
 
 if __name__ == "__main__":
     print('starting')
@@ -465,7 +341,6 @@ if __name__ == "__main__":
     parser.add_argument('--channel_id')
     args = parser.parse_args()
     print(f'args {args}')
-    init_db()
     if args.discord:
         logging.info('starting Discord Bot')
         client = DiscordClient(intents=discord.Intents.all())
@@ -482,11 +357,11 @@ if __name__ == "__main__":
             sys.exit(1)
         id = args.channel_id
         if not id:
-            id = new_channel_id()
-        with conn.cursor() as cur:
+            id = db.new_channel_id()
+        with db.conn.cursor() as cur:
             cur.execute('INSERT INTO channels (channel_id, twitch_channel_name, twitch_command_prefix) VALUES (%s, %s, %s)',
                         [id, args.twitch_channel_name, args.twitch_command_prefix])
-            conn.commit()
+            db.conn.commit()
         logging.info(f'added new channel #{id} {args.twitch_channel_name}')
         sys.exit(0)
     print('add --twitch or --discord argument to run bot')
