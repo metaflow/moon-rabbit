@@ -2,12 +2,24 @@ import psycopg2
 import functools
 import logging
 import collections
+from cachetools import TTLCache
 
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
         self.cache = TTLCache(maxsize=100, ttl=1)  # TODO: configure > 1.
         self.logs = {}
+        self.init_db()
+
+    def recreate_tables(self):
+        logging.warning('dropping and creating tables anew')
+        with self.conn.cursor() as c:
+            c.execute('''
+DROP TABLE commands;
+DROP TABLE lists;
+DROP TABLE channels;
+            ''')
+        self.conn.commit()
         self.init_db()
 
     def init_db(self):

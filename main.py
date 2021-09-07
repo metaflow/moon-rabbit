@@ -14,15 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO store variables
 # TODO debug info: log for last X commands
+# TODO non prefix (regex) commands
+# TODO typing
+# TODO DB backups
+# TODO store variables
 # TODO context - commands only for discord / twitch
 # TODO reactions in discord
+# TODO help command
 
 """Discord bot entry point."""
 
-from cachetools import TTLCache
+
+import dataclasses
 from jinja2.sandbox import SandboxedEnvironment
+import psycopg2
+import psycopg2.extensions
 from twitchio.ext import commands
 import argparse
 import discord
@@ -34,6 +41,11 @@ import random
 import re
 import ttldict2
 import storage
+from typing import Dict, Type
+
+@dataclasses.dataclass
+class TemplateVariables:
+    mention: str
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -45,6 +57,28 @@ stdoutHandler.setFormatter(logging.Formatter(
 logging.getLogger().addHandler(stdoutHandler)
 
 db = storage.DB(os.getenv('DB_CONNECTION'))
+
+
+class InvocationLog():
+    def __init__(self, prefix):
+        self.messages = []
+        self.prefix = prefix + ' '
+
+    def info(self, s):
+        logging.info(self.prefix + s)
+        self.messages.append((logging.INFO, s))
+
+    def warning(self, s):
+        logging.warning(self.prefix + s)
+        self.messages.append((logging.WARNING, s))
+
+    def debug(self, s):
+        logging.debug(self.prefix + s)
+        self.messages.append((logging.DEBUG, s))
+
+    def error(self, s):
+        logging.error(self.prefix + s)
+        self.messages.append((logging.ERROR, s))
 
 @jinja2.pass_context
 def list(ctx, a):
@@ -65,7 +99,7 @@ templates = SandboxedEnvironment(autoescape=jinja2.select_autoescape())
 templates.loader = jinja2.FunctionLoader(lambda x : db.load_template(x))
 templates.globals['list'] = list
 
-async def fn_cmd_set(cur, log, channel_id, variables, txt):
+async def fn_cmd_set(cur: psycopg2.extensions.cursor, log: InvocationLog, channel_id: int, variables: Dict, txt: str):
     '''
     txt format '<name> [<value>]'
     missing value will drop the command
@@ -124,7 +158,6 @@ async def fn_list_search(cur, log, channel_id, variables, txt):
     else:
         return '\n'.join(rr)
 
-
 async def fn_delete_list_item(cur, log, channel_id, variables, txt):
     if txt.isnumeric():
         cur.execute(
@@ -137,32 +170,17 @@ async def fn_delete_list_item(cur, log, channel_id, variables, txt):
         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
     return f"Deleted all items in list '{parts[1]}'"
 
-class InvocationLog():
-    def __init__(self, prefix):
-        self.messages = []
-        self.prefix = prefix + ' '
 
-    def info(self, s):
-        logging.info(self.prefix + s)
-        self.messages.append((logging.INFO, s))
-
-    def warning(self, s):
-        logging.warning(self.prefix + s)
-        self.messages.append((logging.WARNING, s))
-
-    def debug(self, s):
-        logging.debug(self.prefix + s)
-        self.messages.append((logging.DEBUG, s))
-
-    def error(self, s):
-        logging.error(self.prefix + s)
-        self.messages.append((logging.ERROR, s))
+async def fn_set_prefix(cur, log, channel_id, variables, txt):
+    logging.info(f"set new prefix '{txt}'")
+    return f"set new prefix for {variables['media']}"
 
 all_commands = {
     'set': fn_cmd_set,
     'list-add': fn_add_list,
     'list-rm': fn_delete_list_item,
     'list-search': fn_list_search,
+    'update-prefix': fn_set_prefix,
 }
 
 async def process_message(il, channel_id, variables):
@@ -174,7 +192,7 @@ async def process_message(il, channel_id, variables):
         return
     admin_command = False
     for c in all_commands:
-        if txt.startswith(prefix + c):
+        if txt.startswith(prefix + c + ' '):
             admin_command = True
             break
     if admin_command:
@@ -224,7 +242,7 @@ class DiscordClient(discord.Client):
 
     async def on_message(self, message):
         # Don't react to own messages.
-        if message.author == client.user:
+        if message.author == discordClient.user:
             return
         logging.info(f'guild id {message.guild.id} {str(message.guild.id)}')
         try:
@@ -239,25 +257,30 @@ class DiscordClient(discord.Client):
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
         il.info(f'message {message.content}')
         permissions = message.author.guild_permissions
+        direct_mention = self.mentions(message)
+        random_mention = self.random_mention(message)
+        mention = direct_mention if direct_mention else random_mention
         variables = {
             'author': message.author.mention,
             'author_name': str(message.author.display_name),
-            'mention': self.mentions(message),
+            'mention': mention,
+            'direct_mention': direct_mention,
+            'random_mention': random_mention,
             'media': 'discord',
             'text': message.content,
             'is_mod': permissions.ban_members or permissions.administrator,
             'prefix': prefix,
+            'bot': discordClient.user.mention,
         }
         reply, new_messages = await process_message(il, channel_id, variables)
         db.add_log(channel_id, il)
         if reply != '':
             await message.reply(reply)
-        for m in new_messages:
-            await message.channel.send(m)
+        if new_messages:
+            for m in new_messages:
+                await message.channel.send(m)
 
-    def mentions(self, msg):
-        if msg.mentions:
-            return ' '.join([x.mention for x in msg.mentions])
+    def random_mention(self, msg):
         humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
         online = [m for m in humans if m.status == discord.Status.online]
         if online:
@@ -265,6 +288,11 @@ class DiscordClient(discord.Client):
         if humans:
             return random.choice(humans).mention
         return msg.author.mention
+
+    def mentions(self, msg):
+        if msg.mentions:
+            return ' '.join([x.mention for x in msg.mentions])
+        return ''
 
 
 class TwitchBot(commands.Bot):
@@ -303,14 +331,20 @@ class TwitchBot(commands.Bot):
         info['active_users'][author] = 1
         il.info(f"active users {info ['active_users'].keys()}")
         il.info(f'{author} {message.content}')
+        direct_mention = self.mentions(message.content)
+        random_mention = self.random_mention(info, author)
+        mention = direct_mention if direct_mention else random_mention
         variables = {
             'author': str(author),
             'author_name': str(author),
-            'mention': self.mentions(message.content, info, author),
+            'mention': mention,
+            'direct_mention': direct_mention,
+            'random_mention': random_mention,
             'media': 'twitch',
             'text': message.content,
             'is_mod': message.author.is_mod,
             'prefix': info['prefix'],
+            'bot': self.nick,
         }
         reply, new_messages = await process_message(il, info['id'], variables)
         db.add_log(il)
@@ -320,10 +354,13 @@ class TwitchBot(commands.Bot):
         for m in new_messages:
             await ctx.send(m)
     
-    def mentions(self, txt, info, author):
+    def mentions(self, txt):
         result = re.findall(r'@\S+', txt)
         if result:
             return ' '.join(result)
+        return ''
+
+    def random_mention(self, info, author):
         users = [x for x in info['active_users'].keys() if x != author]
         if users:
             return "@" + random.choice(users)
@@ -339,17 +376,24 @@ if __name__ == "__main__":
     parser.add_argument('--twitch_channel_name')
     parser.add_argument('--twitch_command_prefix', default='+')
     parser.add_argument('--channel_id')
+    parser.add_argument('--drop_database', action='store_true')
     args = parser.parse_args()
     print(f'args {args}')
+    if args.drop_database:
+        confirm = input('type "yes" to drop database and continue')
+        if confirm != 'yes':
+            print(f'you typed "{confirm}", want "yes"')
+            sys.exit(1)
+        db.recreate_tables()
     if args.discord:
         logging.info('starting Discord Bot')
-        client = DiscordClient(intents=discord.Intents.all())
-        client.run(os.getenv('DISCORD_TOKEN'))
+        discordClient = DiscordClient(intents=discord.Intents.all())
+        discordClient.run(os.getenv('DISCORD_TOKEN'))
         sys.exit(0)
     if args.twitch:
         logging.info('starting Twitch Bot')
-        bot = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'))
-        bot.run()
+        twitchClient = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'))
+        twitchClient.run()
         sys.exit(0)
     if args.add_channel:
         if not args.twitch_channel_name:
