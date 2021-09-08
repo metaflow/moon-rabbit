@@ -149,3 +149,19 @@ DROP TABLE channels;
         if channel_id not in self.logs:
             return []
         return list(self.logs[channel_id])
+
+    def set_twitch_prefix(self, channel_id: int, prefix: str):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE channels SET twitch_command_prefix = %s WHERE channel_id = %s",
+                [prefix, channel_id])
+            self.conn.commit()
+            self.twitch_channel_info.cache_clear()
+
+    def set_discord_prefix(self, channel_id: int, prefix: str):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE channels SET discord_command_prefix = %s WHERE channel_id = %s",
+                [prefix, channel_id])
+            self.conn.commit()
+            self.discord_channel_info.cache_clear()

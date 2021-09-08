@@ -16,7 +16,8 @@
 
 # TODO debug info: log for last X commands
 # TODO non prefix (regex) commands
-# TODO typing
+# TODO: commands metadata
+# TODO python typings
 # TODO DB backups
 # TODO store variables
 # TODO context - commands only for discord / twitch
@@ -41,11 +42,24 @@ import random
 import re
 import ttldict2
 import storage
-from typing import Dict, Type
+from typing import Dict, List, Type
+from enum import Enum
+
 
 @dataclasses.dataclass
 class TemplateVariables:
     mention: str
+
+
+class ActionKind(Enum):
+    REPLY = 1
+    NEW_MESSAGE = 2
+
+@dataclasses.dataclass
+class Action:
+    kind: ActionKind
+    text: str
+
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -80,6 +94,7 @@ class InvocationLog():
         logging.error(self.prefix + s)
         self.messages.append((logging.ERROR, s))
 
+
 @jinja2.pass_context
 def list(ctx, a):
     global templates
@@ -96,10 +111,15 @@ def list(ctx, a):
 
 
 templates = SandboxedEnvironment(autoescape=jinja2.select_autoescape())
-templates.loader = jinja2.FunctionLoader(lambda x : db.load_template(x))
+templates.loader = jinja2.FunctionLoader(lambda x: db.load_template(x))
 templates.globals['list'] = list
 
-async def fn_cmd_set(cur: psycopg2.extensions.cursor, log: InvocationLog, channel_id: int, variables: Dict, txt: str):
+
+async def fn_cmd_set(cur: psycopg2.extensions.cursor,
+                     log: InvocationLog,
+                     channel_id: int,
+                     variables: Dict,
+                     txt: str) -> List[Action]:
     '''
     txt format '<name> [<value>]'
     missing value will drop the command
@@ -109,7 +129,7 @@ async def fn_cmd_set(cur: psycopg2.extensions.cursor, log: InvocationLog, channe
     if len(parts) == 1:
         cur.execute(
             'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
-        return f"Deleted command '{name}'"
+        return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")]
     text = parts[1]
     cur.execute('''
     INSERT INTO commands (channel_id, author, name, text)
@@ -125,20 +145,20 @@ async def fn_cmd_set(cur: psycopg2.extensions.cursor, log: InvocationLog, channe
     log.info(
         f"channel={channel_id} author={variables['author_name']} added new template '{name}' '{text}' #{id}")
     templates.cache.clear()
-    return f"Added new command '{name}' '{text}' #{id}"
+    return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' '{text}' #{id}")]
 
 
-async def fn_add_list(cur, log, channel_id, variables, txt):
+async def fn_add_list(cur, log, channel_id, variables, txt) -> List[Action]:
     name, text = txt.split(' ', 1)
     cur.execute('INSERT INTO lists (channel_id, author, list_name, text) VALUES (%s, %s, %s, %s) RETURNING id;',
                 (channel_id, variables['author_name'], name, text))
     id = cur.fetchone()[0]
     log.info(f"added new list item '{name}' '{text}' #{id}")
     # TODO cache clear
-    return f"Added new list '{name}' item '{text}' #{id}"
+    return [Action(kind=ActionKind.REPLY, text=f"Added new list '{name}' item '{text}' #{id}")]
 
 
-async def fn_list_search(cur, log, channel_id, variables, txt):
+async def fn_list_search(cur, log, channel_id, variables, txt) -> List[Action]:
     parts = txt.split(' ', 1)
     if len(parts) > 1:
         q = '%' + \
@@ -154,45 +174,56 @@ async def fn_list_search(cur, log, channel_id, variables, txt):
         rr.append(f"#{row[0]}: {row[1]}")
     # TODO: clear cache
     if not rr:
-        return "no results"
+        return  [Action(kind=ActionKind.REPLY, text="no results")]
     else:
-        return '\n'.join(rr)
+        return  [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
 
-async def fn_delete_list_item(cur, log, channel_id, variables, txt):
+
+async def fn_delete_list_item(cur, log, channel_id, variables, txt) -> List[Action]:
     if txt.isnumeric():
         cur.execute(
             'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-        return f"Deleted list item #{id}"
+        return  [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
     parts = txt.split(' ', 1)
     if len(parts) < 2 or parts[0] != 'all':
-        return "command format is <number> or 'all <list name>'"
+        return  [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
     cur.execute(
         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
-    return f"Deleted all items in list '{parts[1]}'"
+    return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
 
 
-async def fn_set_prefix(cur, log, channel_id, variables, txt):
+async def fn_set_prefix(cur, log, channel_id, variables, txt: str) -> List[Action]:
     logging.info(f"set new prefix '{txt}'")
-    return f"set new prefix for {variables['media']}"
+    if variables['bot'] not in variables['direct_mention']:
+        log.info('this bot is not mentioned directly')
+        return  [Action(kind=ActionKind.REPLY, text="ignored")]
+    new_prefix = txt.split(' ')[0]
+    if variables['media'] == 'discord':
+        db.set_discord_prefix(channel_id, new_prefix)
+    if variables['media'] == 'twitch':
+        db.set_twitch_prefix(channel_id, new_prefix)
+    return  [Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"')]
 
 all_commands = {
     'set': fn_cmd_set,
     'list-add': fn_add_list,
     'list-rm': fn_delete_list_item,
     'list-search': fn_list_search,
-    'update-prefix': fn_set_prefix,
+    'prefix-set': fn_set_prefix,
 }
 
-async def process_message(il, channel_id, variables):
+
+async def process_message(il, channel_id, variables) -> List[Action]:
     txt = variables['text']
     prefix = variables['prefix']
     il.info(f"message text '{txt}'")
+    actions: List[Action] = []
     if prefix not in txt:
         # No commands.
-        return
+        return actions
     admin_command = False
     for c in all_commands:
-        if txt.startswith(prefix + c + ' '):
+        if txt.startswith(prefix + c + ' ') or txt == prefix + c:
             admin_command = True
             break
     if admin_command:
@@ -200,7 +231,7 @@ async def process_message(il, channel_id, variables):
             il.warning(f'non mod called an admin command')
             return f"you don't have permissions to do that", ""
         txt = txt[len(prefix):]
-        results = []
+        # results = []
         for p in txt.split('\n' + prefix):
             cmd, t = p.split(' ', 1)
             if cmd not in all_commands:
@@ -210,17 +241,16 @@ async def process_message(il, channel_id, variables):
             try:
                 r = await all_commands[cmd](db.conn.cursor(), il, channel_id, variables, t)
                 il.info(f"command result '{r}'")
-                results.append(r)
+                actions.extend(r)
                 db.conn.commit()
             except Exception as e:
                 db.conn.rollback()
-                results.append('error occurred')
-                il.error(f'failed to execute {cmd}: {e}')
-        reply = '\n'.join(results)
-        return reply if reply != '' else 'OK', ''
+                actions.append(
+                    Action(kind=ActionKind.REPLY, text='error ocurred'))
+                il.error(f'failed to execute {cmd}: {str(e)}')
+        return actions
     commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
     template_names = db.get_templates(channel_id)
-    new_messages = []
     for cmd in commands:
         variables['_render_depth'] = 0
         variables['channel_id'] = channel_id
@@ -228,12 +258,14 @@ async def process_message(il, channel_id, variables):
             try:
                 t = templates.get_template(f'cmd:{channel_id}:{cmd}')
                 if t:
-                    new_messages.append(t.render(variables))
+                    actions.append(Action(
+                        kind=ActionKind.NEW_MESSAGE,
+                        text=t.render(variables)))
                 else:
                     il.warning(f"'{cmd}' is not defined")
             except Exception as e:
-                logging.error(f"failed to render '{cmd}': {e}")
-    return '', new_messages
+                il.error(f"failed to render '{cmd}': {str(e)}")
+    return actions
 
 
 class DiscordClient(discord.Client):
@@ -272,16 +304,18 @@ class DiscordClient(discord.Client):
             'prefix': prefix,
             'bot': discordClient.user.mention,
         }
-        reply, new_messages = await process_message(il, channel_id, variables)
+        il.info(f'variables {variables}')
+        actions = await process_message(il, channel_id, variables)
         db.add_log(channel_id, il)
-        if reply != '':
-            await message.reply(reply)
-        if new_messages:
-            for m in new_messages:
-                await message.channel.send(m)
+        for a in actions:
+            if a.kind == ActionKind.NEW_MESSAGE:
+                await message.channel.send(a.text)
+            if a.kind == ActionKind.REPLY:
+                await message.reply(a.text)
 
     def random_mention(self, msg):
-        humans = [m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
+        humans = [
+            m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
         online = [m for m in humans if m.status == discord.Status.online]
         if online:
             return random.choice(online).mention
@@ -305,7 +339,8 @@ class TwitchBot(commands.Bot):
         # We are logged in and ready to chat and use commands...
         logging.info(f'Logged in as | {self.nick}')
         with db.conn.cursor() as cur:
-            cur.execute("SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
+            cur.execute(
+                "SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
             for row in cur.fetchall():
                 id, prefix, name = row
                 if not name:
@@ -346,14 +381,14 @@ class TwitchBot(commands.Bot):
             'prefix': info['prefix'],
             'bot': self.nick,
         }
-        reply, new_messages = await process_message(il, info['id'], variables)
-        db.add_log(il)
+        il.info(f'variables {variables}')
+        actions = await process_message(il, info['id'], variables)
+        db.add_log(info['id'], il)
         ctx = await self.get_context(message)
-        if reply != '':
-            await ctx.send(reply)
-        for m in new_messages:
-            await ctx.send(m)
-    
+        for a in actions:
+            if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
+                await ctx.send(a.text)
+
     def mentions(self, txt):
         result = re.findall(r'@\S+', txt)
         if result:
