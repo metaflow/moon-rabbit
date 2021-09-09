@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO debug info: log for last X commands
 # TODO non prefix (regex) commands
 # TODO: commands metadata
 # TODO python typings
@@ -44,6 +43,7 @@ import ttldict2
 import storage
 from typing import Dict, List, Type
 from enum import Enum
+import traceback
 
 
 @dataclasses.dataclass
@@ -54,6 +54,8 @@ class TemplateVariables:
 class ActionKind(Enum):
     REPLY = 1
     NEW_MESSAGE = 2
+    PRIVATE_MESSAGE = 3
+
 
 @dataclasses.dataclass
 class Action:
@@ -174,19 +176,19 @@ async def fn_list_search(cur, log, channel_id, variables, txt) -> List[Action]:
         rr.append(f"#{row[0]}: {row[1]}")
     # TODO: clear cache
     if not rr:
-        return  [Action(kind=ActionKind.REPLY, text="no results")]
+        return [Action(kind=ActionKind.REPLY, text="no results")]
     else:
-        return  [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
 
 
 async def fn_delete_list_item(cur, log, channel_id, variables, txt) -> List[Action]:
     if txt.isnumeric():
         cur.execute(
             'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-        return  [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
+        return [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
     parts = txt.split(' ', 1)
     if len(parts) < 2 or parts[0] != 'all':
-        return  [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
+        return [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
     cur.execute(
         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
     return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
@@ -196,13 +198,25 @@ async def fn_set_prefix(cur, log, channel_id, variables, txt: str) -> List[Actio
     logging.info(f"set new prefix '{txt}'")
     if variables['bot'] not in variables['direct_mention']:
         log.info('this bot is not mentioned directly')
-        return  [Action(kind=ActionKind.REPLY, text="ignored")]
+        return [Action(kind=ActionKind.REPLY, text="ignored")]
     new_prefix = txt.split(' ')[0]
     if variables['media'] == 'discord':
         db.set_discord_prefix(channel_id, new_prefix)
     if variables['media'] == 'twitch':
         db.set_twitch_prefix(channel_id, new_prefix)
-    return  [Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"')]
+    return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"')]
+
+
+async def fn_debug(cur, log, channel_id, variables, txt: str) -> List[Action]:
+    if variables['media'] != 'discord' or not variables['is_mod']:
+        return
+    results: List[Action] = []
+    logging.info(f'logs {db.get_logs(channel_id)}')
+    for e in db.get_logs(channel_id):
+        results.append(
+            Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join([x[1] for x in e.messages])
+                   + '\n-----------------------------\n'))
+    return results
 
 all_commands = {
     'set': fn_cmd_set,
@@ -210,13 +224,14 @@ all_commands = {
     'list-rm': fn_delete_list_item,
     'list-search': fn_list_search,
     'prefix-set': fn_set_prefix,
+    'debug': fn_debug,
 }
 
 
-async def process_message(il, channel_id, variables) -> List[Action]:
+async def process_message(log, channel_id, variables) -> List[Action]:
     txt = variables['text']
     prefix = variables['prefix']
-    il.info(f"message text '{txt}'")
+    log.info(f"message text '{txt}'")
     actions: List[Action] = []
     if prefix not in txt:
         # No commands.
@@ -228,26 +243,31 @@ async def process_message(il, channel_id, variables) -> List[Action]:
             break
     if admin_command:
         if not variables['is_mod']:
-            il.warning(f'non mod called an admin command')
+            log.warning(f'non mod called an admin command')
             return f"you don't have permissions to do that", ""
         txt = txt[len(prefix):]
         # results = []
         for p in txt.split('\n' + prefix):
-            cmd, t = p.split(' ', 1)
+            parts = p.split(' ', 1)
+            cmd = parts[0]
+            t = ''
+            if len(parts) > 1:
+                t = parts[1]
             if cmd not in all_commands:
-                il.info(f'unknown command {cmd}')
+                log.info(f'unknown command {cmd}')
                 continue
-            il.info(f"running cmd {cmd} '{t}'")
+            log.info(f"running cmd {cmd} '{t}'")
             try:
-                r = await all_commands[cmd](db.conn.cursor(), il, channel_id, variables, t)
-                il.info(f"command result '{r}'")
+                r = await all_commands[cmd](db.conn.cursor(), log, channel_id, variables, t)
+                log.info(f"command result '{r}'")
                 actions.extend(r)
                 db.conn.commit()
             except Exception as e:
                 db.conn.rollback()
                 actions.append(
                     Action(kind=ActionKind.REPLY, text='error ocurred'))
-                il.error(f'failed to execute {cmd}: {str(e)}')
+                log.error(f'failed to execute {cmd}: {str(e)}')
+                logging.error(traceback.format_exc())
         return actions
     commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
     template_names = db.get_templates(channel_id)
@@ -262,9 +282,10 @@ async def process_message(il, channel_id, variables) -> List[Action]:
                         kind=ActionKind.NEW_MESSAGE,
                         text=t.render(variables)))
                 else:
-                    il.warning(f"'{cmd}' is not defined")
+                    log.warning(f"'{cmd}' is not defined")
             except Exception as e:
-                il.error(f"failed to render '{cmd}': {str(e)}")
+                log.error(f"failed to render '{cmd}': {str(e)}")
+                logging.error(traceback.format_exc())
     return actions
 
 
@@ -282,12 +303,13 @@ class DiscordClient(discord.Client):
                 db.conn.cursor(), str(message.guild.id))
             db.conn.commit()
         except Exception as e:
-            logging.error(f"'discord_channel_info': {e}")
+            logging.error(
+                f"'discord_channel_info': {e}\n{traceback.format_exc()}")
             db.conn.rollback()
             return
-        il = InvocationLog(
+        log = InvocationLog(
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
-        il.info(f'message {message.content}')
+        log.info(f'message {message.content}')
         permissions = message.author.guild_permissions
         direct_mention = self.mentions(message)
         random_mention = self.random_mention(message)
@@ -304,14 +326,16 @@ class DiscordClient(discord.Client):
             'prefix': prefix,
             'bot': discordClient.user.mention,
         }
-        il.info(f'variables {variables}')
-        actions = await process_message(il, channel_id, variables)
-        db.add_log(channel_id, il)
+        log.info(f'variables {variables}')
+        actions = await process_message(log, channel_id, variables)
+        db.add_log(channel_id, log)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE:
                 await message.channel.send(a.text)
             if a.kind == ActionKind.REPLY:
                 await message.reply(a.text)
+            if a.kind == ActionKind.PRIVATE_MESSAGE:
+                await message.author.send(a.text)
 
     def random_mention(self, msg):
         humans = [
