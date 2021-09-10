@@ -1,8 +1,12 @@
 import psycopg2
+import psycopg2.extensions
+import psycopg2.extras
 import functools
 import logging
 import collections
 from cachetools import TTLCache
+
+psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
 class DB:
     def __init__(self, connection):
@@ -28,8 +32,9 @@ DROP TABLE channels;
             CREATE TABLE IF NOT EXISTS commands
                 (id SERIAL,
                 channel_id INT,
-                author TEXT,
                 name VARCHAR(50),
+                data JSONB,
+                author TEXT,
                 text TEXT,
                 discord BOOLEAN,
                 twitch BOOLEAN,

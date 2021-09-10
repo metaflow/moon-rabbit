@@ -14,7 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: general command syntax 
 # TODO non prefix (regex) commands
+# TODO: check sandbox settings
 # TODO: commands metadata
 # TODO python typings
 # TODO DB backups
@@ -23,10 +25,14 @@
 # TODO reactions in discord
 # TODO help command
 
-"""Discord bot entry point."""
+# command syntax is [condition] + [action]
+# simplest condition is just a string "word" -> [regex: '\b<perefix>word\b']
+# general format is JSON e.g. +set {...}
 
+"""Bot entry point."""
 
 import dataclasses
+import json
 from jinja2.sandbox import SandboxedEnvironment
 import psycopg2
 import psycopg2.extensions
@@ -42,8 +48,9 @@ import re
 import ttldict2
 import storage
 from typing import Dict, List, Type
-from enum import Enum
+from enum import IntEnum
 import traceback
+import dacite
 
 
 @dataclasses.dataclass
@@ -51,7 +58,7 @@ class TemplateVariables:
     mention: str
 
 
-class ActionKind(Enum):
+class ActionKind(IntEnum):
     REPLY = 1
     NEW_MESSAGE = 2
     PRIVATE_MESSAGE = 3
@@ -62,6 +69,17 @@ class Action:
     kind: ActionKind
     text: str
 
+@dataclasses.dataclass
+class Effect:
+    text: str
+    kind: int
+
+@dataclasses.dataclass
+class Command:
+    match: str
+    effects: List[Effect] = dataclasses.field(default_factory=list)
+    discord: bool = True
+    twitch: bool = True
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -127,27 +145,36 @@ async def fn_cmd_set(cur: psycopg2.extensions.cursor,
     missing value will drop the command
     '''
     parts = txt.split(' ', 1)
+    logging.info(f'parts {parts}')
     name = parts[0]
     if len(parts) == 1:
         cur.execute(
             'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
         return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")]
     text = parts[1]
+    cmd = Command(f"\b(prefix){re.escape(name)}\b")
+    try:
+        cmd = dacite.from_dict(json.loads(), data_class=Command)
+    except Exception as e:
+        log.info('failed to parse command as JSON, assuming literal text')
+        cmd.effects.append(Effect(text=text, kind=ActionKind.REPLY))
+        logging.error(f'failed to execute {cmd}: {str(e)}\n{traceback.format_exc()}')
+    log.info(f'parsed command {cmd}')
     cur.execute('''
-    INSERT INTO commands (channel_id, author, name, text)
-    VALUES (%(channel_id)s, %(author)s, %(name)s, %(text)s)
+    INSERT INTO commands (channel_id, author, name, data)
+    VALUES (%(channel_id)s, %(author)s, %(name)s, %(data)s)
     ON CONFLICT ON CONSTRAINT uniq_name_in_channel DO
-    UPDATE SET text = %(text)s RETURNING id;''',
+    UPDATE SET data = %(data)s RETURNING id;''',
                 {'channel_id': channel_id,
                  'author': variables['author_name'],
                  'name': name,
-                 'text': text,
+                 'data': dataclasses.asdict(cmd),
                  })
     id = cur.fetchone()[0]
-    log.info(
-        f"channel={channel_id} author={variables['author_name']} added new template '{name}' '{text}' #{id}")
+    log.info( 
+        f"channel={channel_id} author={variables['author_name']} added new command '{name}' #{id}")
     templates.cache.clear()
-    return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' '{text}' #{id}")]
+    return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
 
 
 async def fn_add_list(cur, log, channel_id, variables, txt) -> List[Action]:
@@ -242,6 +269,7 @@ async def process_message(log, channel_id, variables) -> List[Action]:
             admin_command = True
             break
     if admin_command:
+        log.info('running control commands')
         if not variables['is_mod']:
             log.warning(f'non mod called an admin command')
             return f"you don't have permissions to do that", ""
@@ -269,23 +297,24 @@ async def process_message(log, channel_id, variables) -> List[Action]:
                 log.error(f'failed to execute {cmd}: {str(e)}')
                 logging.error(traceback.format_exc())
         return actions
-    commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
-    template_names = db.get_templates(channel_id)
-    for cmd in commands:
-        variables['_render_depth'] = 0
-        variables['channel_id'] = channel_id
-        if cmd in template_names:
-            try:
-                t = templates.get_template(f'cmd:{channel_id}:{cmd}')
-                if t:
-                    actions.append(Action(
-                        kind=ActionKind.NEW_MESSAGE,
-                        text=t.render(variables)))
-                else:
-                    log.warning(f"'{cmd}' is not defined")
-            except Exception as e:
-                log.error(f"failed to render '{cmd}': {str(e)}")
-                logging.error(traceback.format_exc())
+    # TODO:
+    # commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
+    # template_names = db.get_templates(channel_id)
+    # for cmd in commands:
+    #     variables['_render_depth'] = 0
+    #     variables['channel_id'] = channel_id
+    #     if cmd in template_names:
+    #         try:
+    #             t = templates.get_template(f'cmd:{channel_id}:{cmd}')
+    #             if t:
+    #                 actions.append(Action(
+    #                     kind=ActionKind.NEW_MESSAGE,
+    #                     text=t.render(variables)))
+    #             else:
+    #                 log.warning(f"'{cmd}' is not defined")
+    #         except Exception as e:
+    #             log.error(f"failed to render '{cmd}': {str(e)}")
+    #             logging.error(traceback.format_exc())
     return actions
 
 
@@ -439,7 +468,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f'args {args}')
     if args.drop_database:
-        confirm = input('type "yes" to drop database and continue')
+        confirm = input('type "yes" to drop database and continue: ')
         if confirm != 'yes':
             print(f'you typed "{confirm}", want "yes"')
             sys.exit(1)

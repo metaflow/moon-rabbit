@@ -10,6 +10,7 @@ cachetools = "*"
 jinja2 = "*"
 twitchio = "*"
 ttldict2 = "*"
+dacite = "*"
 
 [dev-packages]
 autopep8 = "*"
