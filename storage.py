@@ -1,3 +1,6 @@
+import dataclasses
+from typing import List
+from data import Command
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
@@ -5,8 +8,11 @@ import functools
 import logging
 import collections
 from cachetools import TTLCache
+import dacite
+import re
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
+
 
 class DB:
     def __init__(self, connection):
@@ -81,7 +87,8 @@ DROP TABLE channels;
         if row:
             id = row[0]
             prefix = row[1]
-            logging.info(f"got Discord channel ID '{guild_id}' '{prefix}' #{id}")
+            logging.info(
+                f"got Discord channel ID '{guild_id}' '{prefix}' #{id}")
             return id, prefix
         id = self.new_channel_id()
         prefix = '+'
@@ -98,27 +105,35 @@ DROP TABLE channels;
                 return int(row[0]) + 1
             return 0
 
-    def load_template(self, name):
-        logging.info(f'loading template {name}')
-        if ':' not in name:
-            logging.error(f"bad template name '{name}'")
-            return None
-        type, channel_id, id = name.split(':', 2)
-        if type == 'cmd':
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT text FROM commands WHERE channel_id = %s AND name = %s;",
-                            [int(channel_id), id])
-                z = cur.fetchone()[0]
-                logging.info(f'template {name} = {z}')
-                return z
-        if type == 'list':
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
-                            [int(channel_id), id])
-                z = cur.fetchone()[0]
-                logging.info(f'template {name} = {z}')
-                return z
-        raise f'unknown template type {type} for name `{name}`'
+    # def load_template(self, name):
+    #     logging.info(f'loading template {name}')
+    #     if ':' not in name:
+    #         logging.error(f"bad template name '{name}'")
+    #         return None
+    #     type, channel_id, id = name.split(':', 2)
+    #     if type == 'cmd':
+    #         with self.conn.cursor() as cur:
+    #             cur.execute("SELECT text FROM commands WHERE channel_id = %s AND name = %s;",
+    #                         [int(channel_id), id])
+    #             z = cur.fetchone()[0]
+    #             logging.info(f'template {name} = {z}')
+    #             return z
+    #     if type == 'list':
+    #         with self.conn.cursor() as cur:
+    #             cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
+    #                         [int(channel_id), id])
+    #             z = cur.fetchone()[0]
+    #             logging.info(f'template {name} = {z}')
+    #             return z
+    #     raise f'unknown template type {type} for name `{name}`'
+
+    def get_list(self, channel_id: int, id: int):
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
+                        [int(channel_id), id])
+            z = cur.fetchone()[0]
+            logging.info(f'template {name} = {z}')
+            return z
 
     def lists_ids(self, channel_id, list):
         key = f'get_lists_{channel_id}_{list}'
@@ -129,16 +144,35 @@ DROP TABLE channels;
                             [channel_id, list])
                 self.cache[key] = [x[0] for x in cur.fetchall()]
         return self.cache[key]
-    
-    def get_templates(self, channel_id):
-        key = f'get_templates_{channel_id}'
+
+    def get_commands(self, channel_id, prefix) -> List[Command]:
+        key = f'get_commands_{channel_id}_{prefix}'
         if not key in self.cache:
             print('loading', key)
             with self.conn.cursor() as cur:
                 cur.execute(
-                    "SELECT DISTINCT name FROM commands WHERE channel_id = %s;", [channel_id])
-                self.cache[key] = [x[0] for x in cur.fetchall()]
+                    "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
+                z: List[Command] = [dacite.from_dict(Command, x[0]) for x in cur.fetchall()]
+                for c in z:
+                    c.pattern = c.pattern.replace('!prefix', prefix)
+                    c.regex = re.compile(c.pattern, re.IGNORECASE)
+                self.cache[key] = z
         return self.cache[key]
+
+    def set_command(self, cur, channel_id: int, author: str, cmd: Command) -> int:
+        cmd.regex = None
+        cur.execute('''
+            INSERT INTO commands (channel_id, author, name, data)
+            VALUES (%(channel_id)s, %(author)s, %(name)s, %(data)s)
+            ON CONFLICT ON CONSTRAINT uniq_name_in_channel DO
+            UPDATE SET data = %(data)s RETURNING id;''',
+                    {'channel_id': channel_id,
+                     'author': author,
+                     'name': cmd.name,
+                     'data': dataclasses.asdict(cmd),
+                     })
+        self.cache.clear()
+        return cur.fetchone()[0]
 
     def get_message(self, id):
         with self.conn.cursor() as cur:
@@ -161,6 +195,7 @@ DROP TABLE channels;
                 "UPDATE channels SET twitch_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id])
             self.conn.commit()
+            self.cache.clear()
             self.twitch_channel_info.cache_clear()
 
     def set_discord_prefix(self, channel_id: int, prefix: str):
@@ -169,4 +204,5 @@ DROP TABLE channels;
                 "UPDATE channels SET discord_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id])
             self.conn.commit()
+            self.cache.clear()
             self.discord_channel_info.cache_clear()

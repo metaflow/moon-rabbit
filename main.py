@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: general command syntax 
 # TODO non prefix (regex) commands
 # TODO: check sandbox settings
 # TODO: commands metadata
@@ -31,11 +30,8 @@
 
 """Bot entry point."""
 
-import dataclasses
-import json
+from data import *
 from jinja2.sandbox import SandboxedEnvironment
-import psycopg2
-import psycopg2.extensions
 from twitchio.ext import commands
 import argparse
 import discord
@@ -47,39 +43,10 @@ import random
 import re
 import ttldict2
 import storage
-from typing import Dict, List, Type
-from enum import IntEnum
+from typing import List
 import traceback
-import dacite
+import control_commands
 
-
-@dataclasses.dataclass
-class TemplateVariables:
-    mention: str
-
-
-class ActionKind(IntEnum):
-    REPLY = 1
-    NEW_MESSAGE = 2
-    PRIVATE_MESSAGE = 3
-
-
-@dataclasses.dataclass
-class Action:
-    kind: ActionKind
-    text: str
-
-@dataclasses.dataclass
-class Effect:
-    text: str
-    kind: int
-
-@dataclasses.dataclass
-class Command:
-    match: str
-    effects: List[Effect] = dataclasses.field(default_factory=list)
-    discord: bool = True
-    twitch: bool = True
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -93,26 +60,11 @@ logging.getLogger().addHandler(stdoutHandler)
 db = storage.DB(os.getenv('DB_CONNECTION'))
 
 
-class InvocationLog():
-    def __init__(self, prefix):
-        self.messages = []
-        self.prefix = prefix + ' '
-
-    def info(self, s):
-        logging.info(self.prefix + s)
-        self.messages.append((logging.INFO, s))
-
-    def warning(self, s):
-        logging.warning(self.prefix + s)
-        self.messages.append((logging.WARNING, s))
-
-    def debug(self, s):
-        logging.debug(self.prefix + s)
-        self.messages.append((logging.DEBUG, s))
-
-    def error(self, s):
-        logging.error(self.prefix + s)
-        self.messages.append((logging.ERROR, s))
+def render(text, vars):
+    global next_template
+    next_template = text
+    templates.cache.clear()
+    return templates.get_template('x').render(vars)
 
 
 @jinja2.pass_context
@@ -126,145 +78,23 @@ def list(ctx, a):
     if vars['_render_depth'] > 5:
         logging.error('rendering depth is > 5')
         return '?'
-    t = templates.get_template(f'list:{channel_id}:{id}')
-    return t.render(vars)
+    return render(db.get_list(channel_id, id), vars)
 
 
 templates = SandboxedEnvironment(autoescape=jinja2.select_autoescape())
-templates.loader = jinja2.FunctionLoader(lambda x: db.load_template(x))
+next_template = ''
+templates.loader = jinja2.FunctionLoader(lambda _: next_template)
 templates.globals['list'] = list
 
 
-async def fn_cmd_set(cur: psycopg2.extensions.cursor,
-                     log: InvocationLog,
-                     channel_id: int,
-                     variables: Dict,
-                     txt: str) -> List[Action]:
-    '''
-    txt format '<name> [<value>]'
-    missing value will drop the command
-    '''
-    parts = txt.split(' ', 1)
-    logging.info(f'parts {parts}')
-    name = parts[0]
-    if len(parts) == 1:
-        cur.execute(
-            'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
-        return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")]
-    text = parts[1]
-    cmd = Command(f"\b(prefix){re.escape(name)}\b")
-    try:
-        cmd = dacite.from_dict(json.loads(), data_class=Command)
-    except Exception as e:
-        log.info('failed to parse command as JSON, assuming literal text')
-        cmd.effects.append(Effect(text=text, kind=ActionKind.REPLY))
-        logging.error(f'failed to execute {cmd}: {str(e)}\n{traceback.format_exc()}')
-    log.info(f'parsed command {cmd}')
-    cur.execute('''
-    INSERT INTO commands (channel_id, author, name, data)
-    VALUES (%(channel_id)s, %(author)s, %(name)s, %(data)s)
-    ON CONFLICT ON CONSTRAINT uniq_name_in_channel DO
-    UPDATE SET data = %(data)s RETURNING id;''',
-                {'channel_id': channel_id,
-                 'author': variables['author_name'],
-                 'name': name,
-                 'data': dataclasses.asdict(cmd),
-                 })
-    id = cur.fetchone()[0]
-    log.info( 
-        f"channel={channel_id} author={variables['author_name']} added new command '{name}' #{id}")
-    templates.cache.clear()
-    return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
-
-
-async def fn_add_list(cur, log, channel_id, variables, txt) -> List[Action]:
-    name, text = txt.split(' ', 1)
-    cur.execute('INSERT INTO lists (channel_id, author, list_name, text) VALUES (%s, %s, %s, %s) RETURNING id;',
-                (channel_id, variables['author_name'], name, text))
-    id = cur.fetchone()[0]
-    log.info(f"added new list item '{name}' '{text}' #{id}")
-    # TODO cache clear
-    return [Action(kind=ActionKind.REPLY, text=f"Added new list '{name}' item '{text}' #{id}")]
-
-
-async def fn_list_search(cur, log, channel_id, variables, txt) -> List[Action]:
-    parts = txt.split(' ', 1)
-    if len(parts) > 1:
-        q = '%' + \
-            parts[1].replace('=', '==').replace(
-                '%', '=%').replace('_', '=_') + '%'
-        cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
-                    (channel_id, parts[0], q))
-    else:
-        cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s)",
-                    (channel_id, parts[0]))
-    rr = []
-    for row in cur.fetchall():
-        rr.append(f"#{row[0]}: {row[1]}")
-    # TODO: clear cache
-    if not rr:
-        return [Action(kind=ActionKind.REPLY, text="no results")]
-    else:
-        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
-
-
-async def fn_delete_list_item(cur, log, channel_id, variables, txt) -> List[Action]:
-    if txt.isnumeric():
-        cur.execute(
-            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-        return [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
-    parts = txt.split(' ', 1)
-    if len(parts) < 2 or parts[0] != 'all':
-        return [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
-    cur.execute(
-        'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
-    return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
-
-
-async def fn_set_prefix(cur, log, channel_id, variables, txt: str) -> List[Action]:
-    logging.info(f"set new prefix '{txt}'")
-    if variables['bot'] not in variables['direct_mention']:
-        log.info('this bot is not mentioned directly')
-        return [Action(kind=ActionKind.REPLY, text="ignored")]
-    new_prefix = txt.split(' ')[0]
-    if variables['media'] == 'discord':
-        db.set_discord_prefix(channel_id, new_prefix)
-    if variables['media'] == 'twitch':
-        db.set_twitch_prefix(channel_id, new_prefix)
-    return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"')]
-
-
-async def fn_debug(cur, log, channel_id, variables, txt: str) -> List[Action]:
-    if variables['media'] != 'discord' or not variables['is_mod']:
-        return
-    results: List[Action] = []
-    logging.info(f'logs {db.get_logs(channel_id)}')
-    for e in db.get_logs(channel_id):
-        results.append(
-            Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join([x[1] for x in e.messages])
-                   + '\n-----------------------------\n'))
-    return results
-
-all_commands = {
-    'set': fn_cmd_set,
-    'list-add': fn_add_list,
-    'list-rm': fn_delete_list_item,
-    'list-search': fn_list_search,
-    'prefix-set': fn_set_prefix,
-    'debug': fn_debug,
-}
-
-
-async def process_message(log, channel_id, variables) -> List[Action]:
+async def process_message(log: InvocationLog, channel_id, variables) -> List[Action]:
     txt = variables['text']
     prefix = variables['prefix']
     log.info(f"message text '{txt}'")
     actions: List[Action] = []
-    if prefix not in txt:
-        # No commands.
-        return actions
+    # TODO: do that in control commands
     admin_command = False
-    for c in all_commands:
+    for c in control_commands.all_commands:
         if txt.startswith(prefix + c + ' ') or txt == prefix + c:
             admin_command = True
             break
@@ -281,12 +111,12 @@ async def process_message(log, channel_id, variables) -> List[Action]:
             t = ''
             if len(parts) > 1:
                 t = parts[1]
-            if cmd not in all_commands:
+            if cmd not in control_commands.all_commands:
                 log.info(f'unknown command {cmd}')
                 continue
             log.info(f"running cmd {cmd} '{t}'")
             try:
-                r = await all_commands[cmd](db.conn.cursor(), log, channel_id, variables, t)
+                r = await control_commands.all_commands[cmd](db, db.conn.cursor(), log, channel_id, variables, t)
                 log.info(f"command result '{r}'")
                 actions.extend(r)
                 db.conn.commit()
@@ -297,24 +127,21 @@ async def process_message(log, channel_id, variables) -> List[Action]:
                 log.error(f'failed to execute {cmd}: {str(e)}')
                 logging.error(traceback.format_exc())
         return actions
-    # TODO:
-    # commands = [x[1:] for x in txt.split(' ') if x.startswith(prefix)]
-    # template_names = db.get_templates(channel_id)
-    # for cmd in commands:
-    #     variables['_render_depth'] = 0
-    #     variables['channel_id'] = channel_id
-    #     if cmd in template_names:
-    #         try:
-    #             t = templates.get_template(f'cmd:{channel_id}:{cmd}')
-    #             if t:
-    #                 actions.append(Action(
-    #                     kind=ActionKind.NEW_MESSAGE,
-    #                     text=t.render(variables)))
-    #             else:
-    #                 log.warning(f"'{cmd}' is not defined")
-    #         except Exception as e:
-    #             log.error(f"failed to render '{cmd}': {str(e)}")
-    #             logging.error(traceback.format_exc())
+    commands = db.get_commands(channel_id, prefix)
+    logging.info(f'loaded commands {commands}')
+    for cmd in commands:
+        if not re.search(cmd.regex, txt):
+            continue
+        try:
+            for e in cmd.effects:
+                variables['_render_depth'] = 0
+                variables['channel_id'] = channel_id
+                actions.append(Action(
+                    kind=e.kind,
+                    text=render(e.text, variables)))
+        except Exception as e:
+            log.error(f"failed to render '{cmd}': {str(e)}")
+            logging.error(traceback.format_exc())
     return actions
 
 
