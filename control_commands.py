@@ -1,3 +1,4 @@
+import discord
 import psycopg2.extensions
 from data import *
 import dacite
@@ -33,14 +34,12 @@ async def fn_cmd_set(db: DB,
             'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
         return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")]
     text = parts[1]
-    cmd = Command(pattern="!prefix" + re.escape(name) + "\\b")
+    cmd = PersistentCommand(pattern="!prefix" + re.escape(name) + "\\b")
     try:
-        cmd = dacite.from_dict(Command, json.loads(text))
+        cmd = dacite.from_dict(PersistentCommand, json.loads(text))
     except Exception as e:
         log.info('failed to parse command as JSON, assuming literal text')
-        cmd.effects.append(Effect(text=text, kind=ActionKind.REPLY))
-        logging.error(
-            f'failed to execute {cmd}: {str(e)}\n{traceback.format_exc()}')
+        cmd.effects.append(Effect(text=text, kind=ActionKind.REPLY))        
     cmd.name = name
     log.info(f'parsed command {cmd}')
     id = db.set_command(cur, channel_id, variables['author_name'], cmd)
@@ -138,7 +137,7 @@ async def fn_debug(db: DB,
     logging.info(f'logs {db.get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
         results.append(
-            Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join([x[1] for x in e.messages])
+            Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join([x[1].replace('\\','\\\\') for x in e.messages])
                    + '\n-----------------------------\n'))
     return results
 

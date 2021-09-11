@@ -26,14 +26,23 @@ class Effect:
     kind: int
 
 @dataclasses.dataclass
-class Command:
+class PersistentCommand:
     pattern: str
-    regex: Optional[re.Pattern] = None
     effects: List[Effect] = dataclasses.field(default_factory=list)
     discord: bool = True
     twitch: bool = True
     name: str = ''
 
+@dataclasses.dataclass
+class Command:
+    regex: Optional[re.Pattern]
+    persistent: PersistentCommand
+
+def toCommand(c: PersistentCommand, prefix: str):
+  p =  c.pattern.replace('!prefix', prefix)
+  return Command(
+    regex=re.compile(p, re.IGNORECASE),
+    persistent=c)
 
 class InvocationLog():
     def __init__(self, prefix):

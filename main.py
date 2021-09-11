@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO non prefix (regex) commands
+# TODO: random variables
+# TODO: discord reactions
 # TODO: check sandbox settings
 # TODO: commands metadata
 # TODO python typings
@@ -39,6 +40,7 @@ import jinja2
 import logging
 import os
 import sys
+import json
 import random
 import re
 import ttldict2
@@ -90,7 +92,6 @@ templates.globals['list'] = list
 async def process_message(log: InvocationLog, channel_id, variables) -> List[Action]:
     txt = variables['text']
     prefix = variables['prefix']
-    log.info(f"message text '{txt}'")
     actions: List[Action] = []
     # TODO: do that in control commands
     admin_command = False
@@ -125,23 +126,25 @@ async def process_message(log: InvocationLog, channel_id, variables) -> List[Act
                 actions.append(
                     Action(kind=ActionKind.REPLY, text='error ocurred'))
                 log.error(f'failed to execute {cmd}: {str(e)}')
-                logging.error(traceback.format_exc())
+                log.error(traceback.format_exc())
         return actions
     commands = db.get_commands(channel_id, prefix)
-    logging.info(f'loaded commands {commands}')
     for cmd in commands:
         if not re.search(cmd.regex, txt):
             continue
+        cp = dataclasses.replace(cmd)
+        cp.regex = None
+        log.info(f'matched command {json.dumps(dataclasses.asdict(cmd.persistent), ensure_ascii=False)}')
         try:
-            for e in cmd.effects:
+            for e in cmd.persistent.effects:
                 variables['_render_depth'] = 0
                 variables['channel_id'] = channel_id
                 actions.append(Action(
                     kind=e.kind,
                     text=render(e.text, variables)))
         except Exception as e:
-            log.error(f"failed to render '{cmd}': {str(e)}")
-            logging.error(traceback.format_exc())
+            log.error(f"failed to render '{cmd.persistent.name}': {str(e)}")
+            log.error(traceback.format_exc())
     return actions
 
 
@@ -165,7 +168,7 @@ class DiscordClient(discord.Client):
             return
         log = InvocationLog(
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
-        log.info(f'message {message.content}')
+        log.info(f'message "{message.content}"')
         permissions = message.author.guild_permissions
         direct_mention = self.mentions(message)
         random_mention = self.random_mention(message)

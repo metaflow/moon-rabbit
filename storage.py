@@ -1,6 +1,6 @@
 import dataclasses
 from typing import List
-from data import Command
+from data import Command, PersistentCommand, toCommand
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
@@ -152,10 +152,7 @@ DROP TABLE channels;
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
-                z: List[Command] = [dacite.from_dict(Command, x[0]) for x in cur.fetchall()]
-                for c in z:
-                    c.pattern = c.pattern.replace('!prefix', prefix)
-                    c.regex = re.compile(c.pattern, re.IGNORECASE)
+                z: List[Command] = [toCommand(dacite.from_dict(PersistentCommand, x[0]), prefix) for x in cur.fetchall()]
                 self.cache[key] = z
         return self.cache[key]
 
