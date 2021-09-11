@@ -13,7 +13,7 @@ class ActionKind(IntEnum):
     REPLY = 1
     NEW_MESSAGE = 2
     PRIVATE_MESSAGE = 3
-
+    REACT_EMOJI = 4
 
 @dataclasses.dataclass
 class Action:

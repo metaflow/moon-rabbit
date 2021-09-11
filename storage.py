@@ -128,12 +128,11 @@ DROP TABLE channels;
     #     raise f'unknown template type {type} for name `{name}`'
 
     def get_list(self, channel_id: int, id: int):
+        # TODO cache
         with self.conn.cursor() as cur:
             cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
                         [int(channel_id), id])
-            z = cur.fetchone()[0]
-            logging.info(f'template {name} = {z}')
-            return z
+            return cur.fetchone()[0]
 
     def lists_ids(self, channel_id, list):
         key = f'get_lists_{channel_id}_{list}'

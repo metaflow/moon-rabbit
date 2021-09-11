@@ -14,10 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: random variables
-# TODO: discord reactions
 # TODO: check sandbox settings
-# TODO: commands metadata
 # TODO python typings
 # TODO DB backups
 # TODO store variables
@@ -63,15 +60,11 @@ db = storage.DB(os.getenv('DB_CONNECTION'))
 
 
 def render(text, vars):
-    global next_template
-    next_template = text
-    templates.cache.clear()
-    return templates.get_template('x').render(vars)
+    return templates.from_string(text).render(vars).strip()
 
 
 @jinja2.pass_context
 def list(ctx, a):
-    global templates
     channel_id = ctx.get('channel_id')
     ids = db.lists_ids(channel_id, a)
     id = random.choice(ids)
@@ -83,10 +76,20 @@ def list(ctx, a):
     return render(db.get_list(channel_id, id), vars)
 
 
-templates = SandboxedEnvironment(autoescape=jinja2.select_autoescape())
+def randint(a=0, b=100):
+    return random.randint(a, b)
+
+
+def discord_literal(t):
+    return t.replace('<@!', '<@')
+
+
+templates = SandboxedEnvironment()
 next_template = ''
 templates.loader = jinja2.FunctionLoader(lambda _: next_template)
 templates.globals['list'] = list
+templates.globals['randint'] = randint
+templates.globals['discord_literal'] = discord_literal
 
 
 async def process_message(log: InvocationLog, channel_id, variables) -> List[Action]:
@@ -127,6 +130,7 @@ async def process_message(log: InvocationLog, channel_id, variables) -> List[Act
                     Action(kind=ActionKind.REPLY, text='error ocurred'))
                 log.error(f'failed to execute {cmd}: {str(e)}')
                 log.error(traceback.format_exc())
+            log.info(f'actions {actions}')
         return actions
     commands = db.get_commands(channel_id, prefix)
     for cmd in commands:
@@ -134,7 +138,8 @@ async def process_message(log: InvocationLog, channel_id, variables) -> List[Act
             continue
         cp = dataclasses.replace(cmd)
         cp.regex = None
-        log.info(f'matched command {json.dumps(dataclasses.asdict(cmd.persistent), ensure_ascii=False)}')
+        log.info(
+            f'matched command {json.dumps(dataclasses.asdict(cmd.persistent), ensure_ascii=False)}')
         try:
             for e in cmd.persistent.effects:
                 variables['_render_depth'] = 0
@@ -145,6 +150,7 @@ async def process_message(log: InvocationLog, channel_id, variables) -> List[Act
         except Exception as e:
             log.error(f"failed to render '{cmd.persistent.name}': {str(e)}")
             log.error(traceback.format_exc())
+    log.info(f'actions {actions}')
     return actions
 
 
@@ -152,7 +158,7 @@ class DiscordClient(discord.Client):
     async def on_ready(self):
         print('We have logged in as {0.user}'.format(self))
 
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         # Don't react to own messages.
         if message.author == discordClient.user:
             return
@@ -195,6 +201,8 @@ class DiscordClient(discord.Client):
                 await message.reply(a.text)
             if a.kind == ActionKind.PRIVATE_MESSAGE:
                 await message.author.send(a.text)
+            if a.kind == ActionKind.REACT_EMOJI:
+                await message.add_reaction(a.text)
 
     def random_mention(self, msg):
         humans = [
