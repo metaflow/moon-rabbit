@@ -11,8 +11,8 @@ import psycopg2
 import psycopg2.extensions
 import logging
 import re
-from typing import Dict, List, Type
-import traceback
+from typing import Callable, Dict, List, Type
+import storage
 import dacite
 from storage import DB
 
@@ -117,13 +117,15 @@ async def fn_set_prefix(db: DB,
     logging.info(f"set new prefix '{txt}'")
     if variables['bot'] not in variables['direct_mention']:
         log.info('this bot is not mentioned directly')
-        return [Action(kind=ActionKind.REPLY, text="ignored")]
+        return []
+    result: List[Action] = []
     new_prefix = txt.split(' ')[0]
     if variables['media'] == 'discord':
         db.set_discord_prefix(channel_id, new_prefix)
     if variables['media'] == 'twitch':
         db.set_twitch_prefix(channel_id, new_prefix)
-    return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"')]
+    result.append(Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"'))
+    return result
 
 
 async def fn_debug(db: DB,
@@ -133,7 +135,7 @@ async def fn_debug(db: DB,
                    variables: Dict,
                    txt: str) -> List[Action]:
     if variables['media'] != 'discord' or not variables['is_mod']:
-        return
+        return []
     results: List[Action] = []
     if txt:
         commands = db.get_commands(channel_id, variables['prefix'])
@@ -156,3 +158,37 @@ all_commands = {
     'prefix-set': fn_set_prefix,
     'debug': fn_debug,
 }
+
+async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:    
+    admin_command = False
+    for c in all_commands:
+        if txt.startswith(prefix + c + ' ') or txt == prefix + c:
+            admin_command = True
+            break
+    if not admin_command:
+        return []
+    actions: List[Action] = []
+    variables = get_variables()
+    log.info('running control commands')
+    if not variables['is_mod']:
+        log.warning(f'non mod called an admin command')
+        return [Action(ActionKind.REPLY, '')]
+    txt = txt[len(prefix):]
+    for p in txt.split('\n' + prefix):
+        parts = p.split(' ', 1)
+        cmd = parts[0]
+        t = ''
+        if len(parts) > 1:
+            t = parts[1]
+        if cmd not in all_commands:
+            log.info(f'unknown command {cmd}')
+            continue
+        log.info(f"running cmd {cmd} '{t}'")
+        r = await all_commands[cmd](storage.db, storage.db.conn.cursor(), log, channel_id, variables, t)
+        log.info(f"command result '{r}'")
+        actions.extend(r)
+        log.info(f'actions {actions}')
+    if not actions:
+        # Add an empty message if no actions are set.
+        actions.append(Action(ActionKind.NOOP, ''))
+    return actions

@@ -1,6 +1,6 @@
 import dataclasses
-from typing import List
-from data import Command, CommandData, dictToCommandData, toCommand
+from typing import List, Tuple
+from data import Command, dictToCommandData
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
@@ -8,16 +8,14 @@ import functools
 import logging
 import collections
 from cachetools import TTLCache
-import dacite
-import re
+import os
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
-
 
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
-        self.cache = TTLCache(maxsize=100, ttl=1)  # TODO: configure > 1.
+        self.cache = TTLCache(maxsize=100, ttl=600)  # TODO: configure > 1.
         self.logs = {}
         self.init_db()
 
@@ -63,7 +61,7 @@ DROP TABLE channels;
         self.conn.commit()
 
     @functools.lru_cache(maxsize=1000)
-    def twitch_channel_info(self, cur, name):
+    def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name) -> Tuple[int, str]:
         cur.execute(
             "SELECT channel_id, twitch_command_prefix FROM channels WHERE twitch_channel_name = %s", [name])
         row = cur.fetchone()
@@ -80,7 +78,7 @@ DROP TABLE channels;
         return id, prefix
 
     @functools.lru_cache(maxsize=1000)
-    def discord_channel_info(self, cur, guild_id):
+    def discord_channel_info(self, cur: psycopg2.extensions.cursor, guild_id):
         cur.execute(
             "SELECT channel_id, discord_command_prefix FROM channels WHERE discord_guild_id = %s", [guild_id])
         row = cur.fetchone()
@@ -105,28 +103,6 @@ DROP TABLE channels;
                 return int(row[0]) + 1
             return 0
 
-    # def load_template(self, name):
-    #     logging.info(f'loading template {name}')
-    #     if ':' not in name:
-    #         logging.error(f"bad template name '{name}'")
-    #         return None
-    #     type, channel_id, id = name.split(':', 2)
-    #     if type == 'cmd':
-    #         with self.conn.cursor() as cur:
-    #             cur.execute("SELECT text FROM commands WHERE channel_id = %s AND name = %s;",
-    #                         [int(channel_id), id])
-    #             z = cur.fetchone()[0]
-    #             logging.info(f'template {name} = {z}')
-    #             return z
-    #     if type == 'list':
-    #         with self.conn.cursor() as cur:
-    #             cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
-    #                         [int(channel_id), id])
-    #             z = cur.fetchone()[0]
-    #             logging.info(f'template {name} = {z}')
-    #             return z
-    #     raise f'unknown template type {type} for name `{name}`'
-
     def get_list(self, channel_id: int, id: int):
         # TODO cache
         with self.conn.cursor() as cur:
@@ -147,7 +123,7 @@ DROP TABLE channels;
     def get_commands(self, channel_id, prefix) -> List[Command]:
         key = f'get_commands_{channel_id}_{prefix}'
         if not key in self.cache:
-            print('loading', key)
+            logging.info('loading', key)
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
@@ -157,7 +133,7 @@ DROP TABLE channels;
                 self.cache[key] = z
         return self.cache[key]
 
-    def set_command(self, cur, channel_id: int, author: str, cmd: Command) -> int:
+    def set_command(self, cur: psycopg2.extensions.cursor, channel_id: int, author: str, cmd: Command) -> int:
         cmd.regex = None
         cur.execute('''
             INSERT INTO commands (channel_id, author, name, data)
@@ -193,7 +169,6 @@ DROP TABLE channels;
                 "UPDATE channels SET twitch_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id])
             self.conn.commit()
-            self.cache.clear()
             self.twitch_channel_info.cache_clear()
 
     def set_discord_prefix(self, channel_id: int, prefix: str):
@@ -202,5 +177,6 @@ DROP TABLE channels;
                 "UPDATE channels SET discord_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id])
             self.conn.commit()
-            self.cache.clear()
             self.discord_channel_info.cache_clear()
+
+db = DB(os.getenv('DB_CONNECTION'))

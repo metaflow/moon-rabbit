@@ -17,9 +17,8 @@
 # TODO: check sandbox settings
 # TODO store variables: e.g. allow command once per X hours per user
 # TODO DB backups
-# TODO context - commands only for discord / twitch
-# TODO reactions in discord
 # TODO help command
+# TODO log rotations
 
 # command syntax is [condition] + [action]
 # simplest condition is just a string "word" -> [regex: '\b<perefix>word\b']
@@ -40,11 +39,10 @@ import json
 import random
 import re
 import ttldict2
-import storage
-from typing import List
+from storage import db
+from typing import Callable, List
 import traceback
 import control_commands
-
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -54,8 +52,6 @@ stdoutHandler = logging.StreamHandler()
 stdoutHandler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s %(message)s'))
 logging.getLogger().addHandler(stdoutHandler)
-
-db = storage.DB(os.getenv('DB_CONNECTION'))
 
 
 def render(text, vars):
@@ -91,63 +87,46 @@ templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal
 
 
-async def process_message(log: InvocationLog, channel_id, variables) -> List[Action]:
-    txt = variables['text']
-    prefix = variables['prefix']
+async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, twitch: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
-    # TODO: do that in control commands
-    admin_command = False
-    for c in control_commands.all_commands:
-        if txt.startswith(prefix + c + ' ') or txt == prefix + c:
-            admin_command = True
-            break
-    if admin_command:
-        log.info('running control commands')
-        if not variables['is_mod']:
-            log.warning(f'non mod called an admin command')
-            return f"you don't have permissions to do that", ""
-        txt = txt[len(prefix):]
-        # results = []
-        for p in txt.split('\n' + prefix):
-            parts = p.split(' ', 1)
-            cmd = parts[0]
-            t = ''
-            if len(parts) > 1:
-                t = parts[1]
-            if cmd not in control_commands.all_commands:
-                log.info(f'unknown command {cmd}')
+    try:
+        controls = await control_commands.process_control_message(log, channel_id, txt, prefix, get_variables)
+        if controls:
+            return [x for x in controls if x.text]
+        commands = db.get_commands(channel_id, prefix)
+        variables = {}
+        for cmd in commands:
+            if (not cmd.data.discord) and (not twitch):
                 continue
-            log.info(f"running cmd {cmd} '{t}'")
+            if (not cmd.data.twitch) and twitch:
+                continue
+            if not re.search(cmd.regex, txt):
+                continue
+            if not variables:
+                variables = get_variables()
+            log.info(
+                f'matched command {json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False)}')
             try:
-                r = await control_commands.all_commands[cmd](db, db.conn.cursor(), log, channel_id, variables, t)
-                log.info(f"command result '{r}'")
-                actions.extend(r)
-                db.conn.commit()
+                for e in cmd.data.actions:
+                    variables['_render_depth'] = 0
+                    variables['channel_id'] = channel_id
+                    a = Action(
+                        kind=e.kind,
+                        text=render(e.text, variables))
+                    if a.text:
+                        actions.append(a)
             except Exception as e:
-                db.conn.rollback()
-                actions.append(
-                    Action(kind=ActionKind.REPLY, text='error ocurred'))
-                log.error(f'failed to execute {cmd}: {str(e)}')
+                log.error(f"failed to render '{cmd.data.name}': {str(e)}")
                 log.error(traceback.format_exc())
-            log.info(f'actions {actions}')
-        return actions
-    commands = db.get_commands(channel_id, prefix)
-    for cmd in commands:
-        if not re.search(cmd.regex, txt):
-            continue
-        log.info(
-            f'matched command {json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False)}')
-        try:
-            for e in cmd.data.actions:
-                variables['_render_depth'] = 0
-                variables['channel_id'] = channel_id
-                actions.append(Action(
-                    kind=e.kind,
-                    text=render(e.text, variables)))
-        except Exception as e:
-            log.error(f"failed to render '{cmd.data.name}': {str(e)}")
-            log.error(traceback.format_exc())
-    log.info(f'actions {actions}')
+        log.info(f'actions {actions}')
+    except Exception as e:
+        db.conn.rollback()
+        actions.append(
+            Action(kind=ActionKind.REPLY, text='error ocurred'))
+        log.error(f'failed to execute {cmd}: {str(e)}')
+        log.error(traceback.format_exc())
+    finally:
+        db.conn.commit()
     return actions
 
 
@@ -173,23 +152,20 @@ class DiscordClient(discord.Client):
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
         log.info(f'message "{message.content}"')
         permissions = message.author.guild_permissions
-        direct_mention = self.mentions(message)
-        random_mention = self.random_mention(message)
-        mention = direct_mention if direct_mention else random_mention
-        variables = {
+        get_vars = lambda: {
             'author': message.author.mention,
             'author_name': str(message.author.display_name),
-            'mention': mention,
-            'direct_mention': direct_mention,
-            'random_mention': random_mention,
+            'mention': Lazy(lambda: self.any_mention(message)),
+            'direct_mention': Lazy(lambda: self.mentions(message)),
+            'random_mention': Lazy(lambda: self.random_mention(message)),
             'media': 'discord',
             'text': message.content,
             'is_mod': permissions.ban_members or permissions.administrator,
             'prefix': prefix,
             'bot': discordClient.user.mention,
         }
-        log.info(f'variables {variables}')
-        actions = await process_message(log, channel_id, variables)
+        # log.info(f'variables {variables}')
+        actions = await process_message(log, channel_id, message.content, prefix, False, get_vars)
         db.add_log(channel_id, log)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE:
@@ -216,6 +192,19 @@ class DiscordClient(discord.Client):
             return ' '.join([x.mention for x in msg.mentions])
         return ''
 
+    def any_mention(self, msg):
+        direct = self.mentions(msg)
+        return direct if direct else self.random_mention(msg)
+
+
+class Lazy():
+    def __init__(self, f):
+        self.func = f
+
+    def __repr__(self):
+        logging.info('evaluate lazy')
+        return self.func()
+
 
 class TwitchBot(commands.Bot):
     def __init__(self, token):
@@ -226,6 +215,10 @@ class TwitchBot(commands.Bot):
     async def event_ready(self):
         # We are logged in and ready to chat and use commands...
         logging.info(f'Logged in as | {self.nick}')
+        await self.reload_channels()
+
+    async def reload_channels(self):
+        logging.info('reloading twitch channels')
         with db.conn.cursor() as cur:
             cur.execute(
                 "SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
@@ -234,8 +227,6 @@ class TwitchBot(commands.Bot):
                 if not name:
                     continue
                 self.channels[name] = {
-                    'id': id,
-                    'prefix': prefix,
                     'active_users': ttldict2.TTLDict(ttl_seconds=3600.0),
                 }
         logging.info(f'joining channels: {self.channels.keys()}')
@@ -245,37 +236,38 @@ class TwitchBot(commands.Bot):
         # Ignore own messages.
         if message.echo:
             return
+        channel_id, prefix = db.twitch_channel_info(
+            db.conn.cursor(), message.channel.name)
         info = self.channels[message.channel.name]
         if not info:
             logging.info(f'unknown channel {message.channel.name}')
             return
-        il = InvocationLog(f"channel={message.channel.name} ({info['id']})")
+        il = InvocationLog(f"channel={message.channel.name} ({channel_id})")
         author = message.author.name
         info['active_users'][author] = 1
-        il.info(f"active users {info ['active_users'].keys()}")
         il.info(f'{author} {message.content}')
-        direct_mention = self.mentions(message.content)
-        random_mention = self.random_mention(info, author)
-        mention = direct_mention if direct_mention else random_mention
-        variables = {
+        get_vars = lambda: {
             'author': str(author),
             'author_name': str(author),
-            'mention': mention,
-            'direct_mention': direct_mention,
-            'random_mention': random_mention,
+            'mention': Lazy(lambda: self.any_mention(message.content)),
+            'direct_mention': Lazy(lambda: self.mentions(message.content)),
+            'random_mention': Lazy(lambda: self.random_mention(info, author)),
             'media': 'twitch',
             'text': message.content,
             'is_mod': message.author.is_mod,
-            'prefix': info['prefix'],
+            'prefix': prefix,
             'bot': self.nick,
         }
-        il.info(f'variables {variables}')
-        actions = await process_message(il, info['id'], variables)
-        db.add_log(info['id'], il)
+        actions = await process_message(il, channel_id, message.content, prefix, True, get_vars)
+        db.add_log(channel_id, il)
         ctx = await self.get_context(message)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                 await ctx.send(a.text)
+
+    def any_mention(self, txt: str, info, author):
+        direct = self.mentions(txt)
+        return direct if direct else self.random_mention(info, author)
 
     def mentions(self, txt):
         result = re.findall(r'@\S+', txt)
@@ -291,7 +283,6 @@ class TwitchBot(commands.Bot):
 
 
 if __name__ == "__main__":
-    print('starting')
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch', action='store_true')
     parser.add_argument('--discord', action='store_true')
@@ -326,9 +317,9 @@ if __name__ == "__main__":
         if not id:
             id = db.new_channel_id()
         with db.conn.cursor() as cur:
-            cur.execute('INSERT INTO channels (channel_id, twitch_channel_name, twitch_command_prefix) VALUES (%s, %s, %s)',
-                        [id, args.twitch_channel_name, args.twitch_command_prefix])
+            cur.execute('UPDATE channels SET twitch_channel_name = %s, twitch_command_prefix = %s WHERE id = %s',
+                        [args.twitch_channel_name, args.twitch_command_prefix, id])
             db.conn.commit()
-        logging.info(f'added new channel #{id} {args.twitch_channel_name}')
+        logging.info(f'updated channel #{id} {args.twitch_channel_name}')
         sys.exit(0)
     print('add --twitch or --discord argument to run bot')

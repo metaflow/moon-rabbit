@@ -12,6 +12,7 @@ class TemplateVariables:
 
 
 class ActionKind(str, Enum):
+    NOOP = 'noop'
     REPLY = 'reply'
     NEW_MESSAGE = 'message'
     PRIVATE_MESSAGE = 'private_message'
@@ -37,14 +38,9 @@ class Command:
     data: CommandData
     def __init__(self, data, prefix):
         self.data = data
-        p =  data.pattern.replace('!prefix', prefix)
+        p =  data.pattern.replace('!prefix', re.escape(prefix))
+        logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
-
-def toCommand(c: CommandData, prefix: str):
-  p =  c.pattern.replace('!prefix', prefix)
-  return Command(
-    regex=re.compile(p, re.IGNORECASE),
-    persistent=c)
 
 def dictToCommandData(data: Dict) -> CommandData:
     return dacite.from_dict(CommandData, data, config=Config(cast=[Enum]))
