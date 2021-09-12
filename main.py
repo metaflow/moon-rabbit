@@ -15,9 +15,8 @@
 # limitations under the License.
 
 # TODO: check sandbox settings
-# TODO python typings
+# TODO store variables: e.g. allow command once per X hours per user
 # TODO DB backups
-# TODO store variables
 # TODO context - commands only for discord / twitch
 # TODO reactions in discord
 # TODO help command
@@ -136,19 +135,17 @@ async def process_message(log: InvocationLog, channel_id, variables) -> List[Act
     for cmd in commands:
         if not re.search(cmd.regex, txt):
             continue
-        cp = dataclasses.replace(cmd)
-        cp.regex = None
         log.info(
-            f'matched command {json.dumps(dataclasses.asdict(cmd.persistent), ensure_ascii=False)}')
+            f'matched command {json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False)}')
         try:
-            for e in cmd.persistent.effects:
+            for e in cmd.data.actions:
                 variables['_render_depth'] = 0
                 variables['channel_id'] = channel_id
                 actions.append(Action(
                     kind=e.kind,
                     text=render(e.text, variables)))
         except Exception as e:
-            log.error(f"failed to render '{cmd.persistent.name}': {str(e)}")
+            log.error(f"failed to render '{cmd.data.name}': {str(e)}")
             log.error(traceback.format_exc())
     log.info(f'actions {actions}')
     return actions

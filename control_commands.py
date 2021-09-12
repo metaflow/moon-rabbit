@@ -4,7 +4,7 @@ import psycopg2.extensions
 from data import *
 import dacite
 import json
-from data import Action, Command, ActionKind, Effect
+from data import Action, Command, ActionKind
 import json
 from jinja2.sandbox import SandboxedEnvironment
 import psycopg2
@@ -35,12 +35,12 @@ async def fn_cmd_set(db: DB,
             'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
         return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")]
     text = parts[1]
-    cmd = PersistentCommand(pattern="!prefix" + re.escape(name) + "\\b")
+    cmd = CommandData(pattern="!prefix" + re.escape(name) + "\\b")
     try:
-        cmd = dacite.from_dict(PersistentCommand, json.loads(text))
+        cmd = dictToCommandData(json.loads(text))
     except Exception as e:
         log.info('failed to parse command as JSON, assuming literal text')
-        cmd.effects.append(Effect(text=text, kind=ActionKind.NEW_MESSAGE))
+        cmd.actions.append(Action(text=text, kind=ActionKind.NEW_MESSAGE))
     cmd.name = name
     log.info(f'parsed command {cmd}')
     id = db.set_command(cur, channel_id, variables['author_name'], cmd)
@@ -135,6 +135,12 @@ async def fn_debug(db: DB,
     if variables['media'] != 'discord' or not variables['is_mod']:
         return
     results: List[Action] = []
+    if txt:
+        commands = db.get_commands(channel_id, variables['prefix'])
+        for cmd in commands:
+            if cmd.data.name == txt:
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(json.dumps(dataclasses.asdict(cmd.data)))))
+        return results
     logging.info(f'logs {db.get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
         s = '\n'.join([discord.utils.escape_mentions(x[1]) for x in e.messages])+ '\n-----------------------------\n'

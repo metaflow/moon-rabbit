@@ -1,19 +1,21 @@
 import dataclasses
-from enum import IntEnum
-from typing import List, Optional
+from enum import Enum
+from typing import Dict, List, Optional
 import logging
 import re
+import dacite
+from dacite.config import Config
 
 @dataclasses.dataclass
 class TemplateVariables:
     mention: str
 
 
-class ActionKind(IntEnum):
-    REPLY = 1
-    NEW_MESSAGE = 2
-    PRIVATE_MESSAGE = 3
-    REACT_EMOJI = 4
+class ActionKind(str, Enum):
+    REPLY = 'reply'
+    NEW_MESSAGE = 'message'
+    PRIVATE_MESSAGE = 'private_message'
+    REACT_EMOJI = 'react_emoji'
 
 @dataclasses.dataclass
 class Action:
@@ -21,28 +23,31 @@ class Action:
     text: str
 
 @dataclasses.dataclass
-class Effect:
-    text: str
-    kind: int
-
-@dataclasses.dataclass
-class PersistentCommand:
+class CommandData:
     pattern: str
-    effects: List[Effect] = dataclasses.field(default_factory=list)
     discord: bool = True
     twitch: bool = True
     name: str = ''
+    help: str = ''
+    actions: List[Action] = dataclasses.field(default_factory=list)
+    version: int = 1
 
-@dataclasses.dataclass
 class Command:
     regex: Optional[re.Pattern]
-    persistent: PersistentCommand
+    data: CommandData
+    def __init__(self, data, prefix):
+        self.data = data
+        p =  data.pattern.replace('!prefix', prefix)
+        self.regex = re.compile(p, re.IGNORECASE)
 
-def toCommand(c: PersistentCommand, prefix: str):
+def toCommand(c: CommandData, prefix: str):
   p =  c.pattern.replace('!prefix', prefix)
   return Command(
     regex=re.compile(p, re.IGNORECASE),
     persistent=c)
+
+def dictToCommandData(data: Dict) -> CommandData:
+    return dacite.from_dict(CommandData, data, config=Config(cast=[Enum]))
 
 class InvocationLog():
     def __init__(self, prefix):
