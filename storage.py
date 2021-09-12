@@ -1,3 +1,19 @@
+"""
+ Copyright 2021 Goncharov Mikhail
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ """
+
 import dataclasses
 from typing import List, Tuple
 from data import Command, dictToCommandData
@@ -57,7 +73,13 @@ DROP TABLE channels;
                 discord_guild_id varchar(50),
                 discord_command_prefix varchar(10),
                 twitch_channel_name varchar(50),
-                twitch_command_prefix varchar(10));''')
+                twitch_command_prefix varchar(10));
+            CREATE TABLE IF NOT EXISTS variables
+                (id SERIAL,
+                channel_id INT,
+                name varchar(100),
+                value TEXT,
+                CONSTRAINT variables_uniq_name_in_channel UNIQUE (channel_id, name));''')
         self.conn.commit()
 
     @functools.lru_cache(maxsize=1000)
@@ -103,7 +125,7 @@ DROP TABLE channels;
                 return int(row[0]) + 1
             return 0
 
-    def get_list(self, channel_id: int, id: int):
+    def get_list_item(self, channel_id: int, id: int):
         # TODO cache
         with self.conn.cursor() as cur:
             cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
@@ -148,7 +170,32 @@ DROP TABLE channels;
         self.cache.clear()
         return cur.fetchone()[0]
 
-    def get_message(self, id):
+    def set_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
+        if value == '':
+            cur.execute(
+            'DELETE FROM variables WHERE channel_id = %s AND name = %s', (channel_id, name))
+            return
+        cur.execute('''
+            INSERT INTO variables (channel_id, name, value)
+            VALUES (%(channel_id)s, %(name)s, %(value)s)
+            ON CONFLICT ON CONSTRAINT variables_uniq_name_in_channel DO
+            UPDATE SET value = %(value)s;''',
+                    {'channel_id': channel_id,
+                     'name': name,
+                     'value': value,
+                     })
+
+    def get_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value FROM variables WHERE name = %s AND channel_id = %s",
+                [name, channel_id])
+            row = cur.fetchone()
+            if not row:
+                return value
+            return row[0]
+
+    def get_list_item(self, id):
+        # TODO: pass channel ID.
         with self.conn.cursor() as cur:
             cur.execute("SELECT text FROM lists WHERE id = %s", [id])
             return cur.fetchone()[0]

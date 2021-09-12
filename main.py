@@ -14,15 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: check sandbox settings
-# TODO store variables: e.g. allow command once per X hours per user
+# TODO check sandbox settings
 # TODO DB backups
 # TODO help command
 # TODO log rotations
-
-# command syntax is [condition] + [action]
-# simplest condition is just a string "word" -> [regex: '\b<perefix>word\b']
-# general format is JSON e.g. +set {...}
 
 """Bot entry point."""
 
@@ -43,6 +38,7 @@ from storage import db
 from typing import Callable, List
 import traceback
 import control_commands
+import time
 
 logging.basicConfig(
     handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
@@ -57,9 +53,12 @@ logging.getLogger().addHandler(stdoutHandler)
 def render(text, vars):
     return templates.from_string(text).render(vars).strip()
 
+templates = SandboxedEnvironment()
+next_template = ''
+templates.loader = jinja2.FunctionLoader(lambda _: next_template)
 
 @jinja2.pass_context
-def list(ctx, a):
+def get_list(ctx, a):
     channel_id = ctx.get('channel_id')
     ids = db.lists_ids(channel_id, a)
     id = random.choice(ids)
@@ -68,7 +67,7 @@ def list(ctx, a):
     if vars['_render_depth'] > 5:
         logging.error('rendering depth is > 5')
         return '?'
-    return render(db.get_list(channel_id, id), vars)
+    return render(db.get_list_item(channel_id, id), vars)
 
 
 def randint(a=0, b=100):
@@ -78,14 +77,25 @@ def randint(a=0, b=100):
 def discord_literal(t):
     return t.replace('<@!', '<@')
 
+@jinja2.pass_context
+def get_variable(ctx, name: str, value: str = ''):
+    channel_id = ctx.get('channel_id')
+    return db.get_variable(db.conn.cursor(), channel_id, name, value)
 
-templates = SandboxedEnvironment()
-next_template = ''
-templates.loader = jinja2.FunctionLoader(lambda _: next_template)
-templates.globals['list'] = list
+@jinja2.pass_context
+def set_variable(ctx, name: str, value: str):
+    channel_id = ctx.get('channel_id')
+    db.set_variable(db.conn.cursor(), channel_id, name, value)
+    return ''
+
+templates.globals['list'] = get_list
 templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal
-
+templates.globals['echo'] = lambda x: x
+templates.globals['log'] = lambda x: logging.info(x)
+templates.globals['get'] = get_variable
+templates.globals['set'] = set_variable
+templates.globals['timestamp'] = lambda: int(time.time())
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, twitch: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
