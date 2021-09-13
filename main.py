@@ -13,11 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+ 
+# TODO !multiline command
+# TODO bingo
 # TODO check sandbox settings
 # TODO DB backups
 # TODO help command
-# TODO log rotations
 
 """Bot entry point."""
 
@@ -39,35 +40,34 @@ from typing import Callable, List
 import traceback
 import control_commands
 import time
+import logging.handlers
 
 logging.basicConfig(
-    handlers=[logging.FileHandler('main.log', 'a', 'utf-8')],
+    handlers=[],
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
-stdoutHandler = logging.StreamHandler()
-stdoutHandler.setFormatter(logging.Formatter(
-    '%(asctime)s %(levelname)s %(message)s'))
-logging.getLogger().addHandler(stdoutHandler)
 
 
 def render(text, vars):
     return templates.from_string(text).render(vars).strip()
 
+
 templates = SandboxedEnvironment()
 next_template = ''
 templates.loader = jinja2.FunctionLoader(lambda _: next_template)
 
+
 @jinja2.pass_context
-def get_list(ctx, a):
+def render_list_item(ctx, list_name: str):
     channel_id = ctx.get('channel_id')
-    ids = db.lists_ids(channel_id, a)
-    id = random.choice(ids)
     vars = ctx.get_all()
     vars['_render_depth'] += 1
     if vars['_render_depth'] > 5:
         logging.error('rendering depth is > 5')
-        return '?'
-    return render(db.get_list_item(channel_id, id), vars)
+        return ''
+    txt = db.get_random_list_item(channel_id, list_name)
+    logging.info(f'rendering {txt}')
+    return render(txt, vars)
 
 
 def randint(a=0, b=100):
@@ -77,10 +77,12 @@ def randint(a=0, b=100):
 def discord_literal(t):
     return t.replace('<@!', '<@')
 
+
 @jinja2.pass_context
 def get_variable(ctx, name: str, value: str = ''):
     channel_id = ctx.get('channel_id')
     return db.get_variable(db.conn.cursor(), channel_id, name, value)
+
 
 @jinja2.pass_context
 def set_variable(ctx, name: str, value: str):
@@ -88,7 +90,8 @@ def set_variable(ctx, name: str, value: str):
     db.set_variable(db.conn.cursor(), channel_id, name, value)
     return ''
 
-templates.globals['list'] = get_list
+
+templates.globals['list'] = render_list_item
 templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal
 templates.globals['echo'] = lambda x: x
@@ -96,6 +99,7 @@ templates.globals['log'] = lambda x: logging.info(x)
 templates.globals['get'] = get_variable
 templates.globals['set'] = set_variable
 templates.globals['timestamp'] = lambda: int(time.time())
+
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, twitch: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
@@ -133,8 +137,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
         db.conn.rollback()
         actions.append(
             Action(kind=ActionKind.REPLY, text='error ocurred'))
-        log.error(f'failed to execute {cmd}: {str(e)}')
-        log.error(traceback.format_exc())
+        log.error(f'{e}\n{traceback.format_exc()}')
     finally:
         db.conn.commit()
     return actions
@@ -162,7 +165,8 @@ class DiscordClient(discord.Client):
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
         log.info(f'message "{message.content}"')
         permissions = message.author.guild_permissions
-        get_vars = lambda: {
+
+        def get_vars(): return {
             'author': message.author.mention,
             'author_name': str(message.author.display_name),
             'mention': Lazy(lambda: self.any_mention(message)),
@@ -212,7 +216,6 @@ class Lazy():
         self.func = f
 
     def __repr__(self):
-        logging.info('evaluate lazy')
         return self.func()
 
 
@@ -256,7 +259,8 @@ class TwitchBot(commands.Bot):
         author = message.author.name
         info['active_users'][author] = 1
         il.info(f'{author} {message.content}')
-        get_vars = lambda: {
+
+        def get_vars(): return {
             'author': str(author),
             'author_name': str(author),
             'mention': Lazy(lambda: self.any_mention(message.content)),
@@ -301,8 +305,22 @@ if __name__ == "__main__":
     parser.add_argument('--twitch_command_prefix', default='+')
     parser.add_argument('--channel_id')
     parser.add_argument('--drop_database', action='store_true')
+    parser.add_argument('--alsologtostdout', action='store_true')
     args = parser.parse_args()
     print(f'args {args}')
+    log_file = 'main.log'
+    if args.discord:
+        log_file = 'discord.log'
+    elif args.twitch:
+        log_file = 'twitch.log'
+    logging.getLogger().addHandler(
+        logging.handlers.TimedRotatingFileHandler(
+            log_file, when='h', encoding='utf-8', backupCount=8))
+    if args.alsologtostdout:
+        stdoutHandler = logging.StreamHandler()
+        stdoutHandler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s %(message)s'))
+        logging.getLogger().addHandler(stdoutHandler)
     if args.drop_database:
         confirm = input('type "yes" to drop database and continue: ')
         if confirm != 'yes':

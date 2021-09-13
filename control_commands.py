@@ -65,19 +65,18 @@ async def fn_cmd_set(db: DB,
     return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
 
 
-async def fn_add_list(db: DB,
+async def fn_add_list_item(db: DB,
                       cur: psycopg2.extensions.cursor,
                       log: InvocationLog,
                       channel_id: int,
                       variables: Dict,
                       txt: str) -> List[Action]:
-    name, text = txt.split(' ', 1)
-    cur.execute('INSERT INTO lists (channel_id, author, list_name, text) VALUES (%s, %s, %s, %s) RETURNING id;',
-                (channel_id, variables['author_name'], name, text))
-    id = cur.fetchone()[0]
-    log.info(f"added new list item '{name}' '{text}' #{id}")
-    # TODO cache clear
-    return [Action(kind=ActionKind.REPLY, text=f"Added new list '{name}' item '{text}' #{id}")]
+    parts = txt.split(' ', 1)
+    if len(parts) < 2:
+        return []
+    list_name, value = parts
+    id = db.add_list_item(cur, channel_id, list_name, value)
+    return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
 
 
 async def fn_list_search(db: DB,
@@ -131,7 +130,7 @@ async def fn_set_prefix(db: DB,
                         variables: Dict,
                         txt: str) -> List[Action]:
     logging.info(f"set new prefix '{txt}'")
-    if variables['bot'] not in variables['direct_mention']:
+    if variables['bot'] not in str(variables['direct_mention']):
         log.info('this bot is not mentioned directly')
         return []
     result: List[Action] = []
@@ -168,7 +167,7 @@ async def fn_debug(db: DB,
 
 all_commands = {
     'set': fn_cmd_set,
-    'list-add': fn_add_list,
+    'list-add': fn_add_list_item,
     'list-rm': fn_delete_list_item,
     'list-search': fn_list_search,
     'prefix-set': fn_set_prefix,
@@ -203,7 +202,8 @@ async def process_control_message(log: InvocationLog, channel_id: int, txt: str,
         r = await all_commands[cmd](storage.db, storage.db.conn.cursor(), log, channel_id, variables, t)
         log.info(f"command result '{r}'")
         actions.extend(r)
-        log.info(f'actions {actions}')
+    actions = fold_actions(actions)
+    log.info(f'actions {actions}')
     if not actions:
         # Add an empty message if no actions are set.
         actions.append(Action(ActionKind.NOOP, ''))

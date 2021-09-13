@@ -81,3 +81,19 @@ class InvocationLog():
     def error(self, s):
         logging.error(self.prefix + s)
         self.messages.append((logging.ERROR, s))
+
+def fold_actions(actions: List[Action]) -> List[Action]:
+    last: Optional[Action] = None
+    z: List[Action] = []
+    for a in actions:
+        if not last:
+            last = a
+            continue
+        if a.kind != last.kind or last.kind == ActionKind.REACT_EMOJI:
+            z.append(last)
+            last = a
+            continue
+        last.text += '\n' + a.text
+    if last:
+        z.append(last)
+    return z

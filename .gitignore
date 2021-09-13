@@ -1,4 +1,5 @@
 .vscode
 .env
 .tmp.driveupload
-main.log
+*.log
+*.log.*
