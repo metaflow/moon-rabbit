@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
  
+# TODO convert control commands to general "command"
+# TODO log for errors
 # TODO !multiline command
 # TODO bingo
 # TODO check sandbox settings
@@ -43,11 +45,16 @@ import control_commands
 import time
 import logging.handlers
 
+errHandler = logging.FileHandler('errors.log', encoding='utf-8')
+errHandler.setLevel(logging.ERROR)
+
+rotatingHandler = logging.handlers.TimedRotatingFileHandler(
+            'bot.log', when='h', encoding='utf-8', backupCount=8)
+
 logging.basicConfig(
-    handlers=[],
+    handlers=[rotatingHandler, errHandler],
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
-
 
 def render(text, vars):
     return templates.from_string(text).render(vars).strip()
@@ -309,14 +316,6 @@ if __name__ == "__main__":
     parser.add_argument('--alsologtostdout', action='store_true')
     args = parser.parse_args()
     print(f'args {args}')
-    log_file = 'main.log'
-    if args.discord:
-        log_file = 'discord.log'
-    elif args.twitch:
-        log_file = 'twitch.log'
-    logging.getLogger().addHandler(
-        logging.handlers.TimedRotatingFileHandler(
-            log_file, when='h', encoding='utf-8', backupCount=8))
     if args.alsologtostdout:
         stdoutHandler = logging.StreamHandler()
         stdoutHandler.setFormatter(logging.Formatter(
