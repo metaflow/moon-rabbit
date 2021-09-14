@@ -15,8 +15,8 @@
  """
 
 import dataclasses
-from typing import Dict, List, Tuple
-from data import Command, dictToCommandData
+from typing import Dict, List, Optional, Tuple
+from data import *
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
@@ -24,8 +24,11 @@ import functools
 import logging
 import collections
 import random
+import json 
 from cachetools import TTLCache
 import os
+import re
+import traceback
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
@@ -34,10 +37,11 @@ class ListInfo:
     items_ids: List[int]
     idx: int = 0
 
+
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
-        self.cache = TTLCache(maxsize=100, ttl=600)  # TODO: configure > 1.
+        self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
         self.logs = {}
         self.init_db()
@@ -159,7 +163,7 @@ DROP TABLE channels;
         info.idx = (info.idx + random.randint(1, n - 1)) % n
         return self.get_list_item(info.items_ids[info.idx])
 
-    def get_commands(self, channel_id, prefix) -> List[Command]:
+    def get_commands(self, channel_id, prefix) -> List[CommandData]:
         key = f'get_commands_{channel_id}_{prefix}'
         if not key in self.cache:
             logging.info(f'loading {key}')
@@ -167,12 +171,10 @@ DROP TABLE channels;
                 cur.execute(
                     "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
                 dicts = [x[0]for x in cur.fetchall()]
-                data = [dictToCommandData(x) for x in dicts]
-                z: List[Command] = [Command(x, prefix) for x in data]
-                self.cache[key] = z
+                self.cache[key] = [dictToCommandData(x) for x in dicts]
         return self.cache[key]
 
-    def set_command(self, cur: psycopg2.extensions.cursor, channel_id: int, author: str, cmd: Command) -> int:
+    def set_command(self, cur: psycopg2.extensions.cursor, channel_id: int, author: str, cmd: CommandData) -> int:
         cmd.regex = None
         cur.execute('''
             INSERT INTO commands (channel_id, author, name, data)

@@ -18,9 +18,7 @@ import discord
 from discord.utils import escape_markdown
 import psycopg2.extensions
 from data import *
-import dacite
 import json
-from data import Action, Command, ActionKind
 import json
 from jinja2.sandbox import SandboxedEnvironment
 import psycopg2
@@ -29,8 +27,54 @@ import logging
 import re
 from typing import Callable, Dict, List, Type
 import storage
-import dacite
-from storage import DB
+from storage import DB, db
+import traceback
+
+commands_cache = {}
+
+def get_commands(channel_id: int, prefix: str) -> List[Command]:
+    key = f'commands_{channel_id}_{prefix}'
+    if not key in commands_cache:
+        z: List[Command] = []
+        z.extend([PersistentCommand(x, prefix) for x in db.get_commands(channel_id, prefix)])
+        commands_cache[key] = z
+    return commands_cache[key]
+
+
+class PersistentCommand:
+    regex: Optional[re.Pattern]
+    data: CommandData
+    def __init__(self, data, prefix):
+        self.data = data
+        p =  data.pattern.replace('!prefix', re.escape(prefix))
+        logging.info(f'regex {p}')
+        self.regex = re.compile(p, re.IGNORECASE)
+
+    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if (not self.data.discord) and discord:
+            return [], True
+        if (not self.data.twitch) and (not discord):
+            return [], True
+        if not re.search(self.regex, text):
+            return [], True
+        variables = get_variables()
+        log: InvocationLog = variables['_log']
+        log.info(
+            f'matched command {json.dumps(dataclasses.asdict(self.data), ensure_ascii=False)}')
+        actions: List[Action] = []
+        try:
+            for e in self.data.actions:
+                variables['_render_depth'] = 0
+                a = Action(
+                    kind=e.kind,
+                    text=render(e.text, variables))
+                if a.text:
+                    actions.append(a)
+            return actions, True
+        except Exception as e:
+            log.error(f"failed to render '{self.data.name}': {str(e)}")
+            log.error(traceback.format_exc())
+            return [], True
 
 
 async def fn_cmd_set(db: DB,
@@ -153,7 +197,7 @@ async def fn_debug(db: DB,
         return []
     results: List[Action] = []
     if txt:
-        commands = db.get_commands(channel_id, variables['prefix'])
+        commands = get_commands(channel_id, variables['prefix'])
         for cmd in commands:
             if cmd.data.name == txt:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(json.dumps(dataclasses.asdict(cmd.data)))))

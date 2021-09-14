@@ -16,11 +16,17 @@
 
 import dataclasses
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Protocol, Tuple
 import logging
 import re
 import dacite
 from dacite.config import Config
+from jinja2.sandbox import SandboxedEnvironment
+
+templates = SandboxedEnvironment()
+
+def render(text, vars):
+    return templates.from_string(text).render(vars).strip()
 
 @dataclasses.dataclass
 class TemplateVariables:
@@ -49,14 +55,9 @@ class CommandData:
     actions: List[Action] = dataclasses.field(default_factory=list)
     version: int = 1
 
-class Command:
-    regex: Optional[re.Pattern]
-    data: CommandData
-    def __init__(self, data, prefix):
-        self.data = data
-        p =  data.pattern.replace('!prefix', re.escape(prefix))
-        logging.info(f'regex {p}')
-        self.regex = re.compile(p, re.IGNORECASE)
+class Command(Protocol):
+    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        return [], True
 
 def dictToCommandData(data: Dict) -> CommandData:
     return dacite.from_dict(CommandData, data, config=Config(cast=[Enum]))
