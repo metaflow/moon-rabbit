@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
- 
+
 # TODO convert control commands to general "command"
 # TODO !multiline command
 # TODO limit discord reply to 2K
@@ -51,17 +51,12 @@ errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
 
 rotatingHandler = logging.handlers.TimedRotatingFileHandler(
-            'bot.log', when='h', encoding='utf-8', backupCount=8)
+    'bot.log', when='h', encoding='utf-8', backupCount=8)
 
 logging.basicConfig(
     handlers=[rotatingHandler, errHandler],
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
-
-
-
-
-
 
 
 @jinja2.pass_context
@@ -153,6 +148,7 @@ class DiscordClient(discord.Client):
         log.info(f'message "{message.content}"')
         permissions = message.author.guild_permissions
         is_mod = permissions.ban_members or permissions.administrator
+
         def get_vars(): return {
             'author': message.author.mention,
             'author_name': discord_literal(str(message.author.display_name)),
@@ -249,6 +245,7 @@ class TwitchBot(twitchCommands.Bot):
         info['active_users'][author] = 1
         log.info(f'{author} {message.content}')
         is_mod = message.author.is_mod
+
         def get_vars(): return {
             'author': str(author),
             'author_name': str(author),
@@ -317,7 +314,8 @@ if __name__ == "__main__":
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
         logging.info('starting Twitch Bot')
-        twitchClient = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'), loop=loop)
+        twitchClient = TwitchBot(token=os.getenv(
+            'TWITCH_ACCESS_TOKEN'), loop=loop)
         loop.create_task(twitchClient.connect())
     if args.twitch or args.discord:
         loop.run_forever()

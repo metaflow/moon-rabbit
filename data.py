@@ -25,8 +25,10 @@ from jinja2.sandbox import SandboxedEnvironment
 
 templates = SandboxedEnvironment()
 
+
 def render(text, vars):
     return templates.from_string(text).render(vars).strip()
+
 
 @dataclasses.dataclass
 class TemplateVariables:
@@ -40,10 +42,12 @@ class ActionKind(str, Enum):
     PRIVATE_MESSAGE = 'private_message'
     REACT_EMOJI = 'react_emoji'
 
+
 @dataclasses.dataclass
 class Action:
     kind: ActionKind
     text: str
+
 
 @dataclasses.dataclass
 class CommandData:
@@ -55,12 +59,15 @@ class CommandData:
     actions: List[Action] = dataclasses.field(default_factory=list)
     version: int = 1
 
+
 class Command(Protocol):
     def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True
 
+
 def dictToCommandData(data: Dict) -> CommandData:
     return dacite.from_dict(CommandData, data, config=Config(cast=[Enum]))
+
 
 class InvocationLog():
     def __init__(self, prefix):
@@ -82,6 +89,7 @@ class InvocationLog():
     def error(self, s):
         logging.error(self.prefix + s)
         self.messages.append((logging.ERROR, s))
+
 
 def fold_actions(actions: List[Action]) -> List[Action]:
     last: Optional[Action] = None

@@ -32,11 +32,13 @@ import traceback
 
 commands_cache = {}
 
+
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
         z: List[Command] = []
-        z.extend([PersistentCommand(x, prefix) for x in db.get_commands(channel_id, prefix)])
+        z.extend([PersistentCommand(x, prefix)
+                 for x in db.get_commands(channel_id, prefix)])
         commands_cache[key] = z
     return commands_cache[key]
 
@@ -44,9 +46,10 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
 class PersistentCommand:
     regex: Optional[re.Pattern]
     data: CommandData
+
     def __init__(self, data, prefix):
         self.data = data
-        p =  data.pattern.replace('!prefix', re.escape(prefix))
+        p = data.pattern.replace('!prefix', re.escape(prefix))
         logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
@@ -110,11 +113,11 @@ async def fn_cmd_set(db: DB,
 
 
 async def fn_add_list_item(db: DB,
-                      cur: psycopg2.extensions.cursor,
-                      log: InvocationLog,
-                      channel_id: int,
-                      variables: Dict,
-                      txt: str) -> List[Action]:
+                           cur: psycopg2.extensions.cursor,
+                           log: InvocationLog,
+                           channel_id: int,
+                           variables: Dict,
+                           txt: str) -> List[Action]:
     parts = txt.split(' ', 1)
     if len(parts) < 2:
         return []
@@ -183,7 +186,8 @@ async def fn_set_prefix(db: DB,
         db.set_discord_prefix(channel_id, new_prefix)
     if variables['media'] == 'twitch':
         db.set_twitch_prefix(channel_id, new_prefix)
-    result.append(Action(kind=ActionKind.REPLY, text=f'set new prefix for {variables["media"]} to "{new_prefix}"'))
+    result.append(Action(kind=ActionKind.REPLY,
+                  text=f'set new prefix for {variables["media"]} to "{new_prefix}"'))
     return result
 
 
@@ -200,11 +204,13 @@ async def fn_debug(db: DB,
         commands = get_commands(channel_id, variables['prefix'])
         for cmd in commands:
             if cmd.data.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(json.dumps(dataclasses.asdict(cmd.data)))))
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(
+                    json.dumps(dataclasses.asdict(cmd.data)))))
         return results
     logging.info(f'logs {db.get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
-        s = '\n'.join([discord.utils.escape_mentions(x[1]) for x in e.messages])+ '\n-----------------------------\n'
+        s = '\n'.join([discord.utils.escape_mentions(x[1])
+                      for x in e.messages]) + '\n-----------------------------\n'
         s = s[:1900]
         results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
     return results
@@ -218,7 +224,8 @@ all_commands = {
     'debug': fn_debug,
 }
 
-async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:    
+
+async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:
     admin_command = False
     for c in all_commands:
         if txt.startswith(prefix + c + ' ') or txt == prefix + c:

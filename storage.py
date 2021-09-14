@@ -24,13 +24,14 @@ import functools
 import logging
 import collections
 import random
-import json 
+import json
 from cachetools import TTLCache
 import os
 import re
 import traceback
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
+
 
 @dataclasses.dataclass
 class ListInfo:
@@ -150,7 +151,8 @@ DROP TABLE channels;
         with self.conn.cursor() as cur:
             cur.execute("SELECT id FROM lists WHERE channel_id = %s AND list_name = %s;",
                         [channel_id, name])
-            self.lists[key] = ListInfo(items_ids=[x[0] for x in cur.fetchall()]) 
+            self.lists[key] = ListInfo(items_ids=[x[0]
+                                       for x in cur.fetchall()])
         return self.lists[key]
 
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
@@ -192,7 +194,7 @@ DROP TABLE channels;
     def set_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
         if value == '':
             cur.execute(
-            'DELETE FROM variables WHERE channel_id = %s AND name = %s', (channel_id, name))
+                'DELETE FROM variables WHERE channel_id = %s AND name = %s', (channel_id, name))
             return
         cur.execute('''
             INSERT INTO variables (channel_id, name, value)
@@ -207,7 +209,7 @@ DROP TABLE channels;
     def get_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
         with self.conn.cursor() as cur:
             cur.execute("SELECT value FROM variables WHERE name = %s AND channel_id = %s",
-                [name, channel_id])
+                        [name, channel_id])
             row = cur.fetchone()
             if not row:
                 return value
@@ -221,7 +223,7 @@ DROP TABLE channels;
 
     def add_list_item(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, text: str) -> int:
         cur.execute('SELECT id FROM lists WHERE channel_id = %s AND list_name = %s AND text = %s',
-            [channel_id, name, text])
+                    [channel_id, name, text])
         row = cur.fetchone()
         if row:
             logging.info(f"list item '{name}' '{text}' already exists")
@@ -257,5 +259,6 @@ DROP TABLE channels;
             self.conn.commit()
             self.discord_channel_info.cache_clear()
 
-print('connecting to',os.getenv('DB_CONNECTION'))
+
+print('connecting to', os.getenv('DB_CONNECTION'))
 db = DB(os.getenv('DB_CONNECTION'))
