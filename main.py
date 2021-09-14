@@ -22,6 +22,7 @@
 
 """Bot entry point."""
 
+import asyncio
 from data import *
 from jinja2.sandbox import SandboxedEnvironment
 from twitchio.ext import commands
@@ -220,9 +221,9 @@ class Lazy():
 
 
 class TwitchBot(commands.Bot):
-    def __init__(self, token):
+    def __init__(self, token, loop):
         # Random prefix to not use default functionality.
-        super().__init__(token=token, prefix='2f8648a8-8078-43b9-bbc6-0ccc2fd48f8d')
+        super().__init__(token=token, prefix='2f8648a8-8078-43b9-bbc6-0ccc2fd48f8d', loop=loop)
         self.channels = {}
 
     async def event_ready(self):
@@ -327,15 +328,17 @@ if __name__ == "__main__":
             print(f'you typed "{confirm}", want "yes"')
             sys.exit(1)
         db.recreate_tables()
+    loop = asyncio.get_event_loop()
     if args.discord:
         logging.info('starting Discord Bot')
-        discordClient = DiscordClient(intents=discord.Intents.all())
-        discordClient.run(os.getenv('DISCORD_TOKEN'))
-        sys.exit(0)
+        discordClient = DiscordClient(intents=discord.Intents.all(), loop=loop)
+        loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
         logging.info('starting Twitch Bot')
-        twitchClient = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'))
-        twitchClient.run()
+        twitchClient = TwitchBot(token=os.getenv('TWITCH_ACCESS_TOKEN'), loop=loop)
+        loop.create_task(twitchClient.connect())
+    if args.twitch or args.discord:
+        loop.run_forever()
         sys.exit(0)
     if args.add_channel:
         if not args.twitch_channel_name:
