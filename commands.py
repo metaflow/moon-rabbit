@@ -36,7 +36,7 @@ commands_cache = {}
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = []
+        z: List[Command] = [ListAddBulk()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db.get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -78,6 +78,24 @@ class PersistentCommand:
             log.error(f"failed to render '{self.data.name}': {str(e)}")
             log.error(traceback.format_exc())
             return [], True
+
+
+class ListAddBulk:
+    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        vars = get_variables()
+        if not mod or not text.startswith(vars['prefix'] + "list-add-bulk "):
+            return [], True
+        parts = text.split(' ', 2)
+        if len(parts) < 3:
+            return [Action(kind=ActionKind.REPLY, text=f"format {vars['prefix']}list-add-bulk LIST_NAME item1<new line>item2...")], False
+        _, list_name, content = parts
+        channel_id = vars['channel_id']
+        values = [x.strip() for x in content.split('\n')]
+        with db.conn.cursor() as cur:
+            for v in values:
+                if v:
+                    db.add_list_item(cur, channel_id, list_name, v)
+        return [Action(kind=ActionKind.REPLY, text=f"Added {len(values)} items")], False
 
 
 async def fn_cmd_set(db: DB,
