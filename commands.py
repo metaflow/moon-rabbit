@@ -141,6 +141,7 @@ async def fn_cmd_set(db: DB,
     txt format '<name> [<json|text>]'
     missing value will drop the command
     '''
+    commands_cache.pop(f'commands_{channel_id}_{variables["prefix"]}', None)
     parts = txt.split(' ', 1)
     logging.info(f'parts {parts}')
     name = parts[0]
@@ -158,7 +159,6 @@ async def fn_cmd_set(db: DB,
     cmd.name = name
     log.info(f'parsed command {cmd}')
     id = db.set_command(cur, channel_id, variables['author_name'], cmd)
-    commands_cache.pop(f'commands_{channel_id}_{variables["prefix"]}', None)
     log.info(
         f"channel={channel_id} author={variables['author_name']} added new command '{name}' #{id}")
     return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
