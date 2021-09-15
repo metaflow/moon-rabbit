@@ -23,6 +23,7 @@
 # TODO check sandbox settings
 # TODO DB backups
 # TODO help command
+# TODO delete from list by search
 
 """Bot entry point."""
 
@@ -109,7 +110,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
             return [x for x in controls if x.text]
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
-            a, next = await cmd.run(txt, discord, get_variables)
+            a, next = await cmd.run(prefix, txt, discord, get_variables)
             actions.extend(a)
             if not next:
                 break
@@ -166,6 +167,8 @@ class DiscordClient(discord.Client):
         actions = await process_message(log, channel_id, message.content, prefix, True, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
+            if len(a.text) > 2000:
+                a.text = a.text[:1997] + "..."
             if a.kind == ActionKind.NEW_MESSAGE:
                 await message.channel.send(a.text)
             if a.kind == ActionKind.REPLY:

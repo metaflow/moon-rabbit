@@ -34,14 +34,14 @@ commands_cache = {}
 
 
 class Command(Protocol):
-    async def run(self, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True
 
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk()]
+        z: List[Command] = [ListAddBulk(), ListNames()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -58,7 +58,7 @@ class PersistentCommand:
         logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
-    async def run(self, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if (not self.data.discord) and is_discord:
             return [], True
         if (not self.data.twitch) and (not is_discord):
@@ -86,11 +86,13 @@ class PersistentCommand:
 
 
 class ListAddBulk:
-    async def run(self, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        v = get_variables()
-        log = v['_log']
-        if not v['is_mod'] or not text.startswith(v['prefix'] + "list-add-bulk "):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "list-add-bulk "):
             return [], True
+        v = get_variables()
+        if not v['is_mod']:
+            return [], True
+        log = v['_log']
         parts = text.split(' ', 2)
         list_name = ''
         content = ''
@@ -117,6 +119,15 @@ class ListAddBulk:
                     added += 1
         return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
 
+
+class ListNames:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if text != prefix + "lists":
+            return [], True
+        v = get_variables()
+        if not v['is_mod']:
+            return [], True
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
@@ -241,11 +252,11 @@ async def fn_debug(db: DB,
     results: List[Action] = []
     if txt:
         prefix = variables["prefix"]
-        commands = [PersistentCommand(x, prefix) for x in db.get_commands(channel_id, prefix)]
+        commands = db.get_commands(channel_id, prefix)
         for cmd in commands:
             if cmd.name == txt:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(
-                    json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False))))
+                    json.dumps(dataclasses.asdict(cmd), ensure_ascii=False))))
         return results
     logging.info(f'logs {db().get_logs(channel_id)}')
     for e in db.get_logs(channel_id):

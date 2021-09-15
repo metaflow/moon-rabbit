@@ -152,6 +152,11 @@ DROP TABLE channels;
                                        for x in cur.fetchall()])
         return self.lists[key]
 
+    def get_list_names(self, channel_id: int) -> List[str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
+            return [x[0] for x in cur.fetchall()]
+
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
         info = self._get_list(channel_id, list_name)
         n = len(info.items_ids)
@@ -219,6 +224,8 @@ DROP TABLE channels;
             return cur.fetchone()[0]
 
     def add_list_item(self, channel_id: int, name: str, text: str) -> Tuple[int, bool]:
+        if (not name) or (not text):
+            return -1, False
         with db().conn.cursor() as cur:
             cur.execute('SELECT id FROM lists WHERE channel_id = %s AND list_name = %s AND text = %s',
                         [channel_id, name, text])
