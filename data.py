@@ -60,10 +60,6 @@ class CommandData:
     version: int = 1
 
 
-class Command(Protocol):
-    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        return [], True
-
 
 def dictToCommandData(data: Dict) -> CommandData:
     return dacite.from_dict(CommandData, data, config=Config(cast=[Enum]))

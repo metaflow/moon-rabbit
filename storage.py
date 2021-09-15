@@ -24,11 +24,7 @@ import functools
 import logging
 import collections
 import random
-import json
 from cachetools import TTLCache
-import os
-import re
-import traceback
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
@@ -42,6 +38,7 @@ class ListInfo:
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
+        self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
         self.logs = {}
@@ -221,17 +218,18 @@ DROP TABLE channels;
             cur.execute("SELECT text FROM lists WHERE id = %s", [id])
             return cur.fetchone()[0]
 
-    def add_list_item(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, text: str) -> int:
-        cur.execute('SELECT id FROM lists WHERE channel_id = %s AND list_name = %s AND text = %s',
-                    [channel_id, name, text])
-        row = cur.fetchone()
-        if row:
-            logging.info(f"list item '{name}' '{text}' already exists")
-            return row[0]
-        self.lists.pop(f'{channel_id}_{name}', None)
-        cur.execute('INSERT INTO lists (channel_id, list_name, text) VALUES (%s, %s, %s) RETURNING id;',
-                    (channel_id, name, text))
-        return cur.fetchone()[0]
+    def add_list_item(self, channel_id: int, name: str, text: str) -> Tuple[int, bool]:
+        with db().conn.cursor() as cur:
+            cur.execute('SELECT id FROM lists WHERE channel_id = %s AND list_name = %s AND text = %s',
+                        [channel_id, name, text])
+            row = cur.fetchone()
+            if row:
+                logging.info(f"list item '{name}' '{text}' already exists")
+                return row[0], False
+            self.lists.pop(f'{channel_id}_{name}', None)
+            cur.execute('INSERT INTO lists (channel_id, list_name, text) VALUES (%s, %s, %s) RETURNING id;',
+                        (channel_id, name, text))
+            return cur.fetchone()[0], True
 
     def add_log(self, channel_id, entry):
         if channel_id not in self.logs:
@@ -259,6 +257,11 @@ DROP TABLE channels;
             self.conn.commit()
             self.discord_channel_info.cache_clear()
 
+_db : Optional[DB]
 
-print('connecting to', os.getenv('DB_CONNECTION'))
-db = DB(os.getenv('DB_CONNECTION'))
+def set_db(d: DB):
+    global _db
+    _db = d
+
+def db() -> DB:
+    return _db

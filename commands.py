@@ -33,12 +33,17 @@ import traceback
 commands_cache = {}
 
 
+class Command(Protocol):
+    async def run(self, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        return [], True
+
+
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
         z: List[Command] = [ListAddBulk()]
         z.extend([PersistentCommand(x, prefix)
-                 for x in db.get_commands(channel_id, prefix)])
+                 for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
     return commands_cache[key]
 
@@ -53,10 +58,10 @@ class PersistentCommand:
         logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
-    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if (not self.data.discord) and discord:
+    async def run(self, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if (not self.data.discord) and is_discord:
             return [], True
-        if (not self.data.twitch) and (not discord):
+        if (not self.data.twitch) and (not is_discord):
             return [], True
         if not re.search(self.regex, text):
             return [], True
@@ -81,21 +86,36 @@ class PersistentCommand:
 
 
 class ListAddBulk:
-    def run(self, text: str, mod: bool, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        vars = get_variables()
-        if not mod or not text.startswith(vars['prefix'] + "list-add-bulk "):
+    async def run(self, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        v = get_variables()
+        log = v['_log']
+        if not v['is_mod'] or not text.startswith(v['prefix'] + "list-add-bulk "):
             return [], True
         parts = text.split(' ', 2)
-        if len(parts) < 3:
-            return [Action(kind=ActionKind.REPLY, text=f"format {vars['prefix']}list-add-bulk LIST_NAME item1<new line>item2...")], False
-        _, list_name, content = parts
-        channel_id = vars['channel_id']
+        list_name = ''
+        content = ''
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=f"format {v['prefix']}list-add-bulk LIST_NAME[ item1[<new line>item2...")], False
+        list_name = parts[1]
+        if len(parts) == 3:
+            content = parts[2]
+        if is_discord:
+            msg: discord.Message = v['_discord_message']
+            log.info('looking for attachments')
+            for att in msg.attachments:
+                log.info(f'attachment {att.filename} {att.size} {att.content_type}')
+                content += '\n' + (await att.read()).decode('utf-8')
+        channel_id = v['channel_id']
         values = [x.strip() for x in content.split('\n')]
-        with db.conn.cursor() as cur:
-            for v in values:
-                if v:
-                    db.add_list_item(cur, channel_id, list_name, v)
-        return [Action(kind=ActionKind.REPLY, text=f"Added {len(values)} items")], False
+        added = 0
+        total = 0
+        for v in values:
+            if v:
+                total += 1
+                _, b = db().add_list_item(channel_id, list_name, v)
+                if b:
+                    added += 1
+        return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
 
 
 async def fn_cmd_set(db: DB,
@@ -141,7 +161,7 @@ async def fn_add_list_item(db: DB,
     if len(parts) < 2:
         return []
     list_name, value = parts
-    id = db.add_list_item(cur, channel_id, list_name, value)
+    id, b = db.add_list_item(channel_id, list_name, value)
     return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
 
 
@@ -227,11 +247,10 @@ async def fn_debug(db: DB,
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False))))
         return results
-    logging.info(f'logs {db.get_logs(channel_id)}')
+    logging.info(f'logs {db().get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
         s = '\n'.join([discord.utils.escape_mentions(x[1])
                       for x in e.messages]) + '\n-----------------------------\n'
-        s = s[:1900]
         results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
     return results
 
@@ -243,7 +262,6 @@ all_commands = {
     'prefix-set': fn_set_prefix,
     'debug': fn_debug,
 }
-
 
 async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:
     admin_command = False
@@ -270,7 +288,7 @@ async def process_control_message(log: InvocationLog, channel_id: int, txt: str,
             log.info(f'unknown command {cmd}')
             continue
         log.info(f"running cmd {cmd} '{t}'")
-        r = await all_commands[cmd](storage.db, storage.db.conn.cursor(), log, channel_id, variables, t)
+        r = await all_commands[cmd](storage.db(), storage.db().conn.cursor(), log, channel_id, variables, t)
         log.info(f"command result '{r}'")
         actions.extend(r)
     actions = fold_actions(actions)
