@@ -125,6 +125,7 @@ async def fn_cmd_set(db: DB,
     cmd.name = name
     log.info(f'parsed command {cmd}')
     id = db.set_command(cur, channel_id, variables['author_name'], cmd)
+    commands_cache.pop(f'commands_{channel_id}_{variables["prefix"]}', None)
     log.info(
         f"channel={channel_id} author={variables['author_name']} added new command '{name}' #{id}")
     return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
@@ -219,11 +220,12 @@ async def fn_debug(db: DB,
         return []
     results: List[Action] = []
     if txt:
-        commands = get_commands(channel_id, variables['prefix'])
+        prefix = variables["prefix"]
+        commands = [PersistentCommand(x, prefix) for x in db.get_commands(channel_id, prefix)]
         for cmd in commands:
-            if cmd.data.name == txt:
+            if cmd.name == txt:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(
-                    json.dumps(dataclasses.asdict(cmd.data)))))
+                    json.dumps(dataclasses.asdict(cmd.data), ensure_ascii=False))))
         return results
     logging.info(f'logs {db.get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
