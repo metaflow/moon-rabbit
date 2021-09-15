@@ -105,7 +105,8 @@ class ListAddBulk:
             msg: discord.Message = v['_discord_message']
             log.info('looking for attachments')
             for att in msg.attachments:
-                log.info(f'attachment {att.filename} {att.size} {att.content_type}')
+                log.info(
+                    f'attachment {att.filename} {att.size} {att.content_type}')
                 content += '\n' + (await att.read()).decode('utf-8')
         channel_id = v['channel_id']
         values = [x.strip() for x in content.split('\n')]
@@ -128,6 +129,7 @@ class ListNames:
         if not v['is_mod']:
             return [], True
         return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
+
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
@@ -255,8 +257,8 @@ async def fn_debug(db: DB,
         commands = db.get_commands(channel_id, prefix)
         for cmd in commands:
             if cmd.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_mentions(
-                    json.dumps(dataclasses.asdict(cmd), ensure_ascii=False))))
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
+                    json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results
     logging.info(f'logs {db().get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
@@ -273,6 +275,7 @@ all_commands = {
     'prefix-set': fn_set_prefix,
     'debug': fn_debug,
 }
+
 
 async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:
     admin_command = False
