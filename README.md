@@ -2,7 +2,7 @@
 
 Custom stateful discord bot.
 
-[Invite moon-rabbit](https://discord.com/api/oauth2/authorize?client_id=884131362251079730&permissions=240518548544&scope=bot)
+[Invite moon-rabbit](https://discord.com/api/oauth2/authorize?client_id=884131362251079730&permissions=515396455488&scope=bot)
 
 You will need [pipenv](https://pipenv.pypa.io/en/latest/). Run pipenv install and then pipenv run.
 
