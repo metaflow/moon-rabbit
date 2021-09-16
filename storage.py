@@ -85,19 +85,13 @@ DROP TABLE channels;
                 twitch_channel_name varchar(50),
                 twitch_command_prefix varchar(10));
             CREATE TABLE IF NOT EXISTS variables
-                (id SERIAL,
-                channel_id INT,
+                (channel_id INT,
                 name varchar(100),
                 value TEXT,
                 category varchar(100),
                 expires INT,
                 CONSTRAINT uniq_variable UNIQUE (channel_id, name, category));''')
         self.conn.commit()
-
-        # alter table variables add column category varchar(100);
-        # alter table variables add column expires int;
-        # alter table variables drop constraint variables_uniq_name_in_channel;
-        # ALTER TABLE variables ADD CONSTRAINT uniq_variable UNIQUE (channel_id, name, category);
 
     @functools.lru_cache(maxsize=1000)
     def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name) -> Tuple[int, str]:
