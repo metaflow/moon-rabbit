@@ -150,7 +150,7 @@ def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, st
 
 class ListRemove:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if text != prefix + "list-rm":
+        if not text.startswith(prefix + "list-rm"):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
@@ -189,11 +189,12 @@ class ListRemove:
         for ii in items:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
         s = '\n'.join(rr)
-        return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')]
+        return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')], False
 
 class ListSearch:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if text != prefix + "list-search":
+        logging.info(f'{prefix} {text}')
+        if not text.startswith(prefix + "list-search"):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
@@ -206,11 +207,14 @@ class ListSearch:
         list_name = ''
         if len(parts) >= 3:
             list_name = parts[2]
+        logging.info(f'searching for "{txt}" in "{list_name}"')
         items = list_search(channel_id, txt, list_name)
+        if not items:
+            return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
         for ii in items:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
-        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
@@ -256,50 +260,9 @@ async def fn_add_list_item(db: DB,
         return []
     list_name, value = parts
     id, b = db.add_list_item(channel_id, list_name, value)
-    return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
-
-
-# async def fn_list_search(db: DB,
-#                          cur: psycopg2.extensions.cursor,
-#                          log: InvocationLog,
-#                          channel_id: int,
-#                          variables: Dict,
-#                          txt: str) -> List[Action]:
-#     parts = txt.split(' ', 1)
-#     if len(parts) > 1:
-#         q = '%' + escape_like(parts[1]) + '%'
-#         cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
-#                     (channel_id, parts[0], q))
-#     else:
-#         cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s)",
-#                     (channel_id, parts[0]))
-#     rr = []
-#     for row in cur.fetchall():
-#         rr.append(f"#{row[0]}: {row[1]}")
-#     # TODO: clear cache
-#     if not rr:
-#         return [Action(kind=ActionKind.REPLY, text="no results")]
-#     else:
-#         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
-
-
-# async def fn_delete_list_item(db: DB,
-#                               cur: psycopg2.extensions.cursor,
-#                               log: InvocationLog,
-#                               channel_id: int,
-#                               variables: Dict,
-#                               txt: str) -> List[Action]:
-#     if txt.isnumeric():
-#         cur.execute(
-#             'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-#         return [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
-#     parts = txt.split(' ', 1)
-#     if len(parts) < 2 or parts[0] != 'all':
-#         return [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
-#     cur.execute(
-#         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
-#     return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
-
+    if b:
+        [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
+    return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')]
 
 async def fn_set_prefix(db: DB,
                         cur: psycopg2.extensions.cursor,
