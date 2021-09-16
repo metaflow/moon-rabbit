@@ -26,7 +26,7 @@ from jinja2.sandbox import SandboxedEnvironment
 templates = SandboxedEnvironment()
 
 
-def render(text, vars):
+def render(text: str, vars: Dict):
     return templates.from_string(text).render(vars).strip()
 
 

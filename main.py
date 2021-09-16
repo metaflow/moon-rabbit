@@ -15,16 +15,15 @@
 # limitations under the License.
 
 # TODO convert control commands to general "command"
-# TODO add a "category" and TTL to variables, periodically drop old variables
 # TODO !multiline command
 # TODO limit discord reply to 2K
 # TODO twitch error on too fast replies?
-# TODO eval command
 # TODO bingo
 # TODO check sandbox settings
 # TODO DB backups
 # TODO help command
 # TODO delete from list by search
+# TODO test perf of compiled template VS from_string
 
 """Bot entry point."""
 
@@ -81,15 +80,15 @@ def discord_literal(t):
 
 
 @jinja2.pass_context
-def get_variable(ctx, name: str, value: str = ''):
+def get_variable(ctx, name: str, category: str = '', default_value: str = ''):
     channel_id = ctx.get('channel_id')
-    return db().get_variable(db().conn.cursor(), channel_id, name, value)
+    return db().get_variable(channel_id, name, category, default_value)
 
 
 @jinja2.pass_context
-def set_variable(ctx, name: str, value: str):
+def set_variable(ctx, name: str, value: str, category: str = '', expires: int = 9 * 3600):
     channel_id = ctx.get('channel_id')
-    db().set_variable(db().conn.cursor(), channel_id, name, value)
+    db().set_variable(channel_id, name, value, category, expires + int(time.time()))
     return ''
 
 
@@ -291,6 +290,10 @@ class TwitchBot(twitchCommands.Bot):
             return "@" + random.choice(users)
         return "@" + author
 
+async def expireVariables():
+    while True:
+        db().expire_variables()
+        await asyncio.sleep(120)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
@@ -329,6 +332,7 @@ if __name__ == "__main__":
             'TWITCH_ACCESS_TOKEN'), loop=loop)
         loop.create_task(twitchClient.connect())
     if args.twitch or args.discord:
+        loop.create_task(expireVariables())
         loop.run_forever()
         sys.exit(0)
     if args.add_channel:

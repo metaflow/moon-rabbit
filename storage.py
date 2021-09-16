@@ -24,6 +24,7 @@ import functools
 import logging
 import collections
 import random
+import time
 from cachetools import TTLCache
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
@@ -88,8 +89,15 @@ DROP TABLE channels;
                 channel_id INT,
                 name varchar(100),
                 value TEXT,
-                CONSTRAINT variables_uniq_name_in_channel UNIQUE (channel_id, name));''')
+                category varchar(100),
+                expires INT,
+                CONSTRAINT uniq_variable UNIQUE (channel_id, name, category));''')
         self.conn.commit()
+
+        # alter table variables add column category varchar(100);
+        # alter table variables add column expires int;
+        # alter table variables drop constraint variables_uniq_name_in_channel;
+        # ALTER TABLE variables ADD CONSTRAINT uniq_variable UNIQUE (channel_id, name, category);
 
     @functools.lru_cache(maxsize=1000)
     def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name) -> Tuple[int, str]:
@@ -193,29 +201,41 @@ DROP TABLE channels;
         self.cache.clear()
         return cur.fetchone()[0]
 
-    def set_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
-        if value == '':
-            cur.execute(
-                'DELETE FROM variables WHERE channel_id = %s AND name = %s', (channel_id, name))
-            return
-        cur.execute('''
-            INSERT INTO variables (channel_id, name, value)
-            VALUES (%(channel_id)s, %(name)s, %(value)s)
-            ON CONFLICT ON CONSTRAINT variables_uniq_name_in_channel DO
-            UPDATE SET value = %(value)s;''',
-                    {'channel_id': channel_id,
-                     'name': name,
-                     'value': value,
-                     })
-
-    def get_variable(self, cur: psycopg2.extensions.cursor, channel_id: int, name: str, value: str):
+    def set_variable(self, channel_id: int, name: str, value: str, category: str, expires: int):
         with self.conn.cursor() as cur:
-            cur.execute("SELECT value FROM variables WHERE name = %s AND channel_id = %s",
-                        [name, channel_id])
+            if value == '':
+                cur.execute('DELETE FROM variables WHERE channel_id = %s AND name = %s AND category = %s', (channel_id, name, category))
+                return
+            cur.execute('''
+                INSERT INTO variables (channel_id, name, value, category, expires)
+                VALUES (%(channel_id)s, %(name)s, %(value)s, %(category)s, %(expires)s)
+                ON CONFLICT ON CONSTRAINT uniq_variable DO
+                UPDATE SET value = %(value)s, expires = %(expires)s;''',
+                        {'channel_id': channel_id,
+                        'name': name,
+                        'value': value,
+                        'category': category,
+                        'expires': expires,
+                        })
+
+    def get_variable(self, channel_id: int, name: str, category: str, default_value: str):
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value, expires FROM variables WHERE name = %s AND channel_id = %s AND category = %s",
+                        [name, channel_id, category])
             row = cur.fetchone()
             if not row:
-                return value
-            return row[0]
+                return default_value
+            value, expires = row
+            if expires < time.time():
+                return default_value
+            return value
+    
+    def expire_variables(self):
+        with self.conn.cursor() as cur:
+            cur.execute('DELETE FROM variables WHERE expires < %s', [int(time.time())])
+            n = cur.rowcount
+            if n:
+                logging.info(f'deleted {n} expired variables')
 
     def get_list_item(self, id):
         # TODO: pass channel ID.

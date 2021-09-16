@@ -42,7 +42,7 @@ class Command(Protocol):
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch()]
+        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch(), Eval()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -193,7 +193,6 @@ class ListRemove:
 
 class ListSearch:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        logging.info(f'{prefix} {text}')
         if not text.startswith(prefix + "list-search"):
             return [], True
         v = get_variables()
@@ -207,7 +206,6 @@ class ListSearch:
         list_name = ''
         if len(parts) >= 3:
             list_name = parts[2]
-        logging.info(f'searching for "{txt}" in "{list_name}"')
         items = list_search(channel_id, txt, list_name)
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
@@ -215,6 +213,23 @@ class ListSearch:
         for ii in items:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
+
+
+class Eval:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "eval"):
+            return [], True
+        v = get_variables()
+        if not v['is_mod']:
+            return [], True
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}eval <expression>"')], False
+        v['_log'].info(f'eval "{parts[1]}"')
+        s = render(parts[1], v)
+        if not s:
+            s = "<empty>"
+        return [Action(kind=ActionKind.REPLY, text=s)], False
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
