@@ -15,10 +15,11 @@
 # limitations under the License.
 
 # TODO convert control commands to general "command"
+# TODO add a "category" and TTL to variables, periodically drop old variables
 # TODO !multiline command
 # TODO limit discord reply to 2K
 # TODO twitch error on too fast replies?
-# TODO run command
+# TODO eval command
 # TODO bingo
 # TODO check sandbox settings
 # TODO DB backups
