@@ -219,6 +219,7 @@ DROP TABLE channels;
 
     def get_list_item(self, id):
         # TODO: pass channel ID.
+        # TODO: handle missing list ID in callers
         with self.conn.cursor() as cur:
             cur.execute("SELECT text FROM lists WHERE id = %s", [id])
             return cur.fetchone()[0]
@@ -272,3 +273,6 @@ def set_db(d: DB):
 
 def db() -> DB:
     return _db
+
+def cursor():
+    return db().conn.cursor()

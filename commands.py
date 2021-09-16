@@ -15,6 +15,7 @@
  """
 
 import discord
+from discord import channel
 from discord.utils import escape_markdown
 import psycopg2.extensions
 from data import *
@@ -27,7 +28,7 @@ import logging
 import re
 from typing import Callable, Dict, List, Type
 import storage
-from storage import DB, db
+from storage import DB, cursor, db
 import traceback
 
 commands_cache = {}
@@ -41,7 +42,7 @@ class Command(Protocol):
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk(), ListNames()]
+        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -130,6 +131,86 @@ class ListNames:
             return [], True
         return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
 
+def escape_like(t):
+    return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
+
+def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, str, str]]:
+    matched_rows: List[Tuple[int, str]] = []
+    with cursor() as cur:
+        q = '%' + escape_like(txt) + '%'
+        if list_name:
+             cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
+                        (channel_id,list_name, q))
+        else:
+            cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (text LIKE %s)",
+                        (channel_id, q))
+        for row in cur.fetchall():
+            matched_rows.append([row[0], row[1], row[2]])
+    return matched_rows
+
+class ListRemove:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if text != prefix + "list-rm":
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        if not v['is_mod']:
+            return [], True
+        parts = text.split(' ', 3)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}list-rm <number>" or "{prefix}list-rm <substring> [<list name>]" or "{prefix}list-rm all <list name>"')], False
+        txt = parts[1]
+        # TODO: ask for #number to delete by number
+        if txt.isnumeric():
+            # TODO: move to DB level
+            with cursor() as cur:
+                cur.execute("SELECT text, list_name FROM lists where id = %s", [txt])
+                text, list_name = cur.fetchone()
+                cur.execute(
+                    'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
+                db().lists.pop(f'{channel_id}_{list_name}', None)
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted list {list_name} item #{txt} "{text}"')], False
+        list_name = ''
+        if len(parts) >= 3:
+            list_name = parts[2]
+        items = list_search(channel_id, txt, list_name)
+        if not items:
+            if txt == 'all' and list_name:
+                cursor().execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, list_name))
+                db().lists.pop(f'{channel_id}_{list_name}', None)
+                return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")], False
+            return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
+        if len(items) == 1:
+            db().conn.cursor().execute(
+                'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, items[0][0]))
+            db().lists.pop(f'{channel_id}_{items[0][1]}', None)
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted list {items[0][1]} item #{items[0][0]} "{items[0][2]}"')], False
+        rr = []
+        for ii in items:
+            rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
+        s = '\n'.join(rr)
+        return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')]
+
+class ListSearch:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if text != prefix + "list-search":
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        if not v['is_mod']:
+            return [], True
+        parts = text.split(' ', 3)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}list-search <substring> [<list name>]"')], False
+        txt = parts[1]
+        list_name = ''
+        if len(parts) >= 3:
+            list_name = parts[2]
+        items = list_search(channel_id, txt, list_name)
+        rr = []
+        for ii in items:
+            rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
@@ -178,48 +259,46 @@ async def fn_add_list_item(db: DB,
     return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
 
 
-async def fn_list_search(db: DB,
-                         cur: psycopg2.extensions.cursor,
-                         log: InvocationLog,
-                         channel_id: int,
-                         variables: Dict,
-                         txt: str) -> List[Action]:
-    parts = txt.split(' ', 1)
-    if len(parts) > 1:
-        q = '%' + \
-            parts[1].replace('=', '==').replace(
-                '%', '=%').replace('_', '=_') + '%'
-        cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
-                    (channel_id, parts[0], q))
-    else:
-        cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s)",
-                    (channel_id, parts[0]))
-    rr = []
-    for row in cur.fetchall():
-        rr.append(f"#{row[0]}: {row[1]}")
-    # TODO: clear cache
-    if not rr:
-        return [Action(kind=ActionKind.REPLY, text="no results")]
-    else:
-        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
+# async def fn_list_search(db: DB,
+#                          cur: psycopg2.extensions.cursor,
+#                          log: InvocationLog,
+#                          channel_id: int,
+#                          variables: Dict,
+#                          txt: str) -> List[Action]:
+#     parts = txt.split(' ', 1)
+#     if len(parts) > 1:
+#         q = '%' + escape_like(parts[1]) + '%'
+#         cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
+#                     (channel_id, parts[0], q))
+#     else:
+#         cur.execute("select id, text from lists where (channel_id = %s) AND (list_name = %s)",
+#                     (channel_id, parts[0]))
+#     rr = []
+#     for row in cur.fetchall():
+#         rr.append(f"#{row[0]}: {row[1]}")
+#     # TODO: clear cache
+#     if not rr:
+#         return [Action(kind=ActionKind.REPLY, text="no results")]
+#     else:
+#         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))]
 
 
-async def fn_delete_list_item(db: DB,
-                              cur: psycopg2.extensions.cursor,
-                              log: InvocationLog,
-                              channel_id: int,
-                              variables: Dict,
-                              txt: str) -> List[Action]:
-    if txt.isnumeric():
-        cur.execute(
-            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-        return [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
-    parts = txt.split(' ', 1)
-    if len(parts) < 2 or parts[0] != 'all':
-        return [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
-    cur.execute(
-        'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
-    return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
+# async def fn_delete_list_item(db: DB,
+#                               cur: psycopg2.extensions.cursor,
+#                               log: InvocationLog,
+#                               channel_id: int,
+#                               variables: Dict,
+#                               txt: str) -> List[Action]:
+#     if txt.isnumeric():
+#         cur.execute(
+#             'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
+#         return [Action(kind=ActionKind.REPLY, text=f"Deleted list item #{id}")]
+#     parts = txt.split(' ', 1)
+#     if len(parts) < 2 or parts[0] != 'all':
+#         return [Action(kind=ActionKind.REPLY, text="command format is <number> or 'all <list name>'")]
+#     cur.execute(
+#         'DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, parts[1]))
+#     return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")]
 
 
 async def fn_set_prefix(db: DB,
@@ -270,8 +349,8 @@ async def fn_debug(db: DB,
 all_commands = {
     'set': fn_cmd_set,
     'list-add': fn_add_list_item,
-    'list-rm': fn_delete_list_item,
-    'list-search': fn_list_search,
+    # 'list-rm': fn_delete_list_item,
+    # 'list-search': fn_list_search,
     'prefix-set': fn_set_prefix,
     'debug': fn_debug,
 }
