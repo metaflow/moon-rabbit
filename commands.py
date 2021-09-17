@@ -42,7 +42,7 @@ class Command(Protocol):
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch(), Eval()]
+        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch(), Eval(), Debug()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -351,7 +351,7 @@ all_commands = {
     'set': fn_cmd_set,
     'list-add': fn_add_list_item,
     'prefix-set': fn_set_prefix,
-    'debug': fn_debug,
+    # 'debug': fn_debug,
 }
 
 
