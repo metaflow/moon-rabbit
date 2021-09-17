@@ -136,12 +136,31 @@ DROP TABLE channels;
                 return int(row[0]) + 1
             return 0
 
-    def get_list_item(self, channel_id: int, id: int):
-        # TODO cache
+    def get_list_item(self, channel_id: int, id: int) -> Optional[Tuple[str, str]]:
+        # TODO cache?
         with self.conn.cursor() as cur:
-            cur.execute("SELECT text FROM lists WHERE channel_id = %s AND id = %s;",
-                        [int(channel_id), id])
-            return cur.fetchone()[0]
+            cur.execute("SELECT text, list_name FROM lists WHERE channel_id = %s AND id = %s",
+                        [channel_id, id])
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0], row[1]
+
+    def delete_list_item(self, channel_id: int, id: int) -> Optional[Tuple[str, str]]:
+        t = self.get_list_item(channel_id, id)
+        if not t:
+            return None
+        _, list_name = t
+        self.conn.cursor().execute('DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, id))
+        self.lists.pop(f'{channel_id}_{list_name}', None)
+        return t
+    
+    def delete_list(self, channel_id: int, list_name: str) -> int:
+        self.lists.pop(f'{channel_id}_{list_name}', None)
+        with self.conn.cursor() as cur:
+            cur.execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s',
+                (channel_id, list_name))
+            return cur.rowcount
 
     def _get_list(self, channel_id: int, name: str) -> ListInfo:
         key = f'{channel_id}_{name}'
@@ -165,9 +184,9 @@ DROP TABLE channels;
         if n == 0:
             return ''
         if n == 1:
-            return self.get_list_item(info.items_ids[0])
+            return self.get_list_item(channel_id, info.items_ids[0])[0]
         info.idx = (info.idx + random.randint(1, n - 1)) % n
-        return self.get_list_item(info.items_ids[info.idx])
+        return self.get_list_item(channel_id, info.items_ids[info.idx])[0]
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
@@ -225,13 +244,6 @@ DROP TABLE channels;
             n = cur.rowcount
             if n:
                 logging.info(f'deleted {n} expired variables')
-
-    def get_list_item(self, id):
-        # TODO: pass channel ID.
-        # TODO: handle missing list ID in callers
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT text FROM lists WHERE id = %s", [id])
-            return cur.fetchone()[0]
 
     def add_list_item(self, channel_id: int, name: str, text: str) -> Tuple[int, bool]:
         if (not name) or (not text):

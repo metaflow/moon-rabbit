@@ -164,16 +164,11 @@ class ListRemove:
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}list-rm <number>" or "{prefix}list-rm <substring> [<list name>]" or "{prefix}list-rm all <list name>"')], False
         txt = parts[1]
-        # TODO: ask for #number to delete by number
         if txt.isnumeric():
-            # TODO: move to DB level
-            with cursor() as cur:
-                cur.execute(
-                    "SELECT text, list_name FROM lists where id = %s", [txt])
-                text, list_name = cur.fetchone()
-                cur.execute(
-                    'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
-                db().lists.pop(f'{channel_id}_{list_name}', None)
+            t = db().delete_list_item(channel_id, int(txt))
+            if not t:
+                return [Action(kind=ActionKind.REPLY, text=f'No item #{txt} is found')], False
+            text, list_name = t
             return [Action(kind=ActionKind.REPLY, text=f'Deleted list {list_name} item #{txt} "{text}"')], False
         list_name = ''
         if len(parts) >= 3:
@@ -181,16 +176,13 @@ class ListRemove:
         items = list_search(channel_id, txt, list_name)
         if not items:
             if txt == 'all' and list_name:
-                cursor().execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s',
-                                 (channel_id, list_name))
-                db().lists.pop(f'{channel_id}_{list_name}', None)
-                return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")], False
+                n = db().delete_list(channel_id, list_name)
+                return [Action(kind=ActionKind.REPLY, text=f'Deleted all {n} items in list "{list_name}"')], False
             return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
         if len(items) == 1:
-            db().conn.cursor().execute(
-                'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, items[0][0]))
-            db().lists.pop(f'{channel_id}_{items[0][1]}', None)
-            return [Action(kind=ActionKind.REPLY, text=f'Deleted list {items[0][1]} item #{items[0][0]} "{items[0][2]}"')], False
+            i, list_name, text = items[0]
+            db().delete_list_item(channel_id, i)
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted list {list_name} item #{i} "{text}"')], False
         rr = []
         for ii in items:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
