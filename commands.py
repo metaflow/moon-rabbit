@@ -233,6 +233,7 @@ class Eval:
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}eval <expression>"')], False
         v['_log'].info(f'eval "{parts[1]}"')
+        v['_render_depth'] = 0
         s = render(parts[1], v)
         if not s:
             s = "<empty>"
