@@ -102,7 +102,7 @@ templates.globals['set'] = set_variable
 templates.globals['timestamp'] = lambda: int(time.time())
 
 
-async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, discord: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
     try:
         controls = await commands.process_control_message(log, channel_id, txt, prefix, get_variables)
@@ -110,7 +110,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
             return [x for x in controls if x.text]
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
-            a, next = await cmd.run(prefix, txt, discord, get_variables)
+            a, next = await cmd.run(prefix, txt, is_discord, get_variables)
             actions.extend(a)
             if not next:
                 break
