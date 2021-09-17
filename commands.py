@@ -42,7 +42,8 @@ class Command(Protocol):
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(), ListSearch(), Eval(), Debug()]
+        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(),
+                            ListSearch(), Eval(), Debug(), ListAddItem()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -131,22 +132,25 @@ class ListNames:
             return [], True
         return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
 
+
 def escape_like(t):
     return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
+
 
 def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, str, str]]:
     matched_rows: List[Tuple[int, str]] = []
     with cursor() as cur:
         q = '%' + escape_like(txt) + '%'
         if list_name:
-             cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
-                        (channel_id,list_name, q))
+            cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (list_name = %s) AND (text LIKE %s)",
+                        (channel_id, list_name, q))
         else:
             cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (text LIKE %s)",
                         (channel_id, q))
         for row in cur.fetchall():
             matched_rows.append([row[0], row[1], row[2]])
     return matched_rows
+
 
 class ListRemove:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -164,7 +168,8 @@ class ListRemove:
         if txt.isnumeric():
             # TODO: move to DB level
             with cursor() as cur:
-                cur.execute("SELECT text, list_name FROM lists where id = %s", [txt])
+                cur.execute(
+                    "SELECT text, list_name FROM lists where id = %s", [txt])
                 text, list_name = cur.fetchone()
                 cur.execute(
                     'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, txt))
@@ -176,7 +181,8 @@ class ListRemove:
         items = list_search(channel_id, txt, list_name)
         if not items:
             if txt == 'all' and list_name:
-                cursor().execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s', (channel_id, list_name))
+                cursor().execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s',
+                                 (channel_id, list_name))
                 db().lists.pop(f'{channel_id}_{list_name}', None)
                 return [Action(kind=ActionKind.REPLY, text=f"Deleted all items in list '{parts[1]}'")], False
             return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
@@ -190,6 +196,7 @@ class ListRemove:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
         s = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')], False
+
 
 class ListSearch:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -231,6 +238,7 @@ class Eval:
             s = "<empty>"
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
+
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
                      log: InvocationLog,
@@ -263,21 +271,6 @@ async def fn_cmd_set(db: DB,
     return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")]
 
 
-async def fn_add_list_item(db: DB,
-                           cur: psycopg2.extensions.cursor,
-                           log: InvocationLog,
-                           channel_id: int,
-                           variables: Dict,
-                           txt: str) -> List[Action]:
-    parts = txt.split(' ', 1)
-    if len(parts) < 2:
-        return []
-    list_name, value = parts
-    id, b = db.add_list_item(channel_id, list_name, value)
-    if b:
-        [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")]
-    return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')]
-
 async def fn_set_prefix(db: DB,
                         cur: psycopg2.extensions.cursor,
                         log: InvocationLog,
@@ -299,6 +292,24 @@ async def fn_set_prefix(db: DB,
     return result
 
 
+class ListAddItem:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not is_discord:
+            return [], True
+        if not text.startswith(prefix + "list-add"):
+            return [], True
+        parts = text.split(' ', 2)
+        if len(parts) < 3:
+            return [], False
+        _, list_name, value = parts
+        v = get_variables()
+        channel_id = v['channel_id']
+        id, b = db.add_list_item(channel_id, list_name, value)
+        if b:
+            return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")], False
+        return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')], False
+
+
 class Debug:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not is_discord:
@@ -312,7 +323,7 @@ class Debug:
         if len(parts) < 2:
             for e in db().get_logs(channel_id):
                 s = '\n'.join([discord.utils.escape_mentions(x[1])
-                            for x in e.messages]) + '\n-----------------------------\n'
+                               for x in e.messages]) + '\n-----------------------------\n'
                 results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
             return results, False
         txt = parts[1]
@@ -322,6 +333,7 @@ class Debug:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
+
 
 async def fn_debug(db: DB,
                    cur: psycopg2.extensions.cursor,
@@ -349,9 +361,7 @@ async def fn_debug(db: DB,
 
 all_commands = {
     'set': fn_cmd_set,
-    'list-add': fn_add_list_item,
     'prefix-set': fn_set_prefix,
-    # 'debug': fn_debug,
 }
 
 
