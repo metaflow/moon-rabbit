@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO count vars
 # TODO convert control commands to general "command"
 # TODO !multiline command
-# TODO limit discord reply to 2K
 # TODO twitch error on too fast replies?
 # TODO bingo
 # TODO check sandbox settings
@@ -86,21 +86,32 @@ def get_variable(ctx, name: str, category: str = '', default_value: str = ''):
 
 
 @jinja2.pass_context
-def set_variable(ctx, name: str, value: str, category: str = '', expires: int = 9 * 3600):
+def set_variable(ctx, name: str, value: str = '', category: str = '', expires: int = 9 * 3600):
     channel_id = ctx.get('channel_id')
     db().set_variable(channel_id, name, value, category, expires + int(time.time()))
     return ''
 
+@jinja2.pass_context
+def get_variables_category_size(ctx, name: str) -> int:
+    channel_id = ctx.get('channel_id')
+    return db().count_variables_in_category(channel_id, name)
+
+@jinja2.pass_context
+def delete_category(ctx, name: str):
+    channel_id = ctx.get('channel_id')
+    db().delete_category(channel_id, name)
+    return ''
 
 templates.globals['list'] = render_list_item
 templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal
-# templates.globals['echo'] = lambda x: x
-# templates.globals['log'] = lambda x: logging.info(x)
 templates.globals['get'] = get_variable
 templates.globals['set'] = set_variable
+templates.globals['category_size'] = get_variables_category_size
+templates.globals['delete_category'] = delete_category
 templates.globals['timestamp'] = lambda: int(time.time())
-
+# templates.globals['echo'] = lambda x: x
+# templates.globals['log'] = lambda x: logging.info(x)
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []

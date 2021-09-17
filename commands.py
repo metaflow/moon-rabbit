@@ -68,6 +68,9 @@ class PersistentCommand:
         if not re.search(self.regex, text):
             return [], True
         variables = get_variables()
+        if self.data.mod and not variables['is_mod']:
+            logging.info('non mod called persistent')
+            return [], True
         log: InvocationLog = variables['_log']
         log.info(
             f'matched command {json.dumps(dataclasses.asdict(self.data), ensure_ascii=False)}')
@@ -291,11 +294,13 @@ class ListAddItem:
             return [], True
         if not text.startswith(prefix + "list-add"):
             return [], True
+        v = get_variables()
+        if not v['is_mod']:
+            return [], True
         parts = text.split(' ', 2)
         if len(parts) < 3:
             return [], False
         _, list_name, value = parts
-        v = get_variables()
         channel_id = v['channel_id']
         id, b = db().add_list_item(channel_id, list_name, value)
         if b:
@@ -311,6 +316,8 @@ class Debug:
             return [], True
         results: List[Action] = []
         v = get_variables()
+        if not v['is_mod']:
+            return [], True
         channel_id = v['channel_id']
         parts = text.split(' ', 1)
         if len(parts) < 2:
@@ -331,7 +338,6 @@ all_commands = {
     'set': fn_cmd_set,
     'prefix-set': fn_set_prefix,
 }
-
 
 async def process_control_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, get_variables: Callable[[], Dict]) -> List[Action]:
     admin_command = False

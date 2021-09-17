@@ -56,9 +56,9 @@ class CommandData:
     twitch: bool = True
     name: str = ''
     help: str = ''
+    mod: bool = False
     actions: List[Action] = dataclasses.field(default_factory=list)
     version: int = 1
-
 
 
 def dictToCommandData(data: Dict) -> CommandData:

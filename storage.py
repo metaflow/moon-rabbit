@@ -151,15 +151,16 @@ DROP TABLE channels;
         if not t:
             return None
         _, list_name = t
-        self.conn.cursor().execute('DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, id))
+        self.conn.cursor().execute(
+            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, id))
         self.lists.pop(f'{channel_id}_{list_name}', None)
         return t
-    
+
     def delete_list(self, channel_id: int, list_name: str) -> int:
         self.lists.pop(f'{channel_id}_{list_name}', None)
         with self.conn.cursor() as cur:
             cur.execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s',
-                (channel_id, list_name))
+                        (channel_id, list_name))
             return cur.rowcount
 
     def _get_list(self, channel_id: int, name: str) -> ListInfo:
@@ -175,7 +176,8 @@ DROP TABLE channels;
 
     def get_list_names(self, channel_id: int) -> List[str]:
         with self.conn.cursor() as cur:
-            cur.execute("SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
+            cur.execute(
+                "SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
             return [x[0] for x in cur.fetchall()]
 
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
@@ -212,7 +214,8 @@ DROP TABLE channels;
     def set_variable(self, channel_id: int, name: str, value: str, category: str, expires: int):
         with self.conn.cursor() as cur:
             if value == '':
-                cur.execute('DELETE FROM variables WHERE channel_id = %s AND name = %s AND category = %s', (channel_id, name, category))
+                cur.execute('DELETE FROM variables WHERE channel_id = %s AND name = %s AND category = %s',
+                            (channel_id, name, category))
                 return
             cur.execute('''
                 INSERT INTO variables (channel_id, name, value, category, expires)
@@ -220,11 +223,11 @@ DROP TABLE channels;
                 ON CONFLICT ON CONSTRAINT uniq_variable DO
                 UPDATE SET value = %(value)s, expires = %(expires)s;''',
                         {'channel_id': channel_id,
-                        'name': name,
-                        'value': value,
-                        'category': category,
-                        'expires': expires,
-                        })
+                         'name': name,
+                         'value': value,
+                         'category': category,
+                         'expires': expires,
+                         })
 
     def get_variable(self, channel_id: int, name: str, category: str, default_value: str):
         with self.conn.cursor() as cur:
@@ -237,10 +240,23 @@ DROP TABLE channels;
             if expires < time.time():
                 return default_value
             return value
+
+    def count_variables_in_category(self, channel_id: int, category: str) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM variables WHERE channel_id = %s AND category = %s",
+                        [channel_id, category])
+            return cur.fetchone()[0]
     
+    def delete_category(self, channel_id: int, category: str) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM variables WHERE channel_id = %s AND category = %s",
+                        [channel_id, category])
+            return cur.rowcount
+
     def expire_variables(self):
         with self.conn.cursor() as cur:
-            cur.execute('DELETE FROM variables WHERE expires < %s', [int(time.time())])
+            cur.execute('DELETE FROM variables WHERE expires < %s',
+                        [int(time.time())])
             n = cur.rowcount
             if n:
                 logging.info(f'deleted {n} expired variables')
@@ -286,14 +302,18 @@ DROP TABLE channels;
             self.conn.commit()
             self.discord_channel_info.cache_clear()
 
-_db : Optional[DB]
+
+_db: Optional[DB]
+
 
 def set_db(d: DB):
     global _db
     _db = d
 
+
 def db() -> DB:
     return _db
+
 
 def cursor():
     return db().conn.cursor()
