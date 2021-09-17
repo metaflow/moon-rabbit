@@ -304,7 +304,7 @@ class ListAddItem:
         _, list_name, value = parts
         v = get_variables()
         channel_id = v['channel_id']
-        id, b = db.add_list_item(channel_id, list_name, value)
+        id, b = db().add_list_item(channel_id, list_name, value)
         if b:
             return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")], False
         return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')], False
