@@ -255,7 +255,7 @@ class TwitchBot(twitchCommands.Bot):
                 variables = {
                     'author': str(author),
                     'author_name': str(author),
-                    'mention': Lazy(lambda: self.any_mention(message.content)),
+                    'mention': Lazy(lambda: self.any_mention(message.content, info, author)),
                     'direct_mention': Lazy(lambda: self.mentions(message.content)),
                     'random_mention': Lazy(lambda: self.random_mention(info, author)),
                     'media': 'twitch',
