@@ -170,15 +170,11 @@ DROP TABLE channels;
         return self.get_list_item(info.items_ids[info.idx])
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
-        key = f'get_commands_{channel_id}_{prefix}'
-        if not key in self.cache:
-            logging.info(f'loading {key}')
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
-                dicts = [x[0]for x in cur.fetchall()]
-                self.cache[key] = [dictToCommandData(x) for x in dicts]
-        return self.cache[key]
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
+            dicts = [x[0]for x in cur.fetchall()]
+            return [dictToCommandData(x) for x in dicts]
 
     def set_command(self, cur: psycopg2.extensions.cursor, channel_id: int, author: str, cmd: CommandData) -> int:
         cmd.regex = None
@@ -192,7 +188,6 @@ DROP TABLE channels;
                      'name': cmd.name,
                      'data': dataclasses.asdict(cmd),
                      })
-        self.cache.clear()
         return cur.fetchone()[0]
 
     def set_variable(self, channel_id: int, name: str, value: str, category: str, expires: int):
