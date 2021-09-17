@@ -335,31 +335,6 @@ class Debug:
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 
-
-async def fn_debug(db: DB,
-                   cur: psycopg2.extensions.cursor,
-                   log: InvocationLog,
-                   channel_id: int,
-                   variables: Dict,
-                   txt: str) -> List[Action]:
-    if variables['media'] != 'discord' or not variables['is_mod']:
-        return []
-    results: List[Action] = []
-    if txt:
-        prefix = variables["prefix"]
-        commands = db.get_commands(channel_id, prefix)
-        for cmd in commands:
-            if cmd.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
-                    json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
-        return results
-    logging.info(f'logs {db.get_logs(channel_id)}')
-    for e in db.get_logs(channel_id):
-        s = '\n'.join([discord.utils.escape_mentions(x[1])
-                      for x in e.messages]) + '\n-----------------------------\n'
-        results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
-    return results
-
 all_commands = {
     'set': fn_cmd_set,
     'prefix-set': fn_set_prefix,
