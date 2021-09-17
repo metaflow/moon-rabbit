@@ -310,7 +310,7 @@ class Debug:
         channel_id = v['channel_id']
         parts = text.split(' ', 1)
         if len(parts) < 2:
-            for e in db.get_logs(channel_id):
+            for e in db().get_logs(channel_id):
                 s = '\n'.join([discord.utils.escape_mentions(x[1])
                             for x in e.messages]) + '\n-----------------------------\n'
                 results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
