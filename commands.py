@@ -243,7 +243,6 @@ async def fn_cmd_set(db: DB,
     '''
     commands_cache.pop(f'commands_{channel_id}_{variables["prefix"]}', None)
     parts = txt.split(' ', 1)
-    logging.info(f'parts {parts}')
     name = parts[0]
     if len(parts) == 1:
         cur.execute(
@@ -300,6 +299,30 @@ async def fn_set_prefix(db: DB,
     return result
 
 
+class Debug:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not is_discord:
+            return [], True
+        if not text.startswith(prefix + "debug"):
+            return [], True
+        results: List[Action] = []
+        v = get_variables()
+        channel_id = v['channel_id']
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            for e in db.get_logs(channel_id):
+                s = '\n'.join([discord.utils.escape_mentions(x[1])
+                            for x in e.messages]) + '\n-----------------------------\n'
+                results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
+            return results, False
+        txt = parts[1]
+        commands = db().get_commands(channel_id, prefix)
+        for cmd in commands:
+            if cmd.name == txt:
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
+                    json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
+        return results, False
+
 async def fn_debug(db: DB,
                    cur: psycopg2.extensions.cursor,
                    log: InvocationLog,
@@ -317,7 +340,7 @@ async def fn_debug(db: DB,
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results
-    logging.info(f'logs {db().get_logs(channel_id)}')
+    logging.info(f'logs {db.get_logs(channel_id)}')
     for e in db.get_logs(channel_id):
         s = '\n'.join([discord.utils.escape_mentions(x[1])
                       for x in e.messages]) + '\n-----------------------------\n'
@@ -327,8 +350,6 @@ async def fn_debug(db: DB,
 all_commands = {
     'set': fn_cmd_set,
     'list-add': fn_add_list_item,
-    # 'list-rm': fn_delete_list_item,
-    # 'list-search': fn_list_search,
     'prefix-set': fn_set_prefix,
     'debug': fn_debug,
 }
