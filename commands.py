@@ -37,13 +37,16 @@ commands_cache = {}
 class Command(Protocol):
     async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True
+    
+    def help(self, prefix: str):
+        return ''
 
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
         z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(),
-                            ListSearch(), Eval(), Debug(), ListAddItem()]
+                            ListSearch(), Eval(), Debug(), ListAddItem(), CommandsList()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -89,6 +92,11 @@ class PersistentCommand:
             log.error(traceback.format_exc())
             return [], True
 
+    def help(self, prefix: str):
+        if self.data.help:
+            return self.data.help
+        return self.data.name + ' ' + self.regex.pattern
+
 
 class ListAddBulk:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -102,7 +110,7 @@ class ListAddBulk:
         list_name = ''
         content = ''
         if len(parts) < 2:
-            return [Action(kind=ActionKind.REPLY, text=f"format {v['prefix']}list-add-bulk LIST_NAME[ item1[<new line>item2...")], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(v['prefix']))], False
         list_name = parts[1]
         if len(parts) == 3:
             content = parts[2]
@@ -125,6 +133,8 @@ class ListAddBulk:
                     added += 1
         return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
 
+    def help(self, prefix: str):
+        return f'"{prefix}list-add-bulk <list name> + <attach a file>'
 
 class ListNames:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -135,6 +145,8 @@ class ListNames:
             return [], True
         return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
 
+    def help(self, prefix: str):
+        return f'{prefix}lists'
 
 def escape_like(t):
     return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
@@ -165,7 +177,7 @@ class ListRemove:
             return [], True
         parts = text.split(' ', 3)
         if len(parts) < 2:
-            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}list-rm <number>" or "{prefix}list-rm <substring> [<list name>]" or "{prefix}list-rm all <list name>"')], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(v['prefix']))], False
         txt = parts[1]
         if txt.isnumeric():
             t = db().delete_list_item(channel_id, int(txt))
@@ -193,6 +205,10 @@ class ListRemove:
         return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')], False
 
 
+    def help(self, prefix: str):
+        return f'"{prefix}list-rm <number>" OR "{prefix}list-rm <substring>" [<list name>]" OR "{prefix}list-rm all <list name>"'
+
+
 class ListSearch:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "list-search"):
@@ -203,7 +219,7 @@ class ListSearch:
             return [], True
         parts = text.split(' ', 3)
         if len(parts) < 2:
-            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}list-search <substring> [<list name>]"')], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(v['prefix']))], False            
         txt = parts[1]
         list_name = ''
         if len(parts) >= 3:
@@ -216,6 +232,9 @@ class ListSearch:
             rr.append(f'#{ii[0]} {ii[1]} "{ii[2]}"')
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
 
+    def help(self, prefix: str):
+        return f'{prefix}list-search <substring> [<list name>]'
+
 
 class Eval:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -226,7 +245,7 @@ class Eval:
             return [], True
         parts = text.split(' ', 1)
         if len(parts) < 2:
-            return [Action(kind=ActionKind.REPLY, text=f'Command is "{prefix}eval <expression>"')], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(v['prefix']))], False
         v['_log'].info(f'eval "{parts[1]}"')
         v['_render_depth'] = 0
         s = render(parts[1], v)
@@ -234,6 +253,8 @@ class Eval:
             s = "<empty>"
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
+    def help(self, prefix: str):
+        return f'{prefix}eval <expression>'
 
 async def fn_cmd_set(db: DB,
                      cur: psycopg2.extensions.cursor,
@@ -307,6 +328,9 @@ class ListAddItem:
             return [Action(kind=ActionKind.REPLY, text=f"Added new list '{list_name}' item '{value}' #{id}")], False
         return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')], False
 
+    def help(self, prefix: str):
+        return f'{prefix}list-add <list name> <value>'
+
 
 class Debug:
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -333,6 +357,9 @@ class Debug:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
+
+    def help(self, prefix: str):
+        return f'"{prefix}debug" OR "{prefix}debug <command name>"'
 
 all_commands = {
     'set': fn_cmd_set,
@@ -373,3 +400,21 @@ async def process_control_message(log: InvocationLog, channel_id: int, txt: str,
         # Add an empty message if no actions are set.
         actions.append(Action(ActionKind.NOOP, ''))
     return actions
+
+class CommandsList:
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not is_discord:
+            return [], True
+        if not text.startswith(prefix + "commands"):
+            return [], True
+        v = get_variables()
+        if not v['is_mod']:
+            return [], True
+        channel_id = v['channel_id']
+        s = []
+        for c in get_commands(channel_id, v['prefix']):
+            s.append(c.help(v['prefix']))
+        return [Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join(s))], False
+    
+    def help(self, prefix: str):
+        return f'{prefix}commands'
