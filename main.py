@@ -14,8 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO !help list of commands and help for templates
-# TODO convert control commands to general "command"
+# TODO mod attribute of command
+# TODO !help list of commands and help for template
+# TODO dt() command to have two versions of text
 # TODO !multiline command
 # TODO twitch error on too fast replies?
 # TODO bingo
@@ -30,7 +31,6 @@
 
 import asyncio
 from data import *
-from jinja2.sandbox import SandboxedEnvironment
 from twitchio.ext import commands as twitchCommands
 import argparse
 import discord
@@ -117,9 +117,6 @@ templates.globals['timestamp'] = lambda: int(time.time())
 async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
     try:
-        controls = await commands.process_control_message(log, channel_id, txt, prefix, get_variables)
-        if controls:
-            return [x for x in controls if x.text]
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
             a, next = await cmd.run(prefix, txt, is_discord, get_variables)
