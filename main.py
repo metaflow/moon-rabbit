@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO count vars
+# TODO !help list of commands and help for templates
 # TODO convert control commands to general "command"
 # TODO !multiline command
 # TODO twitch error on too fast replies?
@@ -24,6 +24,7 @@
 # TODO help command
 # TODO delete from list by search
 # TODO test perf of compiled template VS from_string
+# TODO discord "mention" should pick from active users
 
 """Bot entry point."""
 
@@ -134,6 +135,12 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
 
 
 class DiscordClient(discord.Client):
+
+    def __init__(self, *args, **kwargs):
+        self.channels = {}
+        super().__init__(*args, **kwargs)
+
+
     async def on_ready(self):
         print('We have logged in as {0.user}'.format(self))
 
@@ -151,6 +158,9 @@ class DiscordClient(discord.Client):
             return
         log = InvocationLog(
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
+        if channel_id not in self.channels:
+             self.channels[channel_id] = {'active_users': ttldict2.TTLDict(ttl_seconds=3600.0)}
+        self.channels[channel_id]['active_users'][discord_literal(message.author.mention)] = '+'
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
         # postpone variable calculations as much as possible
@@ -159,17 +169,20 @@ class DiscordClient(discord.Client):
             if not variables:
                 permissions = message.author.guild_permissions
                 is_mod = permissions.ban_members or permissions.administrator
+                bot = discord_literal(self.user.mention)
+                author = discord_literal(message.author.mention)
+                exclude = [bot, author]
                 variables = {
-                    'author': message.author.mention,
+                    'author': author,
                     'author_name': discord_literal(str(message.author.display_name)),
-                    'mention': Lazy(lambda: self.any_mention(message)),
+                    'mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
                     'direct_mention': Lazy(lambda: self.mentions(message)),
-                    'random_mention': Lazy(lambda: self.random_mention(message)),
+                    'random_mention': Lazy(lambda: self.random_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
                     'media': 'discord',
                     'text': message.content,
                     'is_mod': is_mod,
                     'prefix': prefix,
-                    'bot': discordClient.user.mention,
+                    'bot': bot,
                     'channel_id': channel_id,
                     '_log': log,
                     '_discord_message': message,
@@ -189,14 +202,10 @@ class DiscordClient(discord.Client):
             if a.kind == ActionKind.REACT_EMOJI:
                 await message.add_reaction(a.text)
 
-    def random_mention(self, msg):
-        humans = [
-            m for m in msg.channel.members if not m.bot and m.id != msg.author.id]
-        online = [m for m in humans if m.status == discord.Status.online]
-        if online:
-            return discord_literal(random.choice(online).mention)
-        if humans:
-            return discord_literal(random.choice(humans).mention)
+    def random_mention(self, msg, users: List[str], exclude: List[int]):
+        users = [x for x in users if x not in exclude]
+        if users:
+            return random.choice(users)
         return discord_literal(msg.author.mention)
 
     def mentions(self, msg):
@@ -204,9 +213,9 @@ class DiscordClient(discord.Client):
             return ' '.join([discord_literal(x.mention) for x in msg.mentions])
         return ''
 
-    def any_mention(self, msg):
+    def any_mention(self, msg, users: List[str], exclude: List[str]):
         direct = self.mentions(msg)
-        return direct if direct else self.random_mention(msg)
+        return direct if direct else self.random_mention(msg, users, exclude)
 
 
 class Lazy():
