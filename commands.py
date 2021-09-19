@@ -1,34 +1,29 @@
 """
- Copyright 2021 Goncharov Mikhail
+    Copyright 2021 Goncharov Mikhail
 
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-      https://www.apache.org/licenses/LICENSE-2.0
+         https://www.apache.org/licenses/LICENSE-2.0
 
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- """
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    """
 
 import discord
 from discord import channel
 from discord.utils import escape_markdown
-import psycopg2.extensions
 from data import *
 import json
 import json
-from jinja2.sandbox import SandboxedEnvironment
-import psycopg2
-import psycopg2.extensions
 import logging
 import re
-from typing import Callable, Dict, List, Type
-import storage
-from storage import DB, cursor, db
+from typing import Callable, Dict, List
+from storage import cursor, db
 import traceback
 
 commands_cache = {}
@@ -41,12 +36,18 @@ class Command(Protocol):
     def help(self, prefix: str):
         return ''
 
+    def help_full(self, prefix: str):
+        return self.help(prefix)
+
+    def mod_only(self):
+        return True
+
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [ListAddBulk(), ListNames(), ListRemove(),
-                            ListSearch(), Eval(), Debug(), ListAddItem(), CommandsList(),
+        z: List[Command] = [Help(), ListAddBulk(), ListNames(), ListRemove(),
+                            ListSearch(), Eval(), Debug(), ListAddItem(),
                             SetCommand(), SetPrefix()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -54,7 +55,7 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
     return commands_cache[key]
 
 
-class PersistentCommand:
+class PersistentCommand(Command):
     regex: Optional[re.Pattern]
     data: CommandData
 
@@ -95,17 +96,23 @@ class PersistentCommand:
 
     def help(self, prefix: str):
         if self.data.help:
-            return self.data.help
-        return self.data.name + ' ' + self.regex.pattern
+            return self.data.help.replace('!prefix', prefix)
+        return prefix + self.data.name
+
+    def help_full(self, prefix: str):
+        if self.data.help_full:
+            return self.data.help_full.replace('!prefix', prefix)
+        return self.help(prefix)
+
+    def mod_only(self):
+        return self.data.mod
 
 
-class ListAddBulk:
+class ListAddBulk(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "list-add-bulk "):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         log = v['_log']
         parts = text.split(' ', 2)
         list_name = ''
@@ -135,16 +142,17 @@ class ListAddBulk:
         return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
 
     def help(self, prefix: str):
-        return f'"{prefix}list-add-bulk <list name> + <attach a file>'
+        return f'{prefix}list-add-bulk'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}list-add-bulk <list name> + <attach a file>'
 
 
-class ListNames:
+class ListNames(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if text != prefix + "lists":
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         return [Action(kind=ActionKind.REPLY, text='\n'.join(db().get_list_names(v['channel_id'])))], False
 
     def help(self, prefix: str):
@@ -155,6 +163,7 @@ def escape_like(t):
     return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
 
 
+# TODO: move to DB
 def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, str, str]]:
     matched_rows: List[Tuple[int, str]] = []
     with cursor() as cur:
@@ -170,14 +179,12 @@ def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, st
     return matched_rows
 
 
-class ListRemove:
+class ListRemove(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "list-rm"):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        if not v['is_mod']:
-            return [], True
         parts = text.split(' ', 3)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
@@ -207,18 +214,19 @@ class ListRemove:
         s = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY, text=f'Multiple items match query: \n{s}')], False
 
+    def help_full(self, prefix: str):
+        return f'{prefix}list-rm <number> OR {prefix}list-rm <substring> [<list name>] OR {prefix}list-rm all <list name>'
+
     def help(self, prefix: str):
-        return f'"{prefix}list-rm <number>" OR "{prefix}list-rm <substring>" [<list name>]" OR "{prefix}list-rm all <list name>"'
+        return f"{prefix}list-rm"
 
 
-class ListSearch:
+class ListSearch(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "list-search"):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        if not v['is_mod']:
-            return [], True
         parts = text.split(' ', 3)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
@@ -235,16 +243,17 @@ class ListSearch:
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
 
     def help(self, prefix: str):
+        return f'{prefix}list-search'
+
+    def help_full(self, prefix: str):
         return f'{prefix}list-search <substring> [<list name>]'
 
 
-class Eval:
+class Eval(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "eval"):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         parts = text.split(' ', 1)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
@@ -256,16 +265,17 @@ class Eval:
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
-        return f'{prefix}eval <expression>'
+        return f'{prefix}eval'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}eval <expression> (see "set")'
 
 
-class SetCommand:
+class SetCommand(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "set"):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         log = v['_log']
         channel_id = v['channel_id']
         commands_cache.pop(f'commands_{channel_id}_{prefix}', None)
@@ -283,7 +293,8 @@ class SetCommand:
             cmd = dictToCommandData(json.loads(command_text))
         except Exception as e:
             log.info('failed to parse command as JSON, assuming literal text')
-            cmd.actions.append(Action(text=command_text, kind=ActionKind.NEW_MESSAGE))
+            cmd.actions.append(
+                Action(text=command_text, kind=ActionKind.NEW_MESSAGE))
         cmd.name = name
         log.info(f'parsed command {cmd}')
         id = db().set_command(cursor(), channel_id, v['author_name'], cmd)
@@ -292,16 +303,17 @@ class SetCommand:
         return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")], False
 
     def help(self, prefix: str):
+        return f'{prefix}set'
+
+    def help_full(self, prefix: str):
         return f'{prefix}set [<template>|<JSON>]'
 
 
-class SetPrefix:
+class SetPrefix(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "set"):
+        if not text.startswith(prefix + "prefix-set"):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         log = v['_log']
         channel_id = v['channel_id']
         if v['bot'] not in str(v['direct_mention']):
@@ -315,21 +327,22 @@ class SetPrefix:
             db().set_discord_prefix(channel_id, new_prefix)
         else:
             db().set_twitch_prefix(channel_id, new_prefix)
-        return Action(kind=ActionKind.REPLY, text=f'set new prefix for {v["media"]} to "{new_prefix}"'), False
+        return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {v["media"]} to "{new_prefix}"')], False
 
     def help(self, prefix: str):
-        return f'{prefix}set [<template>|<JSON>]'
+        return f'{prefix}prefix-set'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}prefix-set <new prefix> <bot>'
 
 
-class ListAddItem:
+class ListAddItem(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not is_discord:
             return [], True
         if not text.startswith(prefix + "list-add"):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         parts = text.split(' ', 2)
         if len(parts) < 3:
             return [], False
@@ -341,10 +354,13 @@ class ListAddItem:
         return [Action(kind=ActionKind.REPLY, text=f'List "{list_name}" item "{value}" #{id} already exists')], False
 
     def help(self, prefix: str):
+        return f'{prefix}list-add'
+
+    def help_full(self, prefix: str):
         return f'{prefix}list-add <list name> <value>'
 
 
-class Debug:
+class Debug(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not is_discord:
             return [], True
@@ -352,8 +368,6 @@ class Debug:
             return [], True
         results: List[Action] = []
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
         channel_id = v['channel_id']
         parts = text.split(' ', 1)
         if len(parts) < 2:
@@ -371,23 +385,50 @@ class Debug:
         return results, False
 
     def help(self, prefix: str):
+        return f'{prefix}debug'
+
+    def help_full(self, prefix: str):
         return f'"{prefix}debug" OR "{prefix}debug <command name>"'
 
 
-class CommandsList:
+class Help(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not is_discord:
             return [], True
-        if not text.startswith(prefix + "commands"):
+        if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
             return [], True
         v = get_variables()
-        if not v['is_mod']:
-            return [], True
+        is_mod = v['is_mod']
         channel_id = v['channel_id']
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            s = []
+            for c in get_commands(channel_id, prefix):
+                if c.mod_only() and not is_mod:
+                    continue
+                if isinstance(c, PersistentCommand):
+                    if c.data.hidden:
+                        continue
+                s.append(c.help(prefix))
+            return [Action(kind=ActionKind.REPLY, text='commands: ' + ', '.join(s))], False
+        sub = parts[1].strip()
+        if not sub:
+            return [], False
         s = []
         for c in get_commands(channel_id, prefix):
-            s.append(c.help(prefix))
-        return [Action(kind=ActionKind.PRIVATE_MESSAGE, text='\n'.join(s))], False
+            if c.mod_only() and not is_mod:
+                continue
+            hf = c.help_full(prefix)
+            h = c.help(prefix)
+            logging.info(f'sub "{sub}", h "{hf}"')
+            if h == sub or h == prefix + sub or h.startswith(sub + ' ') or h.startswith(prefix + sub + ' '):
+                s.append(hf)
+        if not s:
+            return [], False
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(s))], False
 
     def help(self, prefix: str):
-        return f'{prefix}commands'
+        return f'{prefix}help [<command name>]'
+
+    def mod_only(self):
+        return False

@@ -114,11 +114,15 @@ templates.globals['timestamp'] = lambda: int(time.time())
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 
-async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
     try:
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
+            log.info(f'command mod only:{cmd.mod_only()} help:{cmd.help(prefix)} help full:{cmd.help_full(prefix)}')
+            if cmd.mod_only() and not is_mod:
+                log.info(f'skip mod command {cmd.help(prefix)} {cmd.help_full(prefix)}')
+                continue
             a, next = await cmd.run(prefix, txt, is_discord, get_variables)
             actions.extend(a)
             if not next:
@@ -160,12 +164,12 @@ class DiscordClient(discord.Client):
         self.channels[channel_id]['active_users'][discord_literal(message.author.mention)] = '+'
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
+        permissions = message.author.guild_permissions
+        is_mod = permissions.ban_members or permissions.administrator
         # postpone variable calculations as much as possible
         def get_vars():
             nonlocal variables
             if not variables:
-                permissions = message.author.guild_permissions
-                is_mod = permissions.ban_members or permissions.administrator
                 bot = discord_literal(self.user.mention)
                 author = discord_literal(message.author.mention)
                 exclude = [bot, author]
@@ -185,7 +189,7 @@ class DiscordClient(discord.Client):
                     '_discord_message': message,
                 }
             return variables
-        actions = await process_message(log, channel_id, message.content, prefix, True, get_vars)
+        actions = await process_message(log, channel_id, message.content, prefix, True, is_mod, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
@@ -264,11 +268,11 @@ class TwitchBot(twitchCommands.Bot):
         info['active_users'][author] = 1
         log.info(f'{author} {message.content}')
         variables: Optional[Dict] = None
+        is_mod = message.author.is_mod
         # postpone variable calculations as much as possible
         def get_vars():
             nonlocal variables
             if not variables:
-                is_mod = message.author.is_mod
                 variables = {
                     'author': str(author),
                     'author_name': str(author),
@@ -284,7 +288,7 @@ class TwitchBot(twitchCommands.Bot):
                     '_log': log,
                 }
             return variables
-        actions = await process_message(log, channel_id, message.content, prefix, False, get_vars)
+        actions = await process_message(log, channel_id, message.content, prefix, False, is_mod, get_vars)
         db().add_log(channel_id, log)
         ctx = await self.get_context(message)
         for a in actions:

@@ -56,7 +56,9 @@ class CommandData:
     twitch: bool = True
     name: str = ''
     help: str = ''
+    help_full: str = ''
     mod: bool = False
+    hidden: bool = False # don't show in !help
     actions: List[Action] = dataclasses.field(default_factory=list)
     version: int = 1
 
