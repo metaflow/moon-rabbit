@@ -316,7 +316,34 @@ class SetCommand(Command):
         return f'{prefix}set'
 
     def help_full(self, prefix: str):
-        return f'{prefix}set [<template>|<JSON>]'
+        return f'''{prefix}set [<template>|<JSON>]
+Missing value deletes command.
+See https://jinja.palletsprojects.com/en/3.0.x/templates/ for the general template syntax.
+
+Variables available:
+- "author" - author of original message
+- "bot" - bot mention
+- "direct_mention" (if there is a direct action)
+- "is_mod" - author is moderator
+- "media" - "discord" or "twitch"
+- "mention" - direct_mention if set, otherwise random_mention
+- "prefix" - command prefix ({prefix})
+- "random_mention" (always random)
+- "text" - full message text
+
+Additional functions:
+- list(<list name>) - random item from the list, item is treated as template too;
+- randint(from = 0, to = 100) - random integer in [from, to] range;
+- timestamp() - current timestamp in seconds, integer
+- dt(<text for discord>, <text for twitch>) - different fixed text for discord or twitch;
+- get(<name>[, <category = ''>, <default value = ''>]) - get variable value;
+- set(<name>[, <value = ''>, <category = ''>, <expires in seconds = 32400 (9h)>]) - set variable that will expire after some time. Empty value deletes the variable;
+- category_size(<category>) - number of set variables in category;
+- delete_category(<category>) - delete all variables in category;
+
+JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
+It is the only way to customize a command to match a different regex, allow only for mods, hide it.
+'''
 
 
 class SetPrefix(Command):
@@ -386,7 +413,7 @@ class Debug(Command):
         commands = db().get_commands(channel_id, prefix)
         for cmd in commands:
             if cmd.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, discord.utils.escape_markdown(discord.utils.escape_mentions(
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'set {cmd.name} ' +  discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 

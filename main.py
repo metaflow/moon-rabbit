@@ -92,16 +92,24 @@ def set_variable(ctx, name: str, value: str = '', category: str = '', expires: i
     db().set_variable(channel_id, name, value, category, expires + int(time.time()))
     return ''
 
+
 @jinja2.pass_context
 def get_variables_category_size(ctx, name: str) -> int:
     channel_id = ctx.get('channel_id')
     return db().count_variables_in_category(channel_id, name)
+
 
 @jinja2.pass_context
 def delete_category(ctx, name: str):
     channel_id = ctx.get('channel_id')
     db().delete_category(channel_id, name)
     return ''
+
+
+@jinja2.pass_context
+def discord_or_twitch(ctx, vd: str, vt: str):
+    return vd if ctx.get('media') == 'discord' else vt
+
 
 templates.globals['list'] = render_list_item
 templates.globals['randint'] = randint
@@ -111,8 +119,10 @@ templates.globals['set'] = set_variable
 templates.globals['category_size'] = get_variables_category_size
 templates.globals['delete_category'] = delete_category
 templates.globals['timestamp'] = lambda: int(time.time())
+templates.globals['dt'] = discord_or_twitch
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
+
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
@@ -143,7 +153,6 @@ class DiscordClient(discord.Client):
         self.channels = {}
         super().__init__(*args, **kwargs)
 
-
     async def on_ready(self):
         print('We have logged in as {0.user}'.format(self))
 
@@ -162,13 +171,16 @@ class DiscordClient(discord.Client):
         log = InvocationLog(
             f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
         if channel_id not in self.channels:
-             self.channels[channel_id] = {'active_users': ttldict2.TTLDict(ttl_seconds=3600.0)}
-        self.channels[channel_id]['active_users'][discord_literal(message.author.mention)] = '+'
+            self.channels[channel_id] = {
+                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0)}
+        self.channels[channel_id]['active_users'][discord_literal(
+            message.author.mention)] = '+'
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
         permissions = message.author.guild_permissions
         is_mod = permissions.ban_members or permissions.administrator
         # postpone variable calculations as much as possible
+
         def get_vars():
             nonlocal variables
             if not variables:
@@ -272,6 +284,7 @@ class TwitchBot(twitchCommands.Bot):
         variables: Optional[Dict] = None
         is_mod = message.author.is_mod
         # postpone variable calculations as much as possible
+
         def get_vars():
             nonlocal variables
             if not variables:
@@ -295,6 +308,8 @@ class TwitchBot(twitchCommands.Bot):
         ctx = await self.get_context(message)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
+                if len(a.text) > 500:
+                    a.text = a.text[:497] + "..."
                 await ctx.send(a.text)
 
     def any_mention(self, txt: str, info, author):
@@ -312,6 +327,7 @@ class TwitchBot(twitchCommands.Bot):
         if users:
             return "@" + random.choice(users)
         return "@" + author
+
 
 async def expireVariables():
     while True:
