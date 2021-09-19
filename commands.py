@@ -42,6 +42,12 @@ class Command(Protocol):
     def mod_only(self):
         return True
 
+    def for_discord(self):
+        return True
+
+    def for_twitch(self):
+        return True
+
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
@@ -65,11 +71,13 @@ class PersistentCommand(Command):
         logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
+    def for_discord(self):
+        return self.data.discord
+
+    def for_twitch(self):
+        return self.data.twitch
+
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if (not self.data.discord) and is_discord:
-            return [], True
-        if (not self.data.twitch) and (not is_discord):
-            return [], True
         if not re.search(self.regex, text):
             return [], True
         variables = get_variables()
@@ -116,19 +124,18 @@ class ListAddBulk(Command):
         log = v['_log']
         parts = text.split(' ', 2)
         list_name = ''
-        content = ''
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
         list_name = parts[1]
+        content = ''
         if len(parts) == 3:
             content = parts[2]
-        if is_discord:
-            msg: discord.Message = v['_discord_message']
-            log.info('looking for attachments')
-            for att in msg.attachments:
-                log.info(
-                    f'attachment {att.filename} {att.size} {att.content_type}')
-                content += '\n' + (await att.read()).decode('utf-8')
+        msg: discord.Message = v['_discord_message']
+        log.info('looking for attachments')
+        for att in msg.attachments:
+            log.info(
+                f'attachment {att.filename} {att.size} {att.content_type}')
+            content += '\n' + (await att.read()).decode('utf-8')
         channel_id = v['channel_id']
         values = [x.strip() for x in content.split('\n')]
         added = 0
@@ -140,6 +147,9 @@ class ListAddBulk(Command):
                 if b:
                     added += 1
         return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
+
+    def for_twitch(self):
+        return False
 
     def help(self, prefix: str):
         return f'{prefix}list-add-bulk'
@@ -338,8 +348,6 @@ class SetPrefix(Command):
 
 class ListAddItem(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not is_discord:
-            return [], True
         if not text.startswith(prefix + "list-add"):
             return [], True
         v = get_variables()
@@ -362,8 +370,6 @@ class ListAddItem(Command):
 
 class Debug(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not is_discord:
-            return [], True
         if not text.startswith(prefix + "debug"):
             return [], True
         results: List[Action] = []
@@ -384,6 +390,9 @@ class Debug(Command):
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 
+    def for_twitch(self):
+        return False
+
     def help(self, prefix: str):
         return f'{prefix}debug'
 
@@ -393,8 +402,6 @@ class Debug(Command):
 
 class Help(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not is_discord:
-            return [], True
         if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
             return [], True
         v = get_variables()

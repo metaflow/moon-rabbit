@@ -119,9 +119,11 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
     try:
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
-            log.info(f'command mod only:{cmd.mod_only()} help:{cmd.help(prefix)} help full:{cmd.help_full(prefix)}')
             if cmd.mod_only() and not is_mod:
-                log.info(f'skip mod command {cmd.help(prefix)} {cmd.help_full(prefix)}')
+                continue
+            if is_discord and not cmd.for_discord():
+                continue
+            if (not is_discord) and not cmd.for_twitch():
                 continue
             a, next = await cmd.run(prefix, txt, is_discord, get_variables)
             actions.extend(a)
