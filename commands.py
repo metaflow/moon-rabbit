@@ -52,7 +52,7 @@ class Command(Protocol):
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [Help(), ListAddBulk(), ListNames(), ListRemove(),
+        z: List[Command] = [HelpCmd(), ListAddBulk(), ListNames(), ListRemove(),
                             ListSearch(), Eval(), Debug(), ListAddItem(),
                             SetCommand(), SetPrefix()]
         z.extend([PersistentCommand(x, prefix)
@@ -400,7 +400,7 @@ class Debug(Command):
         return f'"{prefix}debug" OR "{prefix}debug <command name>"'
 
 
-class Help(Command):
+class HelpCmd(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
             return [], True
@@ -411,6 +411,10 @@ class Help(Command):
         if len(parts) < 2:
             s = []
             for c in get_commands(channel_id, prefix):
+                if is_discord and not c.for_discord():
+                    continue
+                if (not is_discord) and not c.for_twitch():
+                    continue
                 if c.mod_only() and not is_mod:
                     continue
                 if isinstance(c, PersistentCommand):
@@ -424,6 +428,10 @@ class Help(Command):
         s = []
         for c in get_commands(channel_id, prefix):
             if c.mod_only() and not is_mod:
+                continue
+            if is_discord and not c.for_discord():
+                continue
+            if (not is_discord) and not c.for_twitch():
                 continue
             hf = c.help_full(prefix)
             h = c.help(prefix)
