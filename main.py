@@ -31,16 +31,16 @@
 
 import asyncio
 from data import *
-from twitchio.ext import commands as twitchCommands
+from twitchio.ext import commands as twitchCommands # type: ignore
 import argparse
-import discord
+import discord # type: ignore
 import jinja2
 import logging
 import os
 import sys
 import random
 import re
-import ttldict2
+import ttldict2 # type: ignore
 from storage import DB, db, set_db
 from typing import Callable, List
 import traceback
@@ -217,7 +217,7 @@ class DiscordClient(discord.Client):
             if a.kind == ActionKind.REACT_EMOJI:
                 await message.add_reaction(a.text)
 
-    def random_mention(self, msg, users: List[str], exclude: List[int]):
+    def random_mention(self, msg, users: List[str], exclude: List[str]):
         users = [x for x in users if x not in exclude]
         if users:
             return random.choice(users)

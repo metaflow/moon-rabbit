@@ -14,19 +14,14 @@
     limitations under the License.
     """
 
-import discord
-from discord import channel
-from discord.utils import escape_markdown
-from data import *
-import json
+import discord # type: ignore
+from data import * 
 import json
 import logging
 import re
 from typing import Callable, Dict, List
 from storage import cursor, db
 import traceback
-
-commands_cache = {}
 
 
 class Command(Protocol):
@@ -49,6 +44,7 @@ class Command(Protocol):
         return True
 
 
+commands_cache: Dict[str, List[Command]] = {}
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
@@ -62,7 +58,7 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
 
 
 class PersistentCommand(Command):
-    regex: Optional[re.Pattern]
+    regex: re.Pattern
     data: CommandData
 
     def __init__(self, data, prefix):
@@ -140,10 +136,10 @@ class ListAddBulk(Command):
         values = [x.strip() for x in content.split('\n')]
         added = 0
         total = 0
-        for v in values:
-            if v:
+        for s in values:
+            if s:
                 total += 1
-                _, b = db().add_list_item(channel_id, list_name, v)
+                _, b = db().add_list_item(channel_id, list_name, s)
                 if b:
                     added += 1
         return [Action(kind=ActionKind.REPLY, text=f"Added {added} items out of {total}")], False
@@ -175,7 +171,7 @@ def escape_like(t):
 
 # TODO: move to DB
 def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, str, str]]:
-    matched_rows: List[Tuple[int, str]] = []
+    matched_rows: List[Tuple[int, str, str]] = []
     with cursor() as cur:
         q = '%' + escape_like(txt) + '%'
         if list_name:
@@ -185,7 +181,7 @@ def list_search(channel_id: int, txt: str, list_name: str) -> List[Tuple[int, st
             cur.execute("select id, list_name, text from lists where (channel_id = %s) AND (text LIKE %s)",
                         (channel_id, q))
         for row in cur.fetchall():
-            matched_rows.append([row[0], row[1], row[2]])
+            matched_rows.append((row[0], row[1], row[2]))
     return matched_rows
 
 

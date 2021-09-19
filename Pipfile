@@ -11,6 +11,7 @@ jinja2 = "*"
 twitchio = "*"
 ttldict2 = "*"
 dacite = "*"
+mypy = "*"
 
 [dev-packages]
 autopep8 = "*"

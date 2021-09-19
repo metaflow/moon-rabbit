@@ -17,15 +17,15 @@
 import dataclasses
 from typing import Dict, List, Optional, Tuple
 from data import *
-import psycopg2
-import psycopg2.extensions
-import psycopg2.extras
+import psycopg2  # type: ignore
+import psycopg2.extensions  # type: ignore
+import psycopg2.extras  # type: ignore
 import functools
 import logging
 import collections
 import random
 import time
-from cachetools import TTLCache
+from cachetools import TTLCache  # type: ignore
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
@@ -186,9 +186,15 @@ DROP TABLE channels;
         if n == 0:
             return ''
         if n == 1:
-            return self.get_list_item(channel_id, info.items_ids[0])[0]
+            item = self.get_list_item(channel_id, info.items_ids[0])
+            if not item:
+                return ''
+            return item[0]
         info.idx = (info.idx + random.randint(1, n - 1)) % n
-        return self.get_list_item(channel_id, info.items_ids[info.idx])[0]
+        item = self.get_list_item(channel_id, info.items_ids[info.idx])
+        if not item:
+            return ''
+        return item[0]
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
@@ -198,7 +204,6 @@ DROP TABLE channels;
             return [dictToCommandData(x) for x in dicts]
 
     def set_command(self, cur: psycopg2.extensions.cursor, channel_id: int, author: str, cmd: CommandData) -> int:
-        cmd.regex = None
         cur.execute('''
             INSERT INTO commands (channel_id, author, name, data)
             VALUES (%(channel_id)s, %(author)s, %(name)s, %(data)s)
@@ -312,6 +317,8 @@ def set_db(d: DB):
 
 
 def db() -> DB:
+    if not _db:
+        raise Exception("database is not initialized")
     return _db
 
 

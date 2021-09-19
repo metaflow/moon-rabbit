@@ -18,7 +18,6 @@ import dataclasses
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Protocol, Tuple
 import logging
-import re
 import dacite
 from dacite.config import Config
 from jinja2.sandbox import SandboxedEnvironment
