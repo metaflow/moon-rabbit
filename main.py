@@ -145,14 +145,22 @@ def inflect(line: str, *args: Union[str,int]) -> str:
         t = mm[0]
         if 'NOUN' in t.tag:
             if ss:
-                t = t.inflect(ss)
+                x = t.inflect(ss)
+                if x:
+                    t = x
             if n:
-                t = t.make_agree_with_number(n)
+                x = t.make_agree_with_number(n)
+                if x:
+                    t = x
         else:
             if n:
-                t = t.make_agree_with_number(n)
+                x = t.make_agree_with_number(n)
+                if x:
+                    t = x
             if ss:
-                t = t.inflect(ss)
+                x = t.inflect(ss)
+                if x:
+                    t = x
         parts[i] = t.word
     return ''.join(parts)
 
