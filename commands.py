@@ -14,8 +14,8 @@
     limitations under the License.
     """
 
-import discord # type: ignore
-from data import * 
+import discord  # type: ignore
+from data import *
 import json
 import logging
 import re
@@ -45,6 +45,8 @@ class Command(Protocol):
 
 
 commands_cache: Dict[str, List[Command]] = {}
+
+
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
@@ -336,7 +338,7 @@ Additional functions:
 - set(<name>[, <value = ''>, <category = ''>, <expires in seconds = 32400 (9h)>]) - set variable that will expire after some time. Empty value deletes the variable;
 - category_size(<category>) - number of set variables in category;
 - delete_category(<category>) - delete all variables in category;
-- inflect(<category>, args...) - inflect russian sentence and agree with number (possible options: им, nomn, род, gent, дат, datv, вин, accs, твор, ablt, предл, loct, ед, sing, мн, plur). E.g. inflect('лучший приятель', 4, 'дат')
+- inflect(<category>, <list of iflections>, <list of semantic hints>, <agree with number>) - inflect russian sentence and agree with number (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр,ПРИЛ', 'мр,СУЩ'], 4)
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
@@ -410,7 +412,7 @@ class Debug(Command):
         commands = db().get_commands(channel_id, prefix)
         for cmd in commands:
             if cmd.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'set {cmd.name} ' +  discord.utils.escape_markdown(discord.utils.escape_mentions(
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'set {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 

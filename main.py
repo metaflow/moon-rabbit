@@ -31,23 +31,23 @@
 
 import asyncio
 from data import *
-from twitchio.ext import commands as twitchCommands # type: ignore
+from twitchio.ext import commands as twitchCommands  # type: ignore
 import argparse
-import discord # type: ignore
+import discord  # type: ignore
 import jinja2
 import logging
 import os
 import sys
 import random
 import re
-import ttldict2 # type: ignore
+import ttldict2  # type: ignore
 from storage import DB, db, set_db
 from typing import Callable, List, Set, Union
 import traceback
 import commands
 import time
 import logging.handlers
-import pymorphy2 #type: ignore
+import pymorphy2  # type: ignore
 
 morph = pymorphy2.MorphAnalyzer(lang='ru')
 
@@ -113,33 +113,22 @@ def delete_category(ctx, name: str):
 def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
 
-inflect_dict = {
-    'им': 'nomn',
-    'род': 'gent',
-    'дат': 'datv',
-    'вин': 'accs',
-    'твор': 'ablt',
-    'предл': 'loct',
-    'ед': 'sing',
-    'мн': 'plur',
-}
 
-def inflect(line: str, *args: Union[str,int]) -> str:
+def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = None) -> str:
     if not args:
         return line
+    inf = morph.cyr2lat(inf)
+    ss: Set[str] = set(inf.split(','))
     parts = re.split(r'(\s+)', line.strip())
-    ss: Set[str] = set()
-    n: Optional[int] = None
-    for x in args:
-        if isinstance(x, int):
-            n = x
-        else:
-            if x in inflect_dict:
-                ss.add(inflect_dict[x])
-            else:
-                ss.add(x)
     for i in range(0, len(parts), 2):
         mm = morph.parse(parts[i])
+        j = i // 2
+        if len(tagFilter) > j:
+            if not tagFilter[j]:
+                continue
+            tf = morph.cyr2lat(tagFilter[j]).split(',')
+            for p in tf:
+                mm = [x for x in mm if p in x.tag]
         if not mm:
             continue
         t = mm[0]
@@ -163,6 +152,7 @@ def inflect(line: str, *args: Union[str,int]) -> str:
                     t = x
         parts[i] = t.word
     return ''.join(parts)
+
 
 templates.globals['list'] = render_list_item
 templates.globals['randint'] = randint
