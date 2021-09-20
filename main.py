@@ -113,10 +113,6 @@ def delete_category(ctx, name: str):
 def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
 
-@jinja2.pass_context
-def discord_or_twitch(ctx, vd: str, vt: str):
-    return vd if ctx.get('media') == 'discord' else vt
-
 inflect_dict = {
     'им': 'nomn',
     'род': 'gent',
@@ -133,7 +129,7 @@ def inflect(line: str, *args: Union[str,int]) -> str:
         return line
     parts = re.split(r'(\s+)', line.strip())
     ss: Set[str] = set()
-    n: Optional[int]
+    n: Optional[int] = None
     for x in args:
         if isinstance(x, int):
             n = x
