@@ -42,11 +42,14 @@ import random
 import re
 import ttldict2 # type: ignore
 from storage import DB, db, set_db
-from typing import Callable, List
+from typing import Callable, List, Set, Union
 import traceback
 import commands
 import time
 import logging.handlers
+import pymorphy2 #type: ignore
+
+morph = pymorphy2.MorphAnalyzer(lang='ru')
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -110,6 +113,52 @@ def delete_category(ctx, name: str):
 def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
 
+@jinja2.pass_context
+def discord_or_twitch(ctx, vd: str, vt: str):
+    return vd if ctx.get('media') == 'discord' else vt
+
+inflect_dict = {
+    'им': 'nomn',
+    'род': 'gent',
+    'дат': 'datv',
+    'вин': 'accs',
+    'твор': 'ablt',
+    'предл': 'loct',
+    'ед': 'sing',
+    'мн': 'plur',
+}
+
+def inflect(line: str, *args: Union[str,int]) -> str:
+    if not args:
+        return line
+    parts = re.split(r'(\s+)', line.strip())
+    ss: Set[str] = set()
+    n: Optional[int]
+    for x in args:
+        if isinstance(x, int):
+            n = x
+        else:
+            if x in inflect_dict:
+                ss.add(inflect_dict[x])
+            else:
+                ss.add(x)
+    for i in range(0, len(parts), 2):
+        mm = morph.parse(parts[i])
+        if not mm:
+            continue
+        t = mm[0]
+        if 'NOUN' in t.tag:
+            if ss:
+                t = t.inflect(ss)
+            if n:
+                t = t.make_agree_with_number(n)
+        else:
+            if n:
+                t = t.make_agree_with_number(n)
+            if ss:
+                t = t.inflect(ss)
+        parts[i] = t.word
+    return ''.join(parts)
 
 templates.globals['list'] = render_list_item
 templates.globals['randint'] = randint
@@ -120,6 +169,7 @@ templates.globals['category_size'] = get_variables_category_size
 templates.globals['delete_category'] = delete_category
 templates.globals['timestamp'] = lambda: int(time.time())
 templates.globals['dt'] = discord_or_twitch
+templates.globals['inflect'] = inflect
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 

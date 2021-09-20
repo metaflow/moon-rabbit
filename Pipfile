@@ -12,6 +12,8 @@ twitchio = "*"
 ttldict2 = "*"
 dacite = "*"
 mypy = "*"
+pymorphy2 = "*"
+pymorphy2-dicts-ru = "*"
 
 [dev-packages]
 autopep8 = "*"

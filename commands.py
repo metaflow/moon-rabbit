@@ -336,6 +336,7 @@ Additional functions:
 - set(<name>[, <value = ''>, <category = ''>, <expires in seconds = 32400 (9h)>]) - set variable that will expire after some time. Empty value deletes the variable;
 - category_size(<category>) - number of set variables in category;
 - delete_category(<category>) - delete all variables in category;
+- inflect(<category>, args...) - inflect russian sentence and agree with number (possible options: им, nomn, род, gent, дат, datv, вин, accs, твор, ablt, предл, loct, ед, sing, мн, plur). E.g. inflect('лучший приятель', 4, 'дат')
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
