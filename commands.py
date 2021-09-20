@@ -338,7 +338,8 @@ Additional functions:
 - set(<name>[, <value = ''>, <category = ''>, <expires in seconds = 32400 (9h)>]) - set variable that will expire after some time. Empty value deletes the variable;
 - category_size(<category>) - number of set variables in category;
 - delete_category(<category>) - delete all variables in category;
-- inflect(<category>, <list of iflections>, <list of semantic hints>, <agree with number>) - inflect russian sentence and agree with number (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр,ПРИЛ', 'мр,СУЩ'], 4)
+- inflect(<category>, <list of iflections>, <semantic filters>, <agree with number>) - inflect russian sentence and agree with number (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр;ПРИЛ', 'мр;СУЩ'], 4).
+Semantic filter has form "a,b;c;d,e" - it will filter words that has tags (a or b) AND (c) AND (d OR e). See https://pymorphy2.readthedocs.io/en/latest/user/grammemes.html for the full list of grammemes.
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.

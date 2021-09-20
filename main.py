@@ -126,9 +126,9 @@ def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = N
         if len(tagFilter) > j:
             if not tagFilter[j]:
                 continue
-            tf = morph.cyr2lat(tagFilter[j]).split(',')
-            for p in tf:
-                mm = [x for x in mm if p in x.tag]
+            for or_match in tagFilter[j].split(';'):
+                tf = morph.cyr2lat(or_match).split(',')
+                mm = [x for x in mm if any((p in x.tag) for p in tf)]
         if not mm:
             continue
         t = mm[0]
