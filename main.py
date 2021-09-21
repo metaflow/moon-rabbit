@@ -22,7 +22,7 @@
 # TODO bingo or anagramms?
 # TODO check sandbox settings
 # TODO test perf of compiled template VS from_string
-
+# TODO how to mark some list items as "good" (e.g. ones that is possible to inflect?) - for the start add a separate jsonb column with tags
 """Bot entry point."""
 
 import asyncio

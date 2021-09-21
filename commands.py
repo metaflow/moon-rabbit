@@ -156,6 +156,31 @@ class ListAddBulk(Command):
         return f'{prefix}list-add-bulk <list name> + <attach a file>'
 
 
+class ListDownload(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "list-download "):
+            return [], True
+        v = get_variables()
+        log = v['_log']
+        parts = text.split(' ', 2)
+        list_name = ''
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+        list_name = parts[1]
+        msg: discord.Message = v['_discord_message']
+        channel_id = v['channel_id']
+        return [Action(kind=ActionKind.REPLY, text=f"TBD")], False
+
+    def for_twitch(self):
+        return False
+
+    def help(self, prefix: str):
+        return f'{prefix}list-download'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}list-download <list name>'
+
+
 class ListNames(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if text != prefix + "lists":
