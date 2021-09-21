@@ -14,18 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO mod attribute of command
+# TODO what's with discord channel visibility (it picks inactive users from other channels?)?
+# TODO command to download a list content
 # TODO !help list of commands and help for template
-# TODO dt() command to have two versions of text
 # TODO !multiline command
 # TODO twitch error on too fast replies?
-# TODO bingo
+# TODO bingo or anagramms?
 # TODO check sandbox settings
-# TODO DB backups
-# TODO help command
-# TODO delete from list by search
 # TODO test perf of compiled template VS from_string
-# TODO discord "mention" should pick from active users
 
 """Bot entry point."""
 
