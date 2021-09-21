@@ -174,6 +174,12 @@ DROP TABLE channels;
                                        for x in cur.fetchall()])
         return self.lists[key]
 
+    def get_all_list_items(self, channel_id: int, name: str) -> List[Tuple[int, str]]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT id, text FROM lists WHERE channel_id = %s AND list_name = %s;",
+                        [channel_id, name])
+            return [(x[0], x[1]) for x in cur.fetchall()]
+
     def get_list_names(self, channel_id: int) -> List[str]:
         with self.conn.cursor() as cur:
             cur.execute(

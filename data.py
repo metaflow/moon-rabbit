@@ -46,6 +46,8 @@ class ActionKind(str, Enum):
 class Action:
     kind: ActionKind
     text: str
+    attachment: str = ''
+    attachment_name: str = ''
 
 
 @dataclasses.dataclass

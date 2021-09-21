@@ -26,6 +26,7 @@
 """Bot entry point."""
 
 import asyncio
+from io import StringIO
 from data import *
 from twitchio.ext import commands as twitchCommands  # type: ignore
 import argparse
@@ -251,7 +252,10 @@ class DiscordClient(discord.Client):
             if a.kind == ActionKind.NEW_MESSAGE:
                 await message.channel.send(a.text)
             if a.kind == ActionKind.REPLY:
-                await message.reply(a.text)
+                if a.attachment:
+                    await message.reply(a.text, file=discord.File(StringIO(a.attachment), filename=a.attachment_name))
+                else:
+                    await message.reply(a.text)
             if a.kind == ActionKind.PRIVATE_MESSAGE:
                 await message.author.send(a.text)
             if a.kind == ActionKind.REACT_EMOJI:

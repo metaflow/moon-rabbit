@@ -50,8 +50,9 @@ commands_cache: Dict[str, List[Command]] = {}
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [HelpCmd(), ListAddBulk(), ListNames(), ListRemove(),
-                            ListSearch(), Eval(), Debug(), ListAddItem(),
+        z: List[Command] = [HelpCmd(),
+                            ListSearch(), ListAddBulk(), ListNames(), ListRemove(), ListAddItem(), ListDownload(),
+                            Eval(), Debug(), 
                             SetCommand(), SetPrefix()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -161,15 +162,18 @@ class ListDownload(Command):
         if not text.startswith(prefix + "list-download "):
             return [], True
         v = get_variables()
-        log = v['_log']
         parts = text.split(' ', 2)
-        list_name = ''
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
         list_name = parts[1]
         msg: discord.Message = v['_discord_message']
         channel_id = v['channel_id']
-        return [Action(kind=ActionKind.REPLY, text=f"TBD")], False
+        id_text = db().get_all_list_items(channel_id, list_name)
+        att = '\n'.join([f'{x[0]}\t{x[1]}' for x in id_text])
+        return [Action(kind=ActionKind.REPLY,
+        text=list_name,
+        attachment=att,
+        attachment_name=f'{list_name}.csv')], False
 
     def for_twitch(self):
         return False
