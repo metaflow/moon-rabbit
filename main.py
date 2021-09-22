@@ -19,11 +19,13 @@
 # TODO do development in private messages with bot (initial interaction is within server but then it stics)
 # TODO !help list of commands and help for template
 # TODO !multiline command
+# TODO fragments + tags instead of lists
+# TODO migrate existing lists
+# TODO indexes
 # TODO twitch error on too fast replies?
-# TODO bingo or anagramms?
 # TODO check sandbox settings
 # TODO test perf of compiled template VS from_string
-# TODO how to mark some list items as "good" (e.g. ones that is possible to inflect?) - for the start add a separate jsonb column with tags
+# TODO bingo or anagramms?
 """Bot entry point."""
 
 import asyncio

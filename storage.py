@@ -76,7 +76,7 @@ DROP TABLE channels;
                 list_name varchar(50),
                 discord BOOLEAN,
                 twitch BOOLEAN,
-                text TEXT); 
+                text TEXT);
             CREATE TABLE IF NOT EXISTS channels
                 (id SERIAL,
                 channel_id INT,
@@ -90,7 +90,24 @@ DROP TABLE channels;
                 value TEXT,
                 category varchar(100),
                 expires INT,
-                CONSTRAINT uniq_variable UNIQUE (channel_id, name, category));''')
+                CONSTRAINT uniq_variable UNIQUE (channel_id, name, category)
+            );
+            CREATE TABLE IF NOT EXISTS texts (
+                id SERIAL PRIMARY KEY,
+                channel_id INT NOT NULL,
+                value TEXT
+            );
+            CREATE TABLE IF NOT EXISTS tags (
+                id SERIAL PRIMARY KEY,
+                channel_id INT NOT NULL,
+                value varchar(100)
+            );
+            CREATE TABLE IF NOT EXISTS text_tags (
+                tag_id INT REFERENCES tags (id) ON DELETE CASCADE,
+                text_id INT REFERENCES texts (id) ON DELETE CASCADE,
+                CONSTRAINT uniq_text_tag UNIQUE (tag_id, text_id)
+            );
+            ''')
         self.conn.commit()
 
     @functools.lru_cache(maxsize=1000)
