@@ -20,6 +20,7 @@
 # TODO !help list of commands and help for template
 # TODO !multiline command
 # TODO fragments + tags instead of lists
+# TODO discord: work with threads
 # TODO migrate existing lists
 # TODO indexes
 # TODO twitch error on too fast replies?

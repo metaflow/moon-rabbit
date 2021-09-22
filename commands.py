@@ -53,7 +53,8 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
         z: List[Command] = [HelpCmd(),
                             ListSearch(), ListAddBulk(), ListNames(), ListRemove(), ListAddItem(), ListDownload(),
                             Eval(), Debug(), 
-                            SetCommand(), SetPrefix()]
+                            SetCommand(), SetPrefix(),
+                            TagList(), TagAdd()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -423,6 +424,39 @@ class ListAddItem(Command):
     def help_full(self, prefix: str):
         return f'{prefix}list-add <list name> <value>'
 
+class TagAdd(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "tag-add"):
+            return [], True
+        v = get_variables()
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        _, value = parts
+        channel_id = v['channel_id']
+        db().add_tag(channel_id, value)
+        return [Action(kind=ActionKind.REPLY, text='OK')], False
+
+    def help(self, prefix: str):
+        return f'{prefix}tag-add'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}tag-add <value>'
+
+class TagList(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "tags"):
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        tags = db().get_tags(channel_id)
+        s = 'no tags'
+        if tags:
+            s = ', '.join([t[1] for t in tags])
+        return [Action(kind=ActionKind.REPLY, text=s)], False
+
+    def help(self, prefix: str):
+        return f'{prefix}tags'
 
 class Debug(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:

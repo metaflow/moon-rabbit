@@ -42,6 +42,7 @@ class DB:
         self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
+        self.tags: Dict[str, List[Tuple[int, str]]] = {}
         self.logs = {}
         self.init_db()
 
@@ -95,12 +96,14 @@ DROP TABLE channels;
             CREATE TABLE IF NOT EXISTS texts (
                 id SERIAL PRIMARY KEY,
                 channel_id INT NOT NULL,
-                value TEXT
+                value TEXT,
+                CONSTRAINT uniq_text_value UNIQUE (channel_id, value)
             );
             CREATE TABLE IF NOT EXISTS tags (
                 id SERIAL PRIMARY KEY,
                 channel_id INT NOT NULL,
-                value varchar(100)
+                value varchar(100),
+                CONSTRAINT uniq_tag_value UNIQUE (channel_id, value)
             );
             CREATE TABLE IF NOT EXISTS text_tags (
                 tag_id INT REFERENCES tags (id) ON DELETE CASCADE,
@@ -203,6 +206,22 @@ DROP TABLE channels;
                 "SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
             return [x[0] for x in cur.fetchall()]
 
+    def get_tags(self, channel_id: int) -> List[Tuple[int, str]]:
+        key = f'tags_{channel_id}'
+        if key not in self.tags:            
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
+                self.tags[key] = [(x[0], x[1]) for x in cur.fetchall()]
+        return self.tags[key]
+
+    def add_tag(self, channel_id: int, tag_name: str):
+        with self.conn.cursor() as cur:
+            cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
+                        (channel_id, tag_name))
+            key = f'tags_{channel_id}'
+            self.tags.pop(key, None)
+
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
         info = self._get_list(channel_id, list_name)
         n = len(info.items_ids)
@@ -218,6 +237,11 @@ DROP TABLE channels;
         if not item:
             return ''
         return item[0]
+
+#     SELECT t.id FROM texts t
+# JOIN text_tags tt ON tt.text_id = t.id AND tt.tag_id IN (2, 3)
+# GROUP BY t.id
+# HAVING count(*) = 2
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
