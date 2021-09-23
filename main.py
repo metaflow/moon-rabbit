@@ -52,7 +52,7 @@ errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
 
 rotatingHandler = logging.handlers.TimedRotatingFileHandler(
-    'bot.log', when='h', encoding='utf-8', backupCount=8)
+    'bot.log', when='D', encoding='utf-8', backupCount=8)
 
 logging.basicConfig(
     handlers=[rotatingHandler, errHandler],
