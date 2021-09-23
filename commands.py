@@ -476,7 +476,7 @@ class Debug(Command):
         commands = db().get_commands(channel_id, prefix)
         for cmd in commands:
             if cmd.name == txt:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'set {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'{prefix}set {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 
