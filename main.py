@@ -15,7 +15,7 @@
 # limitations under the License.
 
 # TODO what's with discord channel visibility (it picks inactive users from other channels?)?
-# TODO command to download a list content
+# TODO do development in private messages with bot (initial interaction is within server but then it stics)
 # TODO !help list of commands and help for template
 # TODO !multiline command
 # TODO twitch error on too fast replies?
