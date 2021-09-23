@@ -36,13 +36,17 @@ class ListInfo:
     idx: int = 0
 
 
+def escape_like(t):
+    return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
+
+
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
         self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
-        self.tags: Dict[str, List[Tuple[int, str]]] = {}
+        self.tags: Dict[str, Dict[str, int]] = {}
         self.logs = {}
         self.init_db()
 
@@ -206,13 +210,14 @@ DROP TABLE channels;
                 "SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
             return [x[0] for x in cur.fetchall()]
 
-    def get_tags(self, channel_id: int) -> List[Tuple[int, str]]:
+    def get_tags(self, channel_id: int) -> Dict[str, int]:
         key = f'tags_{channel_id}'
-        if key not in self.tags:            
+        if key not in self.tags:
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
-                self.tags[key] = [(x[0], x[1]) for x in cur.fetchall()]
+                for id, v in cur.fetchall():
+                    self.tags[key][v] = id
         return self.tags[key]
 
     def add_tag(self, channel_id: int, tag_name: str):
@@ -221,6 +226,64 @@ DROP TABLE channels;
                         (channel_id, tag_name))
             key = f'tags_{channel_id}'
             self.tags.pop(key, None)
+
+    def get_text_tags(self, channel_id: int) -> Dict[int, List[int]]:
+        z: Dict[int, List[int]] = {}
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT tt.text_id, tt.tag_id FROM text t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [channel_id])
+            for row in cur.fetchall():
+                text, tag = row
+                if text not in z:
+                    z[text] = []
+                z[text].append(tag)
+        return z
+
+    def add_text_tag(self, text: int, tag: int):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text, tag))
+
+    def delete_text_tag(self, text: int, tag: int):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                'DELETE FROM text_tags WHERE text_id = %s AND tag_id = %s', (text, tag))
+
+    def delete_text(self, channel_id: int, text_id: int):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                'DELETE FROM texts WHERE text_id = %s AND channel_id = %s', (text_id, channel_id))
+
+    def get_text(self, channel_id: int, id: int) -> Optional[str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value FROM texts WHERE channel_id = %s AND id = %s",
+                        [channel_id, id])
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0]
+
+    def add_text(self, channel_id: int, value: str):
+        with self.conn.cursor() as cur:
+            cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
+                        (channel_id, value))
+
+    def text_search(self, channel_id: int, txt: str) -> List[Tuple[int, str, List[str]]]:
+        with self.conn.cursor() as cur:
+            q = '%' + escape_like(txt) + '%'
+            cur.execute('''select t.id, t.value, tags.value from text t
+            LEFT JOIN text_tags tt ON tt.text_id = t.id
+            LEFT JOIN tags ON tags.id = tt.tag_id
+            where (channel_id = %s) AND (text LIKE %s)''',
+                        (channel_id, q))
+            m: Dict[int, Tuple[str, List[str]]]
+            for row in cur.fetchall():
+                id, text, tag = row[0], row[1], row[2]
+                if id not in m:
+                    m[id] = (text, [])
+                if tag:
+                    m[id][1].append(tag)
+            return [(k, v[0], v[1]) for (k, v) in m.items()]
 
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
         info = self._get_list(channel_id, list_name)
@@ -298,7 +361,7 @@ DROP TABLE channels;
             cur.execute("SELECT count(*) FROM variables WHERE channel_id = %s AND category = %s",
                         [channel_id, category])
             return cur.fetchone()[0]
-    
+
     def delete_category(self, channel_id: int, category: str) -> int:
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM variables WHERE channel_id = %s AND category = %s",
