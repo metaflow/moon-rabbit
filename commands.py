@@ -54,7 +54,8 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
                             ListSearch(), ListAddBulk(), ListNames(), ListRemove(), ListAddItem(), ListDownload(),
                             Eval(), Debug(), 
                             SetCommand(), SetPrefix(),
-                            TagList(), TagAdd()]
+                            TagList(), TagAdd(), TagDelete(),
+                            TextAddTags(), TextAdd(), TextAddBulk(), TextDownload(), TextSearch(), TextRemove()]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -443,6 +444,26 @@ class TagAdd(Command):
     def help_full(self, prefix: str):
         return f'{prefix}tag-add <value>'
 
+class TagDelete(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "tag-rm"):
+            return [], True
+        v = get_variables()
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        _, value = parts
+        value = value.strip()
+        channel_id = v['channel_id']
+        deleted = db().delete_tag(channel_id, value)
+        return [Action(kind=ActionKind.REPLY, text=('OK' if deleted == 1 else 'no such tag'))], False
+
+    def help(self, prefix: str):
+        return f'{prefix}tag-rm'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}tag-rm <value>'
+
 class TagList(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tags"):
@@ -452,11 +473,187 @@ class TagList(Command):
         tags = db().get_tags(channel_id)
         s = 'no tags'
         if tags:
-            s = ', '.join([t[1] for t in tags])
+            s = ', '.join(tags.keys())
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
         return f'{prefix}tags'
+
+class TextAdd(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "text-add "):
+            return [], True
+        v = get_variables()
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        _, value = parts
+        value = value.strip()
+        if not value:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        channel_id = v['channel_id']
+        _, added = db().add_text(channel_id, value)
+        return [Action(kind=ActionKind.REPLY, text='added new text' if added else 'already exist')], False
+
+    def help(self, prefix: str):
+        return f'{prefix}text-add'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}text-add <value>'
+
+class TextAddTags(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "tag-text"):
+            return [], True
+        v = get_variables()
+        parts = text.split(' ')
+        if len(parts) < 3:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        value = int(parts[1])
+        channel_id = v['channel_id']
+        if not db().get_text(channel_id, value):
+            return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
+        set_tags = parts[2:]
+        for t in set_tags:
+            db().add_tag(channel_id, t.strip())
+        tags = db().get_tags(channel_id)
+        channel_id = v['channel_id']
+        db().delete_text_tags(value)
+        for t in set_tags:
+            t = t.strip()
+            db().add_text_tag(value, tags[t])
+        return [Action(kind=ActionKind.REPLY, text='OK')], False
+
+    def help(self, prefix: str):
+        return f'{prefix}tag-text'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}tag-text <id> <tag> [<tag> [...]]\nexisting tags will be removed'
+
+
+class TextAddBulk(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if text.strip() != prefix + "text-add-bulk":
+            return [], True
+        v = get_variables()
+        log = v['_log']
+        content = ''
+        msg: discord.Message = v['_discord_message']
+        log.info('looking for attachments')
+        for att in msg.attachments:
+            log.info(
+                f'attachment {att.filename} {att.size} {att.content_type}')
+            content += '\n' + (await att.read()).decode('utf-8')
+        channel_id = v['channel_id']
+        values = [x.strip() for x in content.split('\n')]
+        lines = [x.split('\t') for x in values if x]
+        all_tags = set()
+        for s in lines:
+            if len(s) < 2:
+                continue
+            for t in s[1].split(' '):
+                t = t.strip()
+                all_tags.add(t)
+        for t in all_tags:
+            db().add_tag(channel_id, t)
+        tags = db().get_tags(channel_id)
+        total = 0
+        total_added = 0
+        for s in lines:
+            txt = s[0].strip()
+            if not txt:
+                continue
+            total += 1
+            text_id, added = db().add_text(channel_id, txt)
+            if added:
+                total_added += 1
+            else:
+                db().delete_text_tags(text_id)
+            if len(s) < 2:
+                continue
+            for t in s[1].split(' '): 
+                db().add_text_tag(text_id, tags[t.strip()])
+        return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} texts from non-empty {total} lines with tags {all_tags}")], False
+
+    def help(self, prefix: str):
+        return f'{prefix}text-add-bulk'
+
+class TextDownload(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if text.strip() != prefix + "text-download":
+            return [], True
+        v = get_variables()
+        msg: discord.Message = v['_discord_message']
+        channel_id = v['channel_id']
+        items = db().all_texts(channel_id)
+        if not items:
+            return [Action(kind=ActionKind.REPLY, text='no results')], False
+        rr = []
+        for ii in items:
+            rr.append(f'{ii[1]}\t{" ".join(ii[2])}')
+        att = '\n'.join(rr)
+        return [Action(kind=ActionKind.REPLY,
+        text='texts',
+        attachment=att,
+        attachment_name=f'texts.csv')], False
+
+    def for_twitch(self):
+        return False
+
+    def help(self, prefix: str):
+        return f'{prefix}text-download'
+
+class TextSearch(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "search"):
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        parts = text.split(' ', 3)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+        # txt = parts[1]
+        items = db().text_search(channel_id, parts[1])
+        if not items:
+            return [Action(kind=ActionKind.REPLY, text='no results')], False
+        rr = []
+        for ii in items:
+            rr.append(f'{ii[0]} "{ii[1]}" {" ".join(ii[2])}')
+        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
+
+    def help(self, prefix: str):
+        return f'{prefix}search'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}search <substring>'
+
+class TextRemove(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "rm"):
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        parts = text.split(' ', 1)
+        if len(parts) < 2:
+            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+        txt = parts[1]
+        if txt.isnumeric():
+            t = db().delete_text(channel_id, int(txt))
+            if not t:
+                return [Action(kind=ActionKind.REPLY, text=f'No text with id {txt} found')], False
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{txt}')], False
+        items = db().text_search(channel_id, txt)
+        if not items:
+            return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
+        if len(items) == 1:
+            id, text, _ = items[0]
+            db().delete_list_item(channel_id, id)
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
+        rr = []
+        for ii in items:
+            rr.append(f'{ii[1]} "{", ".join(ii[2])}"')
+        s = '\n'.join(rr)
+        return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False
 
 class Debug(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:

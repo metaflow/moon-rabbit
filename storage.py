@@ -46,7 +46,7 @@ class DB:
         self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
-        self.tags: Dict[str, Dict[str, int]] = {}
+        self.tags: Dict[int, Dict[str, int]] = {}
         self.logs = {}
         self.init_db()
 
@@ -211,21 +211,28 @@ DROP TABLE channels;
             return [x[0] for x in cur.fetchall()]
 
     def get_tags(self, channel_id: int) -> Dict[str, int]:
-        key = f'tags_{channel_id}'
-        if key not in self.tags:
+        if channel_id not in self.tags:
+            self.tags[channel_id] = {}
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
-                for id, v in cur.fetchall():
-                    self.tags[key][v] = id
-        return self.tags[key]
+                for row in cur.fetchall():
+                    self.tags[channel_id][row[1]] = row[0]
+        return self.tags[channel_id]
 
     def add_tag(self, channel_id: int, tag_name: str):
         with self.conn.cursor() as cur:
             cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
                         (channel_id, tag_name))
-            key = f'tags_{channel_id}'
-            self.tags.pop(key, None)
+            self.tags.pop(channel_id, None)
+ 
+    def delete_tag(self, channel_id: int, tag_name: str):
+        with self.conn.cursor() as cur:
+            logging.info(f'delete tag "{tag_name}" from {channel_id}')
+            cur.execute('DELETE FROM tags WHERE channel_id = %s AND value = %s',
+                        (channel_id, tag_name))
+            self.tags.pop(channel_id, None)
+            return cur.rowcount
 
     def get_text_tags(self, channel_id: int) -> Dict[int, List[int]]:
         z: Dict[int, List[int]] = {}
@@ -244,15 +251,24 @@ DROP TABLE channels;
             cur.execute(
                 'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text, tag))
 
-    def delete_text_tag(self, text: int, tag: int):
+    def delete_text_tags(self, text_id: int) -> int:
+        logging.info(f'delete all tags for text {text_id}')
+        with self.conn.cursor() as cur:
+            cur.execute(
+                'DELETE FROM text_tags WHERE text_id = %s', ( text_id, ))
+            return cur.rowcount
+
+    def delete_text_tag(self, text: int, tag: int) -> int:
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM text_tags WHERE text_id = %s AND tag_id = %s', (text, tag))
+            return cur.rowcount
 
-    def delete_text(self, channel_id: int, text_id: int):
+    def delete_text(self, channel_id: int, text_id: int) -> int:
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM texts WHERE text_id = %s AND channel_id = %s', (text_id, channel_id))
+            return cur.rowcount
 
     def get_text(self, channel_id: int, id: int) -> Optional[str]:
         with self.conn.cursor() as cur:
@@ -263,20 +279,40 @@ DROP TABLE channels;
                 return None
             return row[0]
 
-    def add_text(self, channel_id: int, value: str):
+    def add_text(self, channel_id: int, value: str) -> Tuple[int, bool]:
         with self.conn.cursor() as cur:
-            cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
-                        (channel_id, value))
+            cur.execute('SELECT id FROM texts WHERE channel_id = %s and value = %s', (channel_id, value))
+            row = cur.fetchone()
+            if row:
+                return row[0], False
+            cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;',
+                        (channel_id, value, value))
+            return cur.fetchone()[0], True
 
     def text_search(self, channel_id: int, txt: str) -> List[Tuple[int, str, List[str]]]:
         with self.conn.cursor() as cur:
             q = '%' + escape_like(txt) + '%'
-            cur.execute('''select t.id, t.value, tags.value from text t
+            cur.execute('''select t.id, t.value, tags.value from texts t
             LEFT JOIN text_tags tt ON tt.text_id = t.id
             LEFT JOIN tags ON tags.id = tt.tag_id
-            where (channel_id = %s) AND (text LIKE %s)''',
+            where (t.channel_id = %s) AND (t.value LIKE %s)''',
                         (channel_id, q))
-            m: Dict[int, Tuple[str, List[str]]]
+            m: Dict[int, Tuple[str, List[str]]] = {}
+            for row in cur.fetchall():
+                id, text, tag = row[0], row[1], row[2]
+                if id not in m:
+                    m[id] = (text, [])
+                if tag:
+                    m[id][1].append(tag)
+            return [(k, v[0], v[1]) for (k, v) in m.items()]
+
+    def all_texts(self, channel_id: int) -> List[Tuple[int, str, List[str]]]:
+        with self.conn.cursor() as cur:
+            cur.execute('''select t.id, t.value, tags.value from texts t
+            LEFT JOIN text_tags tt ON tt.text_id = t.id
+            LEFT JOIN tags ON tags.id = tt.tag_id
+            where (t.channel_id = %s)''', (channel_id,))
+            m: Dict[int, Tuple[str, List[str]]] = {}
             for row in cur.fetchall():
                 id, text, tag = row[0], row[1], row[2]
                 if id not in m:
