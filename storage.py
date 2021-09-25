@@ -15,7 +15,7 @@
  """
 
 import dataclasses
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Type
 from data import *
 import psycopg2  # type: ignore
 import psycopg2.extensions  # type: ignore
@@ -29,7 +29,9 @@ from cachetools import TTLCache  # type: ignore
 from query import tag_re
 import query
 import lark
-import ttldict2
+import ttldict2 # type: ignore
+from llist import dllist
+import numpy as np
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
@@ -52,8 +54,9 @@ class DB:
         self.lists: Dict[str, ListInfo] = {}
         self.tags: Dict[int, Dict[str, int]] = {}
         self.text_tags: Dict[int, Dict[int, Set[int]]] = {}
-        self.text_queries: Dict[int, Dict[str, List[int]]] = {}
+        self.text_queries: Dict[int, Dict[str, Type[dllist]]] = {}
         self.logs = {}
+        self.rng = np.random.default_rng()
         self.init_db()
 
     def recreate_tables(self):
@@ -349,7 +352,7 @@ DROP TABLE channels;
             return ''
         return item[0]
 
-    def get_texts_matching_tags(self, channel_id: int, q: str) -> List[int]:
+    def get_texts_matching_tags(self, channel_id: int, q: str) -> Type[dllist]:
         q = q.strip()
         if channel_id not in self.text_queries:
             self.text_queries[channel_id] = ttldict2.TTLDict(ttl_seconds=3600.0)
@@ -364,15 +367,19 @@ DROP TABLE channels;
         for text_id, tag_ids in texts.items():
             if not qt or query.match_tags(qt, tag_ids):
                 match.append(text_id)
-        self.text_queries[channel_id][q] = match
-        return match
+        self.rng.shuffle(match)
+        self.text_queries[channel_id][q] = dllist(match)
+        return self.text_queries[channel_id][q]
 
     def get_random_text(self, channel_id: int, q: str) -> Optional[str]:
         tt = self.get_texts_matching_tags(channel_id, q)
-        logging.info(f'matching ids {tt}')
-        if len(tt) > 1:
-            tt[0], tt[-1] = tt[-1], tt[0]
-        return self.get_text(channel_id, random.choice(tt))
+        if tt.size  == 0:
+            return None
+        j = int(self.rng.pareto(4) * tt.size) % tt.size
+        node = tt.nodeat(j)
+        tt.remove(node)
+        tt.append(node)
+        return self.get_text(channel_id, node.value)
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:

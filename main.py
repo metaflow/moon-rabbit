@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO use https://numpy.org/devdocs/reference/random/generated/numpy.random.Generator.pareto.html or normal distribution to pick samples from the list 
+# TODO migrate existing lists to texts and add info if they can be morphed
 # TODO do development in private messages with bot (initial interaction is within server but then it stics)
 # TODO !help list of commands and help for template
 # TODO !multiline command
-# TODO fragments + tags instead of lists
 # TODO discord: work with threads
-# TODO migrate existing lists
+
 # TODO indexes
 # TODO twitch error on too fast replies?
 # TODO check sandbox settings
@@ -65,14 +64,14 @@ logging.basicConfig(
 
 @jinja2.pass_context
 def render_list_item(ctx, list_name: str):
-    vars = ctx.get_all()
-    vars['_render_depth'] += 1
-    if vars['_render_depth'] > 5:
-        vars['_log'].error('rendering depth is > 5')
+    v = ctx.get_all()
+    v['_render_depth'] += 1
+    if v['_render_depth'] > 5:
+        v['_log'].error('rendering depth is > 5')
         return ''
-    txt = db().get_random_list_item(vars['channel_id'], list_name)
-    vars['_log'].info(f'rendering {txt}')
-    return render(txt, vars)
+    txt = db().get_random_list_item(v['channel_id'], list_name)
+    v['_log'].info(f'rendering {txt}')
+    return render(txt, v)
 
 @jinja2.pass_context
 def render_text_item(ctx, q: str):
