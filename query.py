@@ -14,8 +14,8 @@
  limitations under the License.
  """
 
-# TODO: check that tags match name regex
 import lark
+import re
 
 query_grammar = """
 ?start: sub
@@ -31,3 +31,4 @@ NAME: (LETTER|"-"|"_"|DIGIT)+
 """
 
 query_parser = lark.Lark(query_grammar)
+tag_re = re.compile('[a-z0-9-_]*', re.IGNORECASE)

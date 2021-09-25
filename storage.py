@@ -26,6 +26,7 @@ import collections
 import random
 import time
 from cachetools import TTLCache  # type: ignore
+from query import tag_re
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
 
@@ -222,6 +223,8 @@ DROP TABLE channels;
         return self.tags[channel_id]
 
     def add_tag(self, channel_id: int, tag_name: str):
+        if not tag_re.match(tag_name):
+            raise Exception("tag name mismatch")
         with self.conn.cursor() as cur:
             cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
                         (channel_id, tag_name))

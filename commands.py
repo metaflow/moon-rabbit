@@ -22,6 +22,7 @@ import re
 from typing import Callable, Dict, List
 from storage import cursor, db
 import traceback
+from query import tag_re
 
 
 class Command(Protocol):
@@ -435,6 +436,8 @@ class TagAdd(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         _, value = parts
         channel_id = v['channel_id']
+        if not tag_re.match(value):
+            return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
         db().add_tag(channel_id, value)
         return [Action(kind=ActionKind.REPLY, text='OK')], False
 
@@ -515,10 +518,12 @@ class TextAddTags(Command):
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
         set_tags = parts[2:]
         for t in set_tags:
+            if not tag_re.match(t):
+                return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
         tags = db().get_tags(channel_id)
         channel_id = v['channel_id']
-        db().delete_text_tags(value)
+        db().delete_text_tags(channel_id, value)
         for t in set_tags:
             t = t.strip()
             db().add_text_tag(channel_id, value, tags[t])
@@ -555,6 +560,8 @@ class TextAddBulk(Command):
                 t = t.strip()
                 all_tags.add(t)
         for t in all_tags:
+            if not tag_re.match(t):
+                return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t)
         tags = db().get_tags(channel_id)
         total = 0
@@ -568,7 +575,7 @@ class TextAddBulk(Command):
             if added:
                 total_added += 1
             else:
-                db().delete_text_tags(text_id)
+                db().delete_text_tags(channel_id, text_id)
             if len(s) < 2:
                 continue
             for t in s[1].split(' '): 

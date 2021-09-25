@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO what's with discord channel visibility (it picks inactive users from other channels) - add a "watch here"? command
 # TODO use https://numpy.org/devdocs/reference/random/generated/numpy.random.Generator.pareto.html or normal distribution to pick samples from the list 
 # TODO do development in private messages with bot (initial interaction is within server but then it stics)
 # TODO !help list of commands and help for template
