@@ -74,6 +74,20 @@ def render_list_item(ctx, list_name: str):
     vars['_log'].info(f'rendering {txt}')
     return render(txt, vars)
 
+@jinja2.pass_context
+def render_text_item(ctx, q: str):
+    vars = ctx.get_all()
+    vars['_render_depth'] += 1
+    if vars['_render_depth'] > 5:
+        vars['_log'].error('rendering depth is > 5')
+        return ''
+    txt = db().get_random_text(vars['channel_id'], q)
+    if not txt:
+        vars['_log'].info(f'no matchin text is found')
+        return ''
+    vars['_log'].info(f'rendering {txt}')
+    return render(txt, vars)
+
 
 def randint(a=0, b=100):
     return random.randint(a, b)
@@ -155,6 +169,7 @@ def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = N
 
 
 templates.globals['list'] = render_list_item
+templates.globals['txt'] = render_text_item
 templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal
 templates.globals['get'] = get_variable

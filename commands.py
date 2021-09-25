@@ -22,8 +22,8 @@ import re
 from typing import Callable, Dict, List
 from storage import cursor, db
 import traceback
-from query import tag_re
-
+import query
+import lark
 
 class Command(Protocol):
     async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -436,7 +436,7 @@ class TagAdd(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         _, value = parts
         channel_id = v['channel_id']
-        if not tag_re.match(value):
+        if not query.tag_re.match(value):
             return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
         db().add_tag(channel_id, value)
         return [Action(kind=ActionKind.REPLY, text='OK')], False
@@ -518,7 +518,7 @@ class TextAddTags(Command):
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
         set_tags = parts[2:]
         for t in set_tags:
-            if not tag_re.match(t):
+            if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
         tags = db().get_tags(channel_id)
@@ -560,7 +560,7 @@ class TextAddBulk(Command):
                 t = t.strip()
                 all_tags.add(t)
         for t in all_tags:
-            if not tag_re.match(t):
+            if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t)
         tags = db().get_tags(channel_id)
@@ -616,16 +616,27 @@ class TextSearch(Command):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 3)
+        parts = text.split(' ', 2)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        # txt = parts[1]
         items = db().text_search(channel_id, parts[1])
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
+        t: Optional[lark.Tree] = None
+        tags = db().get_tags(channel_id)
+        inverse_tags: Dict[int, str] = {}
+        for name, id in tags.items():
+            inverse_tags[id] = name
+        if len(parts) >= 3:
+            t = query.parse_query(tags, parts[2])
+            logging.info(f'parsed query: {t}')
         for ii in items:
-            rr.append(f'{ii[0]} "{ii[1]}" {" ".join(ii[2])}')
+            if not t or query.match_tags(t, ii[2]):
+                tag_names = [inverse_tags[x] for x in ii[2]]
+                rr.append(f'{ii[0]} "{ii[1]}" {" ".join(tag_names)}')
+        if not rr:
+            return [Action(kind=ActionKind.REPLY, text='no results')], False
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
 
     def help(self, prefix: str):
@@ -657,8 +668,13 @@ class TextRemove(Command):
             db().delete_list_item(channel_id, id)
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
         rr = []
+        inverse_tags: Dict[int, str] = {}
+        tags = db().get_tags(channel_id)
+        for name, id in tags.items():
+            inverse_tags[id] = name
         for ii in items:
-            rr.append(f'{ii[1]} "{", ".join(ii[2])}"')
+            tag_names = [inverse_tags[x] for x in ii[2]]
+            rr.append(f'{ii[1]} "{", ".join(tag_names)}"')
         s = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False
 
