@@ -14,6 +14,7 @@ dacite = "*"
 mypy = "*"
 pymorphy2 = "*"
 pymorphy2-dicts-ru = "*"
+lark = "*"
 
 [dev-packages]
 autopep8 = "*"

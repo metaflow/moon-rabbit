@@ -36,6 +36,7 @@ import commands
 import time
 import logging.handlers
 import pymorphy2  # type: ignore
+from query import query_parser
 
 morph = pymorphy2.MorphAnalyzer(lang='ru')
 
@@ -80,9 +81,6 @@ def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = N
     return ''.join(parts)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print('provide the name of file')
-        sys.exit(1)
     cases = ['gent', 'datv', 'accs', 'ablt', 'loct']
     with open(sys.argv[1], encoding='utf-8') as f, open(sys.argv[2], encoding='utf-8', mode='wt') as fw:
         for line in f:

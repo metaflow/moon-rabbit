@@ -1,5 +1,5 @@
 """
-    Copyright 2021 Goncharov Mikhail
+    Copyright 2021 Google LLC
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
@@ -521,7 +521,7 @@ class TextAddTags(Command):
         db().delete_text_tags(value)
         for t in set_tags:
             t = t.strip()
-            db().add_text_tag(value, tags[t])
+            db().add_text_tag(channel_id, value, tags[t])
         return [Action(kind=ActionKind.REPLY, text='OK')], False
 
     def help(self, prefix: str):
@@ -572,7 +572,7 @@ class TextAddBulk(Command):
             if len(s) < 2:
                 continue
             for t in s[1].split(' '): 
-                db().add_text_tag(text_id, tags[t.strip()])
+                db().add_text_tag(channel_id, text_id, tags[t.strip()])
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):

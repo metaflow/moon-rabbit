@@ -1,5 +1,5 @@
 """
- Copyright 2021 Goncharov Mikhail
+ Copyright 2021 Google LLC
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -47,6 +47,7 @@ class DB:
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
         self.tags: Dict[int, Dict[str, int]] = {}
+        self.text_tags: Dict[int, Dict[int, List[int]]] = {}
         self.logs = {}
         self.init_db()
 
@@ -232,9 +233,12 @@ DROP TABLE channels;
             cur.execute('DELETE FROM tags WHERE channel_id = %s AND value = %s',
                         (channel_id, tag_name))
             self.tags.pop(channel_id, None)
+            self.text_tags.pop(channel_id, None)
             return cur.rowcount
 
     def get_text_tags(self, channel_id: int) -> Dict[int, List[int]]:
+        if channel_id in self.text_tags:
+            return self.text_tags[channel_id]
         z: Dict[int, List[int]] = {}
         with self.conn.cursor() as cur:
             cur.execute(
@@ -244,31 +248,29 @@ DROP TABLE channels;
                 if text not in z:
                     z[text] = []
                 z[text].append(tag)
+        self.text_tags[channel_id] = z
         return z
 
-    def add_text_tag(self, text: int, tag: int):
+    def add_text_tag(self, channel_id: int, text: int, tag: int):
+        self.text_tags.pop(channel_id, None)
         with self.conn.cursor() as cur:
             cur.execute(
                 'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text, tag))
 
-    def delete_text_tags(self, text_id: int) -> int:
+    def delete_text_tags(self, channel_id: int, text_id: int) -> int:
         logging.info(f'delete all tags for text {text_id}')
+        self.text_tags.pop(channel_id, None)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM text_tags WHERE text_id = %s', ( text_id, ))
             return cur.rowcount
 
-    def delete_text_tag(self, text: int, tag: int) -> int:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                'DELETE FROM text_tags WHERE text_id = %s AND tag_id = %s', (text, tag))
-            return cur.rowcount
-
     def delete_text(self, channel_id: int, text_id: int) -> int:
+        self.text_tags.pop(channel_id, None)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM texts WHERE text_id = %s AND channel_id = %s', (text_id, channel_id))
-            return cur.rowcount
+            return cur.rowcount 
 
     def get_text(self, channel_id: int, id: int) -> Optional[str]:
         with self.conn.cursor() as cur:
@@ -285,6 +287,7 @@ DROP TABLE channels;
             row = cur.fetchone()
             if row:
                 return row[0], False
+            self.text_tags.pop(channel_id, None)
             cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;',
                         (channel_id, value, value))
             return cur.fetchone()[0], True
