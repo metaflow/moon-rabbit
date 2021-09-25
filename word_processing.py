@@ -16,25 +16,12 @@
 
 """Analyze words"""
 
-import asyncio
 from io import StringIO
 from data import *
 from twitchio.ext import commands as twitchCommands  # type: ignore
-import argparse
-import discord  # type: ignore
-import jinja2
-import logging
-import os
-import sys
-import random
-import re
-import ttldict2  # type: ignore
+ttldict2  # type: ignore
 from storage import DB, db, set_db
 from typing import Callable, List, Set, Union
-import traceback
-import commands
-import time
-import logging.handlers
 import pymorphy2  # type: ignore
 from query import query_parser
 

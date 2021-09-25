@@ -16,6 +16,8 @@
 
 import dataclasses
 from typing import Dict, List, Optional, Set, Tuple, Type
+
+from ttldict2.impl import TTLDict
 from data import *
 import psycopg2  # type: ignore
 import psycopg2.extensions  # type: ignore
@@ -30,7 +32,7 @@ from query import tag_re
 import query
 import lark
 import ttldict2 # type: ignore
-from llist import dllist
+from llist import dllist # type: ignore
 import numpy as np
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
@@ -54,7 +56,8 @@ class DB:
         self.lists: Dict[str, ListInfo] = {}
         self.tags: Dict[int, Dict[str, int]] = {}
         self.text_tags: Dict[int, Dict[int, Set[int]]] = {}
-        self.text_queries: Dict[int, Dict[str, Type[dllist]]] = {}
+        # channel -> query -> dllist[int]
+        self.text_queries: Dict[int, Type[ttldict2.TTLDict]] = {}
         self.logs = {}
         self.rng = np.random.default_rng()
         self.init_db()
@@ -355,8 +358,9 @@ DROP TABLE channels;
     def get_texts_matching_tags(self, channel_id: int, q: str) -> Type[dllist]:
         q = q.strip()
         if channel_id not in self.text_queries:
-            self.text_queries[channel_id] = ttldict2.TTLDict(ttl_seconds=3600.0)
-        z = self.text_queries[channel_id].get(q, None)
+            # TTL with long expiration to garbage collect no longer used queries.
+            self.text_queries[channel_id] = ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14)
+        z = self.text_queries[channel_id].get(q, None, True)
         if z:
             return z
         texts = self.get_text_tags(channel_id)
