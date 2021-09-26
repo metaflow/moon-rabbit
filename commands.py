@@ -725,6 +725,7 @@ class HelpCmd(Command):
         channel_id = v['channel_id']
         parts = text.split(' ', 1)
         if len(parts) < 2:
+            hidden_commands = []
             s = []
             for c in get_commands(channel_id, prefix):
                 if is_discord and not c.for_discord():
@@ -735,9 +736,13 @@ class HelpCmd(Command):
                     continue
                 if isinstance(c, PersistentCommand):
                     if c.data.hidden:
+                        hidden_commands.append(c.help(prefix))
                         continue
                 s.append(c.help(prefix))
-            return [Action(kind=ActionKind.REPLY, text='commands: ' + ', '.join(s))], False
+            actions = [Action(kind=ActionKind.REPLY, text='commands: ' + ', '.join(s))]
+            if hidden_commands:
+                actions.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text='hidden commands: ' + ', '.join(hidden_commands)))
+            return actions, False
         sub = parts[1].strip()
         if not sub:
             return [], False
@@ -751,7 +756,6 @@ class HelpCmd(Command):
                 continue
             hf = c.help_full(prefix)
             h = c.help(prefix)
-            logging.info(f'sub "{sub}", h "{hf}"')
             if h == sub or h == prefix + sub or h.startswith(sub + ' ') or h.startswith(prefix + sub + ' '):
                 s.append(hf)
         if not s:
