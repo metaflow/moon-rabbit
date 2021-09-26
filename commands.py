@@ -729,6 +729,8 @@ class HelpCmd(Command):
             names = []
             s = []
             for c in get_commands(channel_id, prefix):
+                if isinstance(c, PersistentCommand):
+                    names.append(c.data.name)
                 if is_discord and not c.for_discord():
                     hidden_commands.append(c.help(prefix))
                     continue
@@ -738,7 +740,6 @@ class HelpCmd(Command):
                 if c.mod_only() and not is_mod:
                     continue
                 if isinstance(c, PersistentCommand):
-                    names.append(c.data.name)
                     if c.data.hidden:
                         hidden_commands.append(c.help(prefix))
                         continue
