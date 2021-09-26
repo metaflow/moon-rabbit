@@ -75,8 +75,8 @@ def render_list_item(ctx, list_name: str):
 def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     v = ctx.get_all()
     v['_render_depth'] += 1
-    if v['_render_depth'] > 5:
-        v['_log'].error('rendering depth is > 5')
+    if v['_render_depth'] > 50:
+        v['_log'].error('rendering depth is > 50')
         return ''
     if isinstance(q, int):
         txt, tags = db().get_text(v['channel_id'], q) 
