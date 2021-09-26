@@ -28,7 +28,6 @@ morph_tags: Dict[str, str] = {
     '_anim': 'anim',
     '_Anum': 'Anum',
     '_Apro': 'Apro',
-    '_FEAT': 'FEAT',
     '_femn': 'femn',
     '_Fixd': 'Fixd',
     '_impf': 'impf',
