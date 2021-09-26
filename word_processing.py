@@ -18,65 +18,57 @@
 
 from io import StringIO
 from data import *
-from twitchio.ext import commands as twitchCommands  # type: ignore
-ttldict2  # type: ignore
 from storage import DB, db, set_db
 from typing import Callable, List, Set, Union
 import pymorphy2  # type: ignore
-from query import query_parser
+from query import query_parser 
+import sys
 
 morph = pymorphy2.MorphAnalyzer(lang='ru')
 
-
-def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = None) -> str:
-    if not args:
-        return line
-    inf = morph.cyr2lat(inf)
-    ss: Set[str] = set(inf.split(','))
-    parts = re.split(r'(\s+)', line.strip())
-    for i in range(0, len(parts), 2):
-        mm = morph.parse(parts[i])
-        j = i // 2
-        if len(tagFilter) > j:
-            if not tagFilter[j]:
-                continue
-            for or_match in tagFilter[j].split(';'):
-                tf = morph.cyr2lat(or_match).split(',')
-                mm = [x for x in mm if any((p in x.tag) for p in tf)]
-        if not mm:
-            continue
-        t = mm[0]
-        if 'NOUN' in t.tag:
-            if ss:
-                x = t.inflect(ss)
-                if x:
-                    t = x
-            if n:
-                x = t.make_agree_with_number(n)
-                if x:
-                    t = x
-        else:
-            if n:
-                x = t.make_agree_with_number(n)
-                if x:
-                    t = x
-            if ss:
-                x = t.inflect(ss)
-                if x:
-                    t = x
-        parts[i] = t.word
-    return ''.join(parts)
-
 if __name__ == "__main__":
     cases = ['gent', 'datv', 'accs', 'ablt', 'loct']
-    with open(sys.argv[1], encoding='utf-8') as f, open(sys.argv[2], encoding='utf-8', mode='wt') as fw:
+    with open(sys.argv[1], encoding='utf-8') as f, open(sys.argv[2], encoding='utf-8', mode='at') as fw:
         for line in f:
-            s = line.strip()
+            row = []
+            s, manual_tags = line.strip().split('\t')
             mm = morph.parse(s)
             masc = [x for x in mm if ('masc' in x.tag or 'ms-f' in x.tag)]
-            fw.write(s + '\t')
-            if not masc:
-                fw.write('no masc' + str(mm) + '\n')
-                continue
-            p = masc[0]
-            fw.write('\t'.join([p.inflect({c}).word for c in cases]) + '\n')
+            row.append(s)
+            suggested = []
+            ii = []
+            for p in morph.parse(s):
+                tags = list(p.tag.grammemes)
+                if ('ADJF' in tags) or ('ADJS' in tags) or ('PRTF' in tags) or ('PRTS' in tags):
+                    tags.append('FEAT')
+                if ('ms-f' in tags):
+                    tags.append('masc')
+                    tags.append('femn')
+                tags = ["_" + x for x in tags if x != 'nomn']
+                tags.append("morph")
+                logging.info(f'morph parse {p} {p.tag.grammemes} {tags}')
+                suggested.append(' '.join(tags))
+                inf = []
+                for c in cases:
+                    x = p.inflect({c})
+                    if not x:
+                        inf.append('X')
+                    else:
+                        inf.append(x.word)
+                for c in cases:
+                    x = p.inflect({c, 'plur'})
+                    if not x:
+                        inf.append('X')
+                    else:
+                        inf.append(x.word)
+                ii.append(','.join(inf))
+            if suggested:
+                row.append(manual_tags + ' ' + suggested[0])
+                row.append('"' + '\n'.join(suggested) + '"')
+                row.append('"' + '\n'.join(ii) + '"')
+            else:
+                row.append(manual_tags)
+                row.append('')
+                row.append('')
+            fw.write('\t'.join(row) + '\n')
+            # fw.write('\t'.join([p.inflect({c}).word for c in cases]) + '\n')

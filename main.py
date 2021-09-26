@@ -46,9 +46,6 @@ import traceback
 import commands
 import time
 import logging.handlers
-import pymorphy2  # type: ignore
-
-morph = pymorphy2.MorphAnalyzer(lang='ru')
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -197,7 +194,8 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
             actions.extend(a)
             if not next:
                 break
-        log.info(f'actions {actions}')
+        log_actions = [a for a in actions if a.attachment == '']
+        log.info(f'actions (except download) {log_actions}')
     except Exception as e:
         actions.append(
             Action(kind=ActionKind.REPLY, text='error ocurred'))

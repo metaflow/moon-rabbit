@@ -21,9 +21,11 @@ import logging
 import dacite
 from dacite.config import Config
 from jinja2.sandbox import SandboxedEnvironment
+import pymorphy2  # type: ignore
+
+morph = pymorphy2.MorphAnalyzer(lang='ru')
 
 templates = SandboxedEnvironment()
-
 
 def render(text: str, vars: Dict):
     return templates.from_string(text).render(vars).strip()
