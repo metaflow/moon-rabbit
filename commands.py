@@ -726,6 +726,7 @@ class HelpCmd(Command):
         parts = text.split(' ', 1)
         if len(parts) < 2:
             hidden_commands = []
+            names = []
             s = []
             for c in get_commands(channel_id, prefix):
                 if is_discord and not c.for_discord():
@@ -737,13 +738,16 @@ class HelpCmd(Command):
                 if c.mod_only() and not is_mod:
                     continue
                 if isinstance(c, PersistentCommand):
+                    names.append(c.data.name)
                     if c.data.hidden:
                         hidden_commands.append(c.help(prefix))
                         continue
                 s.append(c.help(prefix))
             actions = [Action(kind=ActionKind.REPLY, text='commands: ' + ', '.join(s))]
-            if hidden_commands:
-                actions.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text='hidden commands: ' + ', '.join(hidden_commands)))
+            if is_mod:
+                actions.append(Action(kind=ActionKind.PRIVATE_MESSAGE,
+                            text='command names: ' + ', '.join(names) + '\n' +
+                            'hidden commands: ' + ', '.join(hidden_commands)))
             return actions, False
         sub = parts[1].strip()
         if not sub:
