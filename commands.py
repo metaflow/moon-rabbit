@@ -26,6 +26,7 @@ import query
 import lark
 import words
 
+
 class Command(Protocol):
     async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True
@@ -54,10 +55,11 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
     if not key in commands_cache:
         z: List[Command] = [HelpCmd(),
                             ListSearch(), ListAddBulk(), ListNames(), ListRemove(), ListAddItem(), ListDownload(),
-                            Eval(), Debug(), 
+                            Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
                             TagList(), TagAdd(), TagDelete(),
-                            TextSetTags(), TextAdd(), TextUpload(), TextDownload(), TextSearch(), TextRemove()]
+                            TextSetTags(), TextAdd(), TextUpload(), TextDownload(), TextSearch(), TextRemove()
+                            ]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
         commands_cache[key] = z
@@ -174,9 +176,9 @@ class ListDownload(Command):
         id_text = db().get_all_list_items(channel_id, list_name)
         att = '\n'.join([x[1] for x in id_text])
         return [Action(kind=ActionKind.REPLY,
-        text=list_name,
-        attachment=att,
-        attachment_name=f'{list_name}.txt')], False
+                       text=list_name,
+                       attachment=att,
+                       attachment_name=f'{list_name}.txt')], False
 
     def for_twitch(self):
         return False
@@ -427,6 +429,7 @@ class ListAddItem(Command):
     def help_full(self, prefix: str):
         return f'{prefix}list-add <list name> <value>'
 
+
 class TagAdd(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tag-add"):
@@ -448,6 +451,7 @@ class TagAdd(Command):
     def help_full(self, prefix: str):
         return f'{prefix}tag-add <value>'
 
+
 class TagDelete(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tag-rm"):
@@ -468,6 +472,7 @@ class TagDelete(Command):
     def help_full(self, prefix: str):
         return f'{prefix}tag-rm <value>'
 
+
 class TagList(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tags"):
@@ -482,6 +487,7 @@ class TagList(Command):
 
     def help(self, prefix: str):
         return f'{prefix}tags'
+
 
 class TextAdd(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -509,6 +515,7 @@ class TextAdd(Command):
 
     def help_full(self, prefix: str):
         return f'{prefix}txt-add <value>'
+
 
 class TextSetTags(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -584,7 +591,7 @@ class TextUpload(Command):
                 db().delete_text_tags(channel_id, text_id)
             if len(s) < 2:
                 continue
-            for t in s[1].split(' '): 
+            for t in s[1].split(' '):
                 db().add_text_tag(channel_id, text_id, tags[t.strip()])
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} texts from non-empty {total} lines with tags {all_tags}")], False
 
@@ -593,6 +600,7 @@ class TextUpload(Command):
 
     def for_twitch(self):
         return False
+
 
 class TextDownload(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -609,15 +617,16 @@ class TextDownload(Command):
             rr.append(f'{ii[1]}\t{" ".join(ii[2])}\t{ii[0]}')
         att = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY,
-        text='texts',
-        attachment=att,
-        attachment_name=f'texts.tsv')], False
+                       text='texts',
+                       attachment=att,
+                       attachment_name=f'texts.tsv')], False
 
     def for_twitch(self):
         return False
 
     def help(self, prefix: str):
         return f'{prefix}txt-download'
+
 
 class TextSearch(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -651,6 +660,7 @@ class TextSearch(Command):
     def help_full(self, prefix: str):
         return f'{prefix}txt-search <substring>'
 
+
 class TextRemove(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "txt-rm"):
@@ -683,6 +693,39 @@ class TextRemove(Command):
 
     def help(self, prefix: str):
         return f'{prefix}txt-rm'
+
+
+class Multiline(Command):
+    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if not text.startswith(prefix + "multiline"):
+            return [], True
+        v = get_variables()
+        channel_id = v['channel_id']
+        lines = text.split('\n')[1:]
+        is_mod = v['is_mod']
+        actions: List[Action] = []
+        cmds = get_commands(channel_id, prefix)
+        for line in lines:
+            logging.info(f'executing line {line}')
+            for cmd in cmds:
+                if cmd.mod_only() and not is_mod:
+                    continue
+                if is_discord and not cmd.for_discord():
+                    continue
+                if (not is_discord) and not cmd.for_twitch():
+                    continue
+                a, next = await cmd.run(prefix, line, is_discord, get_variables)
+                actions.extend(a)
+                if not next:
+                    break
+        return [Action(kind=ActionKind.REPLY, text=f'Executed {len(lines)} lines')], False
+
+    def help(self, prefix: str):
+        return f'{prefix}multiline'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}multiline\n{prefix}command1\n{prefix}command2\n...'
+
 
 class Debug(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -744,11 +787,12 @@ class HelpCmd(Command):
                         hidden_commands.append(c.help(prefix))
                         continue
                 s.append(c.help(prefix))
-            actions = [Action(kind=ActionKind.REPLY, text='commands: ' + ', '.join(s))]
+            actions = [Action(kind=ActionKind.REPLY,
+                              text='commands: ' + ', '.join(s))]
             if is_mod:
                 actions.append(Action(kind=ActionKind.PRIVATE_MESSAGE,
-                            text='command names: ' + ', '.join(names) + '\n' +
-                            'hidden commands: ' + ', '.join(hidden_commands)))
+                                      text='command names: ' + ', '.join(names) + '\n' +
+                                      'hidden commands: ' + ', '.join(hidden_commands)))
             return actions, False
         sub = parts[1].strip()
         if not sub:
