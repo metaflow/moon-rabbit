@@ -46,6 +46,7 @@ import traceback
 import commands
 import time
 import logging.handlers
+import words
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -71,19 +72,28 @@ def render_list_item(ctx, list_name: str):
     return render(txt, v)
 
 @jinja2.pass_context
-def render_text_item(ctx, q: str):
-    vars = ctx.get_all()
-    vars['_render_depth'] += 1
-    if vars['_render_depth'] > 5:
-        vars['_log'].error('rendering depth is > 5')
+def render_text_item(ctx, q: str, inf: str = ''):
+    v = ctx.get_all()
+    v['_render_depth'] += 1
+    if v['_render_depth'] > 5:
+        v['_log'].error('rendering depth is > 5')
         return ''
-    txt = db().get_random_text(vars['channel_id'], q)
+    txt, tags = db().get_random_text(v['channel_id'], q)
     if not txt:
-        vars['_log'].info(f'no matchin text is found')
+        v['_log'].info(f'no matchin text is found')
         return ''
-    vars['_log'].info(f'rendering {txt}')
-    return render(txt, vars)
-
+    if inf:
+        channel_id = v['channel_id']
+        _, inv_tags = db().get_tags(channel_id)
+        filter = []
+        if tags:
+            for tag_id in tags:
+                name = inv_tags[tag_id]
+                if name in words.morph_tags:
+                    filter.append(words.morph_tags[name])
+        return words.inflect_word(txt, inf, filter)
+    v['_log'].info(f'rendering {txt}')
+    return render(txt, v)
 
 def randint(a=0, b=100):
     return random.randint(a, b)
@@ -124,46 +134,6 @@ def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
 
 
-def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = None) -> str:
-    if not args:
-        return line
-    inf = morph.cyr2lat(inf)
-    ss: Set[str] = set(inf.split(','))
-    parts = re.split(r'(\s+)', line.strip())
-    for i in range(0, len(parts), 2):
-        mm = morph.parse(parts[i])
-        j = i // 2
-        if len(tagFilter) > j:
-            if not tagFilter[j]:
-                continue
-            for or_match in tagFilter[j].split(';'):
-                tf = morph.cyr2lat(or_match).split(',')
-                mm = [x for x in mm if any((p in x.tag) for p in tf)]
-        if not mm:
-            continue
-        t = mm[0]
-        if 'NOUN' in t.tag:
-            if ss:
-                x = t.inflect(ss)
-                if x:
-                    t = x
-            if n:
-                x = t.make_agree_with_number(n)
-                if x:
-                    t = x
-        else:
-            if n:
-                x = t.make_agree_with_number(n)
-                if x:
-                    t = x
-            if ss:
-                x = t.inflect(ss)
-                if x:
-                    t = x
-        parts[i] = t.word
-    return ''.join(parts)
-
-
 templates.globals['list'] = render_list_item
 templates.globals['txt'] = render_text_item
 templates.globals['randint'] = randint
@@ -174,7 +144,6 @@ templates.globals['category_size'] = get_variables_category_size
 templates.globals['delete_category'] = delete_category
 templates.globals['timestamp'] = lambda: int(time.time())
 templates.globals['dt'] = discord_or_twitch
-templates.globals['inflect'] = inflect
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 

@@ -21,9 +21,6 @@ import logging
 import dacite
 from dacite.config import Config
 from jinja2.sandbox import SandboxedEnvironment
-import pymorphy2  # type: ignore
-
-morph = pymorphy2.MorphAnalyzer(lang='ru')
 
 templates = SandboxedEnvironment()
 

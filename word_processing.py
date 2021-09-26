@@ -21,13 +21,12 @@ from data import *
 from storage import DB, db, set_db
 from typing import Callable, List, Set, Union
 import pymorphy2  # type: ignore
-from query import query_parser 
+from query import query_parser
 import sys
-
-morph = pymorphy2.MorphAnalyzer(lang='ru')
+from words import morph
 
 if __name__ == "__main__":
-    cases = ['gent', 'datv', 'accs', 'ablt', 'loct']
+    cases = ['nomn', 'gent', 'datv', 'accs', 'ablt', 'loct']
     with open(sys.argv[1], encoding='utf-8') as f, open(sys.argv[2], encoding='utf-8', mode='at') as fw:
         for line in f:
             row = []
@@ -39,6 +38,8 @@ if __name__ == "__main__":
             ii = []
             for p in morph.parse(s):
                 tags = list(p.tag.grammemes)
+                if 'nomn' not in tags:
+                    continue
                 if ('ADJF' in tags) or ('ADJS' in tags) or ('PRTF' in tags) or ('PRTS' in tags):
                     tags.append('FEAT')
                 if ('ms-f' in tags):
@@ -64,10 +65,12 @@ if __name__ == "__main__":
                 ii.append(','.join(inf))
             if suggested:
                 row.append(manual_tags + ' ' + suggested[0])
+                row.append(manual_tags)
                 row.append('"' + '\n'.join(suggested) + '"')
                 row.append('"' + '\n'.join(ii) + '"')
             else:
                 row.append(manual_tags)
+                row.append('')
                 row.append('')
                 row.append('')
             fw.write('\t'.join(row) + '\n')

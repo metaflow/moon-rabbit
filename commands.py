@@ -24,6 +24,7 @@ from storage import cursor, db
 import traceback
 import query
 import lark
+import words
 
 class Command(Protocol):
     async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -369,8 +370,9 @@ Additional functions:
 - set(<name>[, <value = ''>, <category = ''>, <expires in seconds = 32400 (9h)>]) - set variable that will expire after some time. Empty value deletes the variable;
 - category_size(<category>) - number of set variables in category;
 - delete_category(<category>) - delete all variables in category;
-- inflect(<category>, <list of iflections>, <semantic filters>, <agree with number>) - inflect russian sentence and agree with number (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр;ПРИЛ', 'мр;СУЩ'], 4).
-Semantic filter has form "a,b;c;d,e" - it will filter words that has tags (a or b) AND (c) AND (d OR e). See https://pymorphy2.readthedocs.io/en/latest/user/grammemes.html for the full list of grammemes.
+- txt(<tags filter>, <inflect>) - get a random text fragment.
+Tag is query, e.g. "tag1 or (tag2 and tag3) except tag4 and tag5"
+If inflect is set, text will not be rendered and instead inflected according to russian language (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр;ПРИЛ', 'мр;СУЩ'], 4).
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
@@ -472,7 +474,7 @@ class TagList(Command):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        tags = db().get_tags(channel_id)
+        tags, _ = db().get_tags(channel_id)
         s = 'no tags'
         if tags:
             s = ', '.join(tags.keys())
@@ -494,23 +496,13 @@ class TextAdd(Command):
         if not value:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         channel_id = v['channel_id']
-        _, added = db().add_text(channel_id, value)
-        # TODO: merge with word processing
-        # if ' ' not in value:
-        #     suggested: List[str] = []
-        #     for p in morph.parse(value):
-        #         tags = list(p.tag.grammemes)
-        #         if ('ADJF' in tags) or ('ADJS' in tags) or ('PRTF' in tags) or ('PRTS' in tags):
-        #             tags.append('_adj')
-        #         tags = ["_" + x for x in tags]
-        #         tags.append("morph")
-        #         logging.info(f'morph parse {p} {p.tag.grammemes} {tags}')
-        #         suggested.append(' '.join(tags))
-        #     s = 'Added new text' if added else 'Already exist'
-        #     if suggested:
-        #         s += '. Possible tags:\n' + '\n'.join(suggested)
-        #     return [Action(kind=ActionKind.REPLY, text=s)], False
-        return [Action(kind=ActionKind.REPLY, text='added new text' if added else 'already exist')], False
+        text_id, added = db().add_text(channel_id, value)
+        s = f'Added new text {text_id}' if added else f'Text {text_id} already exist'
+        if ' ' not in value:
+            tag_options = words.suggest_tags(value)
+            if tag_options:
+                s += '. Suggested tags:\n' + tag_options
+        return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
         return f'{prefix}txt-add'
@@ -535,7 +527,7 @@ class TextSetTags(Command):
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
-        tags = db().get_tags(channel_id)
+        tags, _ = db().get_tags(channel_id)
         channel_id = v['channel_id']
         db().delete_text_tags(channel_id, value)
         for t in set_tags:
@@ -577,7 +569,7 @@ class TextUpload(Command):
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t)
-        tags = db().get_tags(channel_id)
+        tags, _ = db().get_tags(channel_id)
         total = 0
         total_added = 0
         for s in lines:
@@ -641,10 +633,7 @@ class TextSearch(Command):
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
         t: Optional[lark.Tree] = None
-        tags = db().get_tags(channel_id)
-        inverse_tags: Dict[int, str] = {}
-        for name, id in tags.items():
-            inverse_tags[id] = name
+        tags, inverse_tags = db().get_tags(channel_id)
         if len(parts) >= 3:
             t = query.parse_query(tags, parts[2])
             logging.info(f'parsed query: {t}')
@@ -685,10 +674,7 @@ class TextRemove(Command):
             db().delete_list_item(channel_id, id)
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
         rr = []
-        inverse_tags: Dict[int, str] = {}
-        tags = db().get_tags(channel_id)
-        for name, id in tags.items():
-            inverse_tags[id] = name
+        _, inverse_tags = db().get_tags(channel_id)
         for ii in items:
             tag_names = [inverse_tags[x] for x in ii[2]]
             rr.append(f'{ii[1]} "{", ".join(tag_names)}"')

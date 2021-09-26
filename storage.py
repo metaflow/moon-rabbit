@@ -15,7 +15,7 @@
  """
 
 import dataclasses
-from typing import Dict, List, Optional, Set, Tuple, Type
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 
 from ttldict2.impl import TTLDict
 from data import *
@@ -54,10 +54,10 @@ class DB:
         self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
         self.lists: Dict[str, ListInfo] = {}
-        self.tags: Dict[int, Dict[str, int]] = {}
+        self.tags: Dict[int, Tuple[Dict[str, int], Dict[int, str]]] = {}
         self.text_tags: Dict[int, Dict[int, Set[int]]] = {}
         # channel -> query -> dllist[int]
-        self.text_queries: Dict[int, Type[ttldict2.TTLDict]] = {}
+        self.text_queries: Dict[int, Type[Any]] = {}
         self.logs = {}
         self.rng = np.random.default_rng()
         self.init_db()
@@ -222,14 +222,15 @@ DROP TABLE channels;
                 "SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
             return [x[0] for x in cur.fetchall()]
 
-    def get_tags(self, channel_id: int) -> Dict[str, int]:
+    def get_tags(self, channel_id: int) -> Tuple[Dict[str, int], Dict[int, str]]:
         if channel_id not in self.tags:
-            self.tags[channel_id] = {}
+            self.tags[channel_id] = ({}, {})
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
                 for row in cur.fetchall():
-                    self.tags[channel_id][row[1]] = row[0]
+                    self.tags[channel_id][0][row[1]] = row[0]
+                    self.tags[channel_id][1][row[0]] = row[1]
         return self.tags[channel_id]
 
     def add_tag(self, channel_id: int, tag_name: str):
@@ -367,7 +368,7 @@ DROP TABLE channels;
         match: List[int] = []
         qt: Optional[lark.Tree] = None
         if q:
-            qt = query.parse_query(self.get_tags(channel_id), q)
+            qt = query.parse_query(self.get_tags(channel_id)[0], q)
         for text_id, tag_ids in texts.items():
             if not qt or query.match_tags(qt, tag_ids):
                 match.append(text_id)
@@ -375,15 +376,17 @@ DROP TABLE channels;
         self.text_queries[channel_id][q] = dllist(match)
         return self.text_queries[channel_id][q]
 
-    def get_random_text(self, channel_id: int, q: str) -> Optional[str]:
+    def get_random_text(self, channel_id: int, q: str) -> Tuple[Optional[str], Optional[Set[int]]]:
         tt = self.get_texts_matching_tags(channel_id, q)
         if tt.size  == 0:
-            return None
+            return None, None
         j = int(self.rng.pareto(4) * tt.size) % tt.size
         node = tt.nodeat(j)
         tt.remove(node)
         tt.append(node)
-        return self.get_text(channel_id, node.value)
+        text_id = node.value
+        text_tags = self.get_text_tags(channel_id)
+        return self.get_text(channel_id, text_id), text_tags.get(text_id)
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
