@@ -520,7 +520,7 @@ class TextSetTags(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         value = int(parts[1])
         channel_id = v['channel_id']
-        if not db().get_text(channel_id, value):
+        if not db().get_text(channel_id, value)[0]:
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
         set_tags = parts[2:]
         for t in set_tags:

@@ -72,13 +72,16 @@ def render_list_item(ctx, list_name: str):
     return render(txt, v)
 
 @jinja2.pass_context
-def render_text_item(ctx, q: str, inf: str = ''):
+def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     v = ctx.get_all()
     v['_render_depth'] += 1
     if v['_render_depth'] > 5:
         v['_log'].error('rendering depth is > 5')
         return ''
-    txt, tags = db().get_random_text(v['channel_id'], q)
+    if isinstance(q, int):
+        txt, tags = db().get_text(v['channel_id'], q) 
+    else:
+        txt, tags = db().get_random_text(v['channel_id'], q)
     if not txt:
         v['_log'].info(f'no matchin text is found')
         return ''
@@ -134,7 +137,7 @@ def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
 
 
-templates.globals['list'] = render_list_item
+# templates.globals['list'] = render_list_item
 templates.globals['txt'] = render_text_item
 templates.globals['randint'] = randint
 templates.globals['discord_literal'] = discord_literal

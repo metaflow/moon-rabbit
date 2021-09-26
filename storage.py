@@ -31,8 +31,8 @@ from cachetools import TTLCache  # type: ignore
 from query import tag_re
 import query
 import lark
-import ttldict2 # type: ignore
-from llist import dllist # type: ignore
+import ttldict2  # type: ignore
+from llist import dllist  # type: ignore
 import numpy as np
 
 psycopg2.extensions.register_adapter(dict, psycopg2.extras.Json)
@@ -244,7 +244,7 @@ DROP TABLE channels;
     def purge_text_to_tag_cache(self, channel_id: int):
         self.text_queries.pop(channel_id, None)
         self.text_tags.pop(channel_id, None)
- 
+
     def delete_tag(self, channel_id: int, tag_name: str):
         with self.conn.cursor() as cur:
             logging.info(f'delete tag "{tag_name}" from {channel_id}')
@@ -279,7 +279,7 @@ DROP TABLE channels;
         self.purge_text_to_tag_cache(channel_id)
         with self.conn.cursor() as cur:
             cur.execute(
-                'DELETE FROM text_tags WHERE text_id = %s', ( text_id, ))
+                'DELETE FROM text_tags WHERE text_id = %s', (text_id, ))
             return cur.rowcount
 
     def delete_text(self, channel_id: int, text_id: int) -> int:
@@ -287,20 +287,22 @@ DROP TABLE channels;
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM texts WHERE text_id = %s AND channel_id = %s', (text_id, channel_id))
-            return cur.rowcount 
+            return cur.rowcount
 
-    def get_text(self, channel_id: int, id: int) -> Optional[str]:
+    def get_text(self, channel_id: int, id: int) -> Tuple[Optional[str], Optional[Set[int]]]:
         with self.conn.cursor() as cur:
             cur.execute("SELECT value FROM texts WHERE channel_id = %s AND id = %s",
                         [channel_id, id])
             row = cur.fetchone()
             if not row:
-                return None
-            return row[0]
+                return None, None
+            text_tags = self.get_text_tags(channel_id)
+            return row[0], text_tags.get(id)
 
     def add_text(self, channel_id: int, value: str) -> Tuple[int, bool]:
         with self.conn.cursor() as cur:
-            cur.execute('SELECT id FROM texts WHERE channel_id = %s and value = %s', (channel_id, value))
+            cur.execute(
+                'SELECT id FROM texts WHERE channel_id = %s and value = %s', (channel_id, value))
             row = cur.fetchone()
             if row:
                 return row[0], False
@@ -360,7 +362,8 @@ DROP TABLE channels;
         q = q.strip()
         if channel_id not in self.text_queries:
             # TTL with long expiration to garbage collect no longer used queries.
-            self.text_queries[channel_id] = ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14)
+            self.text_queries[channel_id] = ttldict2.TTLDict(
+                ttl_seconds=3600.0 * 24 * 14)
         z = self.text_queries[channel_id].get(q, None, True)
         if z:
             return z
@@ -378,15 +381,13 @@ DROP TABLE channels;
 
     def get_random_text(self, channel_id: int, q: str) -> Tuple[Optional[str], Optional[Set[int]]]:
         tt = self.get_texts_matching_tags(channel_id, q)
-        if tt.size  == 0:
+        if tt.size == 0:
             return None, None
         j = int(self.rng.pareto(4) * tt.size) % tt.size
         node = tt.nodeat(j)
         tt.remove(node)
         tt.append(node)
-        text_id = node.value
-        text_tags = self.get_text_tags(channel_id)
-        return self.get_text(channel_id, text_id), text_tags.get(text_id)
+        return self.get_text(channel_id, node.value)
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
