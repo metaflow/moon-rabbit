@@ -286,7 +286,7 @@ DROP TABLE channels;
         self.purge_text_to_tag_cache(channel_id)
         with self.conn.cursor() as cur:
             cur.execute(
-                'DELETE FROM texts WHERE text_id = %s AND channel_id = %s', (text_id, channel_id))
+                'DELETE FROM texts WHERE id = %s AND channel_id = %s', (text_id, channel_id))
             return cur.rowcount
 
     def get_text(self, channel_id: int, id: int) -> Tuple[Optional[str], Optional[Set[int]]]:

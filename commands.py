@@ -671,7 +671,7 @@ class TextRemove(Command):
             return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
         if len(items) == 1:
             id, text, _ = items[0]
-            db().delete_list_item(channel_id, id)
+            db().delete_text(channel_id, id)
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
         rr = []
         _, inverse_tags = db().get_tags(channel_id)
