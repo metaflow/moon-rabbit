@@ -729,8 +729,10 @@ class HelpCmd(Command):
             s = []
             for c in get_commands(channel_id, prefix):
                 if is_discord and not c.for_discord():
+                    hidden_commands.append(c.help(prefix))
                     continue
                 if (not is_discord) and not c.for_twitch():
+                    hidden_commands.append(c.help(prefix))
                     continue
                 if c.mod_only() and not is_mod:
                     continue
