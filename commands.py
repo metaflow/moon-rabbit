@@ -606,7 +606,7 @@ class TextDownload(Command):
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
         for ii in items:
-            rr.append(f'{ii[1]}\t{" ".join(ii[2])}')
+            rr.append(f'{ii[1]}\t{" ".join(ii[2])}\t{ii[0]}')
         att = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY,
         text='texts',
