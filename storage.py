@@ -16,7 +16,6 @@
 
 import dataclasses
 from typing import Any, Dict, List, Optional, Set, Tuple, Type
-
 from ttldict2.impl import TTLDict
 from data import *
 import psycopg2  # type: ignore
@@ -311,36 +310,29 @@ DROP TABLE channels;
                         (channel_id, value, value))
             return cur.fetchone()[0], True
 
-    def text_search(self, channel_id: int, txt: str) -> List[Tuple[int, str, Set[int]]]:
+    def text_search(self, channel_id: int, txt: str, q: str = '') -> List[Tuple[int, str, Set[int]]]:
+        logging.info(f'text search "{txt}" "{q}"')
         with self.conn.cursor() as cur:
-            q = '%' + escape_like(txt) + '%'
-            cur.execute('''select t.id, t.value, tt.tag_id from texts t
-            LEFT JOIN text_tags tt ON tt.text_id = t.id
-            where (t.channel_id = %s) AND (t.value LIKE %s)''',
-                        (channel_id, q))
-            m: Dict[int, Tuple[str, Set[int]]] = {}
+            cur.execute('select id, value from texts WHERE (channel_id = %s) AND (value LIKE %s)',
+                        (channel_id, '%' + escape_like(txt.strip()) + '%'))
+            qt: Optional[lark.Tree] = None
+            texts: Optional[Dict[int, Set[int]]]
+            texts = self.get_text_tags(channel_id)
+            if q:
+                qt = query.parse_query(self.get_tags(channel_id)[0], q)
+            z: List[Tuple[int, str, Set[int]]] = []
             for row in cur.fetchall():
-                text_id, text, tag_id = row[0], row[1], row[2]
-                if text_id not in m:
-                    m[text_id] = (text, set())
-                if tag_id:
-                    m[text_id][1].add(tag_id)
-            return [(k, v[0], v[1]) for (k, v) in m.items()]
+                text_id, text = row[0], row[1]
+                tags = texts.get(text_id, set())
+                if not qt or (tags and query.match_tags(qt, tags)):
+                    z.append((text_id, text, tags))
+            return z
 
-    def all_texts(self, channel_id: int) -> List[Tuple[int, str, List[str]]]:
+    def all_texts(self, channel_id: int) -> List[Tuple[int, str, Set[int]]]:
         with self.conn.cursor() as cur:
-            cur.execute('''select t.id, t.value, tags.value from texts t
-            LEFT JOIN text_tags tt ON tt.text_id = t.id
-            LEFT JOIN tags ON tags.id = tt.tag_id
-            where (t.channel_id = %s)''', (channel_id,))
-            m: Dict[int, Tuple[str, List[str]]] = {}
-            for row in cur.fetchall():
-                id, text, tag = row[0], row[1], row[2]
-                if id not in m:
-                    m[id] = (text, [])
-                if tag:
-                    m[id][1].append(tag)
-            return [(k, v[0], v[1]) for (k, v) in m.items()]
+            cur.execute('SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
+            text_tags = self.get_text_tags(channel_id)
+            return [(row[0], row[1], text_tags.get(row[0], set())) for row in cur.fetchall()]
 
     def get_random_list_item(self, channel_id: int, list_name: str) -> str:
         info = self._get_list(channel_id, list_name)

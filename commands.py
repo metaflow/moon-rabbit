@@ -19,7 +19,7 @@ from data import *
 import json
 import logging
 import re
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Set
 from storage import cursor, db
 import traceback
 import query
@@ -604,17 +604,28 @@ class TextUpload(Command):
 
 class TextDownload(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if text.strip() != prefix + "txt-download":
+        if not text.strip().startswith(prefix + "txt-download"):
             return [], True
         v = get_variables()
-        msg: discord.Message = v['_discord_message']
         channel_id = v['channel_id']
-        items = db().all_texts(channel_id)
+        parts = text.split(' ', 2)
+        items: List[Tuple[int, str, Set[int]]] = []
+        if len(parts) < 2:
+            items = db().all_texts(channel_id)
+        else:
+            query_parts = parts[1].split(';', 1) 
+            substring = query_parts[0]
+            tag_query = ''
+            if len(query_parts) > 1:
+                tag_query = query_parts[1]
+            items = db().text_search(channel_id, substring, tag_query)
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
+        _, tag_id2value = db().get_tags(channel_id)
         for ii in items:
-            rr.append(f'{ii[1]}\t{" ".join(ii[2])}\t{ii[0]}')
+            tags = [tag_id2value[x] for x in ii[2]]
+            rr.append(f'{ii[1]}\t{" ".join(tags)}\t{ii[0]}')
         att = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY,
                        text='texts',
@@ -627,6 +638,9 @@ class TextDownload(Command):
     def help(self, prefix: str):
         return f'{prefix}txt-download'
 
+    def help_full(self, prefix: str):
+        return f'{prefix}txt-download [<substring>[;<tag query>]]'
+
 
 class TextSearch(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -634,22 +648,22 @@ class TextSearch(Command):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 2)
+        parts = text.split(' ', 1)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        items = db().text_search(channel_id, parts[1])
+        query_parts = parts[1].split(';', 1)
+        substring = query_parts[0]
+        tag_query = ''
+        if len(query_parts) > 1:
+            tag_query = query_parts[1]
+        items = db().text_search(channel_id, substring, tag_query)
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
+        _, inverse_tags = db().get_tags(channel_id)
         rr = []
-        t: Optional[lark.Tree] = None
-        tags, inverse_tags = db().get_tags(channel_id)
-        if len(parts) >= 3:
-            t = query.parse_query(tags, parts[2])
-            logging.info(f'parsed query: {t}')
         for ii in items:
-            if not t or query.match_tags(t, ii[2]):
-                tag_names = [inverse_tags[x] for x in ii[2]]
-                rr.append(f'{ii[0]} "{ii[1]}" {" ".join(tag_names)}')
+            tag_names = [inverse_tags[x] for x in ii[2]]
+            rr.append(f'{ii[0]} "{ii[1]}" {" ".join(tag_names)}')
         if not rr:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
@@ -658,7 +672,7 @@ class TextSearch(Command):
         return f'{prefix}txt-search'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-search <substring>'
+        return f'{prefix}txt-search <substring>[;<tag query>]'
 
 
 class TextRemove(Command):
@@ -676,7 +690,12 @@ class TextRemove(Command):
             if not t:
                 return [Action(kind=ActionKind.REPLY, text=f'No text with id {txt} found')], False
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{txt}')], False
-        items = db().text_search(channel_id, txt)
+        query_parts = parts[1].split(';', 1) 
+        substring = query_parts[0]
+        tag_query = ''
+        if len(query_parts) > 1:
+            tag_query = query_parts[1]
+        items = db().text_search(channel_id, substring, tag_query)
         if not items:
             return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
         if len(items) == 1:
@@ -687,13 +706,15 @@ class TextRemove(Command):
         _, inverse_tags = db().get_tags(channel_id)
         for ii in items:
             tag_names = [inverse_tags[x] for x in ii[2]]
-            rr.append(f'{ii[1]} "{", ".join(tag_names)}"')
+            rr.append(f'{ii[0]} {ii[1]} "{", ".join(tag_names)}"')
         s = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False
 
     def help(self, prefix: str):
         return f'{prefix}txt-rm'
 
+    def help_full(self, prefix: str):
+        return f'{prefix}txt-rm <id|substring;tag query>'
 
 class Multiline(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
