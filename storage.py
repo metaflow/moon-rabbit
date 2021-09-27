@@ -66,8 +66,10 @@ class DB:
         with self.conn.cursor() as c:
             c.execute('''
 DROP TABLE commands;
-DROP TABLE lists;
 DROP TABLE channels;
+DROP TABLE variables;
+DROP TABLE texts;
+DROP TABLE tags;
             ''')
         self.conn.commit()
         self.init_db()

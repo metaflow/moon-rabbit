@@ -14,12 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO migrate existing lists to texts and add info if they can be morphed
 # TODO do development in private messages with bot (initial interaction is within server but then it stics)
+# TODO drop lists
 # TODO !help list of commands and help for template
 # TODO !multiline command
 # TODO discord: work with threads
-
 # TODO indexes
 # TODO twitch error on too fast replies?
 # TODO check sandbox settings
@@ -71,6 +70,7 @@ def render_list_item(ctx, list_name: str):
     v['_log'].info(f'rendering {txt}')
     return render(txt, v)
 
+
 @jinja2.pass_context
 def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     v = ctx.get_all()
@@ -79,7 +79,7 @@ def render_text_item(ctx, q: Union[str, int], inf: str = ''):
         v['_log'].error('rendering depth is > 50')
         return ''
     if isinstance(q, int):
-        txt, tags = db().get_text(v['channel_id'], q) 
+        txt, tags = db().get_text(v['channel_id'], q)
     else:
         txt, tags = db().get_random_text(v['channel_id'], q)
     if not txt:
@@ -97,6 +97,7 @@ def render_text_item(ctx, q: Union[str, int], inf: str = ''):
         return words.inflect_word(txt, inf, filter)
     v['_log'].info(f'rendering {txt}')
     return render(txt, v)
+
 
 def randint(a=0, b=100):
     return random.randint(a, b)
@@ -151,12 +152,14 @@ templates.globals['dt'] = discord_or_twitch
 # templates.globals['log'] = lambda x: logging.info(x)
 
 
-async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
     try:
         cmds = commands.get_commands(channel_id, prefix)
         for cmd in cmds:
             if cmd.mod_only() and not is_mod:
+                continue
+            if cmd.private_mod_only() and not (is_mod and private):
                 continue
             if is_discord and not cmd.for_discord():
                 continue
@@ -176,9 +179,9 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
 
 
 class DiscordClient(discord.Client):
-
     def __init__(self, *args, **kwargs):
-        self.channels = {}
+        self.channels: Dict[str, Any] = {}
+        self.mods: Dict[str, str] = {}
         super().__init__(*args, **kwargs)
 
     async def on_ready(self):
@@ -188,16 +191,34 @@ class DiscordClient(discord.Client):
         # Don't react to own messages.
         if message.author == discordClient.user:
             return
-        logging.info(f'guild id {message.guild.id} {str(message.guild.id)}')
+        logging.info(f'channel {message.channel} {message.channel.type}')
+        guild_id = ''
+        is_mod = False
+        private = False
+        if message.channel.type == discord.ChannelType.private:
+            g = self.mods.get(str(message.author.id))
+            if not g:
+                await message.channel.send('You are not a moderator. First send message in your discord and come back here.')
+                return
+            guild_id = g
+            is_mod = True
+            private = True
+        else:
+            permissions = message.author.guild_permissions
+            guild_id = str(message.guild.id)
+            is_mod = permissions.ban_members or permissions.administrator
+            if is_mod:
+                self.mods[str(message.author.id)] = guild_id
+                logging.info(f'set {message.author.id} as mod for {guild_id}')
         try:
             channel_id, prefix = db().discord_channel_info(
-                db().conn.cursor(), str(message.guild.id))
+                db().conn.cursor(), guild_id)
         except Exception as e:
             logging.error(
                 f"'discord_channel_info': {e}\n{traceback.format_exc()}")
             return
         log = InvocationLog(
-            f'guild={message.guild.id} channel={channel_id} author={message.author.id}')
+            f'guild={guild_id} channel={channel_id} author={message.author.id}')
         if channel_id not in self.channels:
             self.channels[channel_id] = {
                 'active_users': ttldict2.TTLDict(ttl_seconds=3600.0)}
@@ -205,8 +226,6 @@ class DiscordClient(discord.Client):
             message.author.mention)] = '+'
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
-        permissions = message.author.guild_permissions
-        is_mod = permissions.ban_members or permissions.administrator
         # postpone variable calculations as much as possible
 
         def get_vars():
@@ -229,9 +248,10 @@ class DiscordClient(discord.Client):
                     'channel_id': channel_id,
                     '_log': log,
                     '_discord_message': message,
+                    '_private': private,
                 }
             return variables
-        actions = await process_message(log, channel_id, message.content, prefix, True, is_mod, get_vars)
+        actions = await process_message(log, channel_id, message.content, prefix, True, is_mod, private, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
@@ -332,9 +352,10 @@ class TwitchBot(twitchCommands.Bot):
                     'bot': self.nick,
                     'channel_id': channel_id,
                     '_log': log,
+                    '_private': False,
                 }
             return variables
-        actions = await process_message(log, channel_id, message.content, prefix, False, is_mod, get_vars)
+        actions = await process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         ctx = await self.get_context(message)
         for a in actions:

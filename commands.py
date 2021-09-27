@@ -40,6 +40,9 @@ class Command(Protocol):
     def mod_only(self):
         return True
 
+    def private_mod_only(self):
+        return True
+
     def for_discord(self):
         return True
 
@@ -53,7 +56,7 @@ commands_cache: Dict[str, List[Command]] = {}
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
     if not key in commands_cache:
-        z: List[Command] = [HelpCmd(),
+        z: List[Command] = [HelpCommand(),
                             ListSearch(), ListAddBulk(), ListNames(), ListRemove(), ListAddItem(), ListDownload(),
                             Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
@@ -119,6 +122,9 @@ class PersistentCommand(Command):
 
     def mod_only(self):
         return self.data.mod
+
+    def private_mod_only(self):
+        return False
 
 
 class ListAddBulk(Command):
@@ -374,7 +380,8 @@ Additional functions:
 - delete_category(<category>) - delete all variables in category;
 - txt(<tags filter>, <inflect>) - get a random text fragment.
 Tag is query, e.g. "tag1 or (tag2 and tag3) except tag4 and tag5"
-If inflect is set, text will not be rendered and instead inflected according to russian language (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF). E.g. inflect('лучший приятель', 'тв', ['мр;ПРИЛ', 'мр;СУЩ'], 4).
+If inflect is set, text will not be rendered and instead inflected according to russian language (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF).
+For example txt('morph & adj & good', 'тв').
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
@@ -613,7 +620,7 @@ class TextDownload(Command):
         if len(parts) < 2:
             items = db().all_texts(channel_id)
         else:
-            query_parts = parts[1].split(';', 1) 
+            query_parts = parts[1].split(';', 1)
             substring = query_parts[0]
             tag_query = ''
             if len(query_parts) > 1:
@@ -690,7 +697,7 @@ class TextRemove(Command):
             if not t:
                 return [Action(kind=ActionKind.REPLY, text=f'No text with id {txt} found')], False
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{txt}')], False
-        query_parts = parts[1].split(';', 1) 
+        query_parts = parts[1].split(';', 1)
         substring = query_parts[0]
         tag_query = ''
         if len(query_parts) > 1:
@@ -716,6 +723,7 @@ class TextRemove(Command):
     def help_full(self, prefix: str):
         return f'{prefix}txt-rm <id|substring;tag query>'
 
+
 class Multiline(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "multiline"):
@@ -724,11 +732,14 @@ class Multiline(Command):
         channel_id = v['channel_id']
         lines = text.split('\n')[1:]
         is_mod = v['is_mod']
+        private = v['_private']
         actions: List[Action] = []
         cmds = get_commands(channel_id, prefix)
         for line in lines:
             logging.info(f'executing line {line}')
             for cmd in cmds:
+                if cmd.private_mod_only() and not (is_mod and private):
+                    continue
                 if cmd.mod_only() and not is_mod:
                     continue
                 if is_discord and not cmd.for_discord():
@@ -780,12 +791,13 @@ class Debug(Command):
         return f'"{prefix}debug" OR "{prefix}debug <command name>"'
 
 
-class HelpCmd(Command):
+class HelpCommand(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
             return [], True
         v = get_variables()
         is_mod = v['is_mod']
+        private = v['_private']
         channel_id = v['channel_id']
         parts = text.split(' ', 1)
         if len(parts) < 2:
@@ -803,17 +815,19 @@ class HelpCmd(Command):
                     continue
                 if c.mod_only() and not is_mod:
                     continue
+                if c.private_mod_only() and not (is_mod and private):
+                    continue
                 if isinstance(c, PersistentCommand):
                     if c.data.hidden:
                         hidden_commands.append(c.help(prefix))
                         continue
                 s.append(c.help(prefix))
-            actions = [Action(kind=ActionKind.REPLY,
-                              text='commands: ' + ', '.join(s))]
-            if is_mod:
-                actions.append(Action(kind=ActionKind.PRIVATE_MESSAGE,
-                                      text='command names: ' + ', '.join(names) + '\n' +
-                                      'hidden commands: ' + ', '.join(hidden_commands)))
+            reply = 'commands: ' + ', '.join(s)
+            if is_mod and private:
+                reply += '\ncommand names: ' + \
+                    ', '.join(names) + '\n' + 'hidden commands: ' + \
+                    ', '.join(hidden_commands)
+            actions = [Action(kind=ActionKind.REPLY, text=reply)]
             return actions, False
         sub = parts[1].strip()
         if not sub:
@@ -821,6 +835,8 @@ class HelpCmd(Command):
         s = []
         for c in get_commands(channel_id, prefix):
             if c.mod_only() and not is_mod:
+                continue
+            if c.private_mod_only() and not (is_mod and private):
                 continue
             if is_discord and not c.for_discord():
                 continue
@@ -838,4 +854,7 @@ class HelpCmd(Command):
         return f'{prefix}help [<command name>]'
 
     def mod_only(self):
+        return False
+
+    def private_mod_only(self):
         return False
