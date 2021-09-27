@@ -52,7 +52,6 @@ class DB:
         self.conn = psycopg2.connect(connection)
         self.conn.set_session(autocommit=True)
         self.cache = TTLCache(maxsize=100, ttl=600)
-        self.lists: Dict[str, ListInfo] = {}
         self.tags: Dict[int, Tuple[Dict[str, int], Dict[int, str]]] = {}
         self.text_tags: Dict[int, Dict[int, Set[int]]] = {}
         # channel -> query -> dllist[int]
@@ -87,14 +86,6 @@ DROP TABLE tags;
                 discord BOOLEAN,
                 twitch BOOLEAN,
                 CONSTRAINT uniq_name_in_channel UNIQUE (channel_id, name));
-            CREATE TABLE IF NOT EXISTS lists
-                (id SERIAL,
-                channel_id INT,
-                author TEXT,
-                list_name varchar(50),
-                discord BOOLEAN,
-                twitch BOOLEAN,
-                text TEXT);
             CREATE TABLE IF NOT EXISTS channels
                 (id SERIAL,
                 channel_id INT,
@@ -172,56 +163,6 @@ DROP TABLE tags;
             if row and (row[0] is not None):
                 return int(row[0]) + 1
             return 0
-
-    def get_list_item(self, channel_id: int, id: int) -> Optional[Tuple[str, str]]:
-        # TODO cache?
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT text, list_name FROM lists WHERE channel_id = %s AND id = %s",
-                        [channel_id, id])
-            row = cur.fetchone()
-            if not row:
-                return None
-            return row[0], row[1]
-
-    def delete_list_item(self, channel_id: int, id: int) -> Optional[Tuple[str, str]]:
-        t = self.get_list_item(channel_id, id)
-        if not t:
-            return None
-        _, list_name = t
-        self.conn.cursor().execute(
-            'DELETE FROM lists WHERE channel_id = %s AND id = %s', (channel_id, id))
-        self.lists.pop(f'{channel_id}_{list_name}', None)
-        return t
-
-    def delete_list(self, channel_id: int, list_name: str) -> int:
-        self.lists.pop(f'{channel_id}_{list_name}', None)
-        with self.conn.cursor() as cur:
-            cur.execute('DELETE FROM lists WHERE channel_id = %s AND list_name = %s',
-                        (channel_id, list_name))
-            return cur.rowcount
-
-    def _get_list(self, channel_id: int, name: str) -> ListInfo:
-        key = f'{channel_id}_{name}'
-        if key in self.lists:
-            return self.lists[key]
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT id FROM lists WHERE channel_id = %s AND list_name = %s;",
-                        [channel_id, name])
-            self.lists[key] = ListInfo(items_ids=[x[0]
-                                       for x in cur.fetchall()])
-        return self.lists[key]
-
-    def get_all_list_items(self, channel_id: int, name: str) -> List[Tuple[int, str]]:
-        with self.conn.cursor() as cur:
-            cur.execute("SELECT id, text FROM lists WHERE channel_id = %s AND list_name = %s;",
-                        [channel_id, name])
-            return [(x[0], x[1]) for x in cur.fetchall()]
-
-    def get_list_names(self, channel_id: int) -> List[str]:
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT list_name FROM lists WHERE channel_id = %s", [channel_id])
-            return [x[0] for x in cur.fetchall()]
 
     def get_tags(self, channel_id: int) -> Tuple[Dict[str, int], Dict[int, str]]:
         if channel_id not in self.tags:
@@ -452,21 +393,6 @@ DROP TABLE tags;
             n = cur.rowcount
             if n:
                 logging.info(f'deleted {n} expired variables')
-
-    def add_list_item(self, channel_id: int, name: str, text: str) -> Tuple[int, bool]:
-        if (not name) or (not text):
-            return -1, False
-        with db().conn.cursor() as cur:
-            cur.execute('SELECT id FROM lists WHERE channel_id = %s AND list_name = %s AND text = %s',
-                        [channel_id, name, text])
-            row = cur.fetchone()
-            if row:
-                logging.info(f"list item '{name}' '{text}' already exists")
-                return row[0], False
-            self.lists.pop(f'{channel_id}_{name}', None)
-            cur.execute('INSERT INTO lists (channel_id, list_name, text) VALUES (%s, %s, %s) RETURNING id;',
-                        (channel_id, name, text))
-            return cur.fetchone()[0], True
 
     def add_log(self, channel_id, entry):
         if channel_id not in self.logs:
