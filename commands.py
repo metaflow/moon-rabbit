@@ -641,7 +641,7 @@ class HelpCommand(Command):
                         ', '.join(names) + '\n' + 'hidden commands: ' + \
                         ', '.join(hidden_commands)
                 elif is_discord:
-                    reply += ' (some dommands are only available in private messages)'
+                    reply += ' (some commands are only available in private messages)'
             actions = [Action(kind=ActionKind.REPLY, text=reply)]
             return actions, False
         sub = parts[1].strip()
