@@ -104,3 +104,11 @@ def fold_actions(actions: List[Action]) -> List[Action]:
     if last:
         z.append(last)
     return z
+
+
+class Lazy():
+    def __init__(self, f):
+        self.func = f
+
+    def __repr__(self):
+        return self.func()

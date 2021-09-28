@@ -27,6 +27,32 @@ import lark
 import words
 
 
+async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+    actions: List[Action] = []
+    try:
+        cmds = get_commands(channel_id, prefix)
+        for cmd in cmds:
+            if cmd.mod_only() and not is_mod:
+                continue
+            if cmd.private_mod_only() and not (is_mod and private):
+                continue
+            if is_discord and not cmd.for_discord():
+                continue
+            if (not is_discord) and not cmd.for_twitch():
+                continue
+            a, next = await cmd.run(prefix, txt, is_discord, get_variables)
+            actions.extend(a)
+            if not next:
+                break
+        log_actions = [a for a in actions if a.attachment == '']
+        log.info(f'actions (except download) {log_actions}')
+    except Exception as e:
+        actions.append(
+            Action(kind=ActionKind.REPLY, text='error ocurred'))
+        log.error(f'{e}\n{traceback.format_exc()}')
+    return actions
+
+
 class Command(Protocol):
     async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True

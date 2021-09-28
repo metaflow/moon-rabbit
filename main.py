@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO do development in private messages with bot (initial interaction is within server but then it stics)
-# TODO discord: work with threads
-# TODO indexes
+# TODO twitch - reaction to channel-points redeems
 # TODO twitch error on too fast replies?
 # TODO check sandbox settings
 # TODO test perf of compiled template VS from_string
 # TODO bingo or anagramms?
+# TODO indexes
 """Bot entry point."""
 
 import asyncio
@@ -43,6 +42,8 @@ import commands
 import time
 import logging.handlers
 import words
+import twitch_commands
+import twitch_bot
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -148,31 +149,6 @@ templates.globals['dt'] = discord_or_twitch
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 
-
-async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
-    actions: List[Action] = []
-    try:
-        cmds = commands.get_commands(channel_id, prefix)
-        for cmd in cmds:
-            if cmd.mod_only() and not is_mod:
-                continue
-            if cmd.private_mod_only() and not (is_mod and private):
-                continue
-            if is_discord and not cmd.for_discord():
-                continue
-            if (not is_discord) and not cmd.for_twitch():
-                continue
-            a, next = await cmd.run(prefix, txt, is_discord, get_variables)
-            actions.extend(a)
-            if not next:
-                break
-        log_actions = [a for a in actions if a.attachment == '']
-        log.info(f'actions (except download) {log_actions}')
-    except Exception as e:
-        actions.append(
-            Action(kind=ActionKind.REPLY, text='error ocurred'))
-        log.error(f'{e}\n{traceback.format_exc()}')
-    return actions
 
 
 class DiscordClient(discord.Client):
@@ -280,104 +256,6 @@ class DiscordClient(discord.Client):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
-
-class Lazy():
-    def __init__(self, f):
-        self.func = f
-
-    def __repr__(self):
-        return self.func()
-
-
-class TwitchBot(twitchCommands.Bot):
-    def __init__(self, token, loop):
-        # Random prefix to not use default functionality.
-        super().__init__(token=token, prefix='2f8648a8-8078-43b9-bbc6-0ccc2fd48f8d', loop=loop)
-        self.channels = {}
-
-    async def event_ready(self):
-        # We are logged in and ready to chat and use commands...
-        logging.info(f'Logged in as | {self.nick}')
-        await self.reload_channels()
-
-    async def reload_channels(self):
-        logging.info('reloading twitch channels')
-        with db().conn.cursor() as cur:
-            cur.execute(
-                "SELECT channel_id, twitch_command_prefix, twitch_channel_name FROM channels")
-            for row in cur.fetchall():
-                id, prefix, name = row
-                if not name:
-                    continue
-                self.channels[name] = {
-                    'active_users': ttldict2.TTLDict(ttl_seconds=3600.0),
-                }
-        logging.info(f'joining channels: {self.channels.keys()}')
-        await self.join_channels(self.channels.keys())
-
-    async def event_message(self, message):
-        # Ignore own messages.
-        if message.echo:
-            return
-        channel_id, prefix = db().twitch_channel_info(
-            db().conn.cursor(), message.channel.name)
-        info = self.channels[message.channel.name]
-        if not info:
-            logging.info(f'unknown channel {message.channel.name}')
-            return
-        log = InvocationLog(f"channel={message.channel.name} ({channel_id})")
-        author = message.author.name
-        info['active_users'][author] = 1
-        log.info(f'{author} {message.content}')
-        variables: Optional[Dict] = None
-        is_mod = message.author.is_mod
-        # postpone variable calculations as much as possible
-
-        def get_vars():
-            nonlocal variables
-            if not variables:
-                variables = {
-                    'author': str(author),
-                    'author_name': str(author),
-                    'mention': Lazy(lambda: self.any_mention(message.content, info, author)),
-                    'direct_mention': Lazy(lambda: self.mentions(message.content)),
-                    'random_mention': Lazy(lambda: self.random_mention(info, author)),
-                    'media': 'twitch',
-                    'text': message.content,
-                    'is_mod': is_mod,
-                    'prefix': prefix,
-                    'bot': self.nick,
-                    'channel_id': channel_id,
-                    '_log': log,
-                    '_private': False,
-                }
-            return variables
-        actions = await process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
-        db().add_log(channel_id, log)
-        ctx = await self.get_context(message)
-        for a in actions:
-            if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                if len(a.text) > 500:
-                    a.text = a.text[:497] + "..."
-                await ctx.send(a.text)
-
-    def any_mention(self, txt: str, info, author):
-        direct = self.mentions(txt)
-        return direct if direct else self.random_mention(info, author)
-
-    def mentions(self, txt):
-        result = re.findall(r'@\S+', txt)
-        if result:
-            return ' '.join(result)
-        return ''
-
-    def random_mention(self, info, author):
-        users = [x for x in info['active_users'].keys() if x != author]
-        if users:
-            return "@" + random.choice(users)
-        return "@" + author
-
-
 async def expireVariables():
     while True:
         db().expire_variables()
@@ -386,6 +264,7 @@ async def expireVariables():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch', action='store_true')
+    parser.add_argument('--twitch2', action='store_true')
     parser.add_argument('--discord', action='store_true')
     parser.add_argument('--add_channel', action='store_true')
     parser.add_argument('--twitch_channel_name')
@@ -415,9 +294,13 @@ if __name__ == "__main__":
         discordClient = DiscordClient(intents=discord.Intents.all(), loop=loop)
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
-        logging.info('starting Twitch Bot')
-        twitchClient = TwitchBot(token=os.getenv(
+        logging.info('starting Twitch Commands')
+        twitchClient = twitch_commands.TwitchCommands(token=os.getenv(
             'TWITCH_ACCESS_TOKEN'), loop=loop)
+        loop.create_task(twitchClient.connect())
+    if args.twitch2:
+        logging.info('starting Twitch Bot')
+        twitchClient = twitch_bot.Twitch(token=os.getenv('TWITCH_ACCESS_TOKEN', ''), loop=loop)
         loop.create_task(twitchClient.connect())
     if args.twitch or args.discord:
         loop.create_task(expireVariables())
