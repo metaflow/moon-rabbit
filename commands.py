@@ -41,13 +41,16 @@ class Command(Protocol):
         return True
 
     def private_mod_only(self):
-        return True
+        return False
 
     def for_discord(self):
         return True
 
     def for_twitch(self):
         return True
+
+    def hidden_help(self):
+        return False
 
 
 commands_cache: Dict[str, List[Command]] = {}
@@ -122,8 +125,8 @@ class PersistentCommand(Command):
     def mod_only(self):
         return self.data.mod
 
-    def private_mod_only(self):
-        return False
+    def hidden_help(self):
+        return self.data.hidden
 
 
 class Eval(Command):
@@ -596,6 +599,9 @@ class Debug(Command):
 
     def help_full(self, prefix: str):
         return f'"{prefix}debug" OR "{prefix}debug <command name>"'
+    
+    def private_mod_only(self):
+        return True
 
 
 class HelpCommand(Command):
@@ -624,16 +630,18 @@ class HelpCommand(Command):
                     continue
                 if c.private_mod_only() and not (is_mod and private):
                     continue
-                if isinstance(c, PersistentCommand):
-                    if c.data.hidden:
-                        hidden_commands.append(c.help(prefix))
-                        continue
+                if c.hidden_help():
+                    hidden_commands.append(c.help(prefix))
+                    continue
                 s.append(c.help(prefix))
             reply = 'commands: ' + ', '.join(s)
-            if is_mod and private:
-                reply += '\ncommand names: ' + \
-                    ', '.join(names) + '\n' + 'hidden commands: ' + \
-                    ', '.join(hidden_commands)
+            if is_mod:
+                if private:
+                    reply += '\ncommand names: ' + \
+                        ', '.join(names) + '\n' + 'hidden commands: ' + \
+                        ', '.join(hidden_commands)
+                elif is_discord:
+                    reply += ' (some dommands are only available in private messages)'
             actions = [Action(kind=ActionKind.REPLY, text=reply)]
             return actions, False
         sub = parts[1].strip()
@@ -661,7 +669,4 @@ class HelpCommand(Command):
         return f'{prefix}help [<command name>]'
 
     def mod_only(self):
-        return False
-
-    def private_mod_only(self):
         return False
