@@ -50,7 +50,7 @@ class Command(Protocol):
         return True
 
     def hidden_help(self):
-        return False
+        return True
 
 
 commands_cache: Dict[str, List[Command]] = {}
@@ -669,4 +669,7 @@ class HelpCommand(Command):
         return f'{prefix}help [<command name>]'
 
     def mod_only(self):
+        return False
+    
+    def hidden_help(self):
         return False
