@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Type
 import pymorphy2
 from pymorphy2.analyzer import MorphAnalyzer  # type: ignore
 
+# Docs: https://pymorphy2.readthedocs.io/en/latest/user/index.html
 morph = pymorphy2.MorphAnalyzer(lang='ru')
 
 morph_tags: Dict[str, str] = {

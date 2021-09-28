@@ -15,7 +15,6 @@
 # limitations under the License.
 
 # TODO do development in private messages with bot (initial interaction is within server but then it stics)
-# TODO !help list of commands and help for template
 # TODO discord: work with threads
 # TODO indexes
 # TODO twitch error on too fast replies?

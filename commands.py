@@ -186,7 +186,7 @@ class SetCommand(Command):
         return f'{prefix}set'
 
     def help_full(self, prefix: str):
-        return f'''{prefix}set [<template>|<JSON>]
+        return f'''{prefix}set [<name> <template>|<JSON>]
 Missing value deletes command.
 See https://jinja.palletsprojects.com/en/3.0.x/templates/ for the general template syntax.
 
@@ -202,7 +202,6 @@ Variables available:
 - "text" - full message text
 
 Additional functions:
-- list(<list name>) - random item from the list, item is treated as template too;
 - randint(from = 0, to = 100) - random integer in [from, to] range;
 - timestamp() - current timestamp in seconds, integer
 - dt(<text for discord>, <text for twitch>) - different fixed text for discord or twitch;
@@ -211,14 +210,13 @@ Additional functions:
 - category_size(<category>) - number of set variables in category;
 - delete_category(<category>) - delete all variables in category;
 - txt(<tags filter>, <inflect>) - get a random text fragment.
-Tag is query, e.g. "tag1 or (tag2 and tag3) except tag4 and tag5"
-If inflect is set, text will not be rendered and instead inflected according to russian language (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF).
+Tags filter selects subset of all texts. From simple "my-tag" to complex "tag1 or (tag2 and tag3) except tag4 and tag5".
+If <inflect> is set, text will not be rendered and instead inflected according to russian language (possible options: им, nomn, рд, gent, дт, datv, вн, accs, тв, ablt, пр, loct, ед, sing, мн, plur, СУЩ, NOUN, ПРИЛ, ADJF).
 For example txt('morph & adj & good', 'тв').
 
 JSON format is ever changing, use "{prefix}debug <command>" to get a command representation.
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
 '''
-
 
 class SetPrefix(Command):
     async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -280,14 +278,14 @@ class TagDelete(Command):
         _, value = parts
         value = value.strip()
         channel_id = v['channel_id']
-        deleted = db().delete_tag(channel_id, value)
+        deleted = db().delete_tag(channel_id, int(value))
         return [Action(kind=ActionKind.REPLY, text=('OK' if deleted == 1 else 'no such tag'))], False
 
     def help(self, prefix: str):
         return f'{prefix}tag-rm'
 
     def help_full(self, prefix: str):
-        return f'{prefix}tag-rm <value>'
+        return f'{prefix}tag-rm <tag id>'
 
 
 class TagList(Command):
@@ -299,7 +297,10 @@ class TagList(Command):
         tags, _ = db().get_tags(channel_id)
         s = 'no tags'
         if tags:
-            s = ', '.join(tags.keys())
+            t: List[str] = []
+            for tag in sorted(tags):
+                t.append(f'{tags[tag]} {tag}')
+            s = '\n'.join(t)
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
@@ -344,20 +345,25 @@ class TextSetTags(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         value = int(parts[1])
         channel_id = v['channel_id']
-        if not db().get_text(channel_id, value)[0]:
+        txt_value, current_tags = db().get_text(channel_id, value)
+        logging.info(f'{txt_value} {current_tags}')
+        if not txt_value:
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
         set_tags = parts[2:]
         for t in set_tags:
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
-        tags, _ = db().get_tags(channel_id)
+        s = f'Set tags for text {value} "{txt_value}": {", ".join(set_tags)}'
+        tags, tag_inverse = db().get_tags(channel_id)
         channel_id = v['channel_id']
+        if current_tags:
+            s += '\nPrevious tags: ' + ', '.join([tag_inverse[x] for x in current_tags])
         db().delete_text_tags(channel_id, value)
         for t in set_tags:
             t = t.strip()
             db().add_text_tag(channel_id, value, tags[t])
-        return [Action(kind=ActionKind.REPLY, text='OK')], False
+        return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
         return f'{prefix}txt-tag'

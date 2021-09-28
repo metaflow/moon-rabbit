@@ -187,11 +187,11 @@ DROP TABLE tags;
         self.text_queries.pop(channel_id, None)
         self.text_tags.pop(channel_id, None)
 
-    def delete_tag(self, channel_id: int, tag_name: str):
+    def delete_tag(self, channel_id: int, tag_id: int):
         with self.conn.cursor() as cur:
-            logging.info(f'delete tag "{tag_name}" from {channel_id}')
-            cur.execute('DELETE FROM tags WHERE channel_id = %s AND value = %s',
-                        (channel_id, tag_name))
+            logging.info(f'delete tag "{tag_id}" from {channel_id}')
+            cur.execute('DELETE FROM tags WHERE channel_id = %s AND id = %s',
+                        (channel_id, tag_id))
             self.tags.pop(channel_id, None)
             self.purge_text_to_tag_cache(channel_id)
             return cur.rowcount
