@@ -38,7 +38,7 @@ import random
 import re
 import ttldict2  # type: ignore
 from storage import DB, db, set_db
-from typing import Callable, List, Set, Union
+from typing import Any, Callable, List, Set, Union
 import traceback
 import commands
 import time
@@ -228,7 +228,7 @@ class DiscordClient(discord.Client):
                     '_private': private,
                 }
             return variables
-        actions = await process_message(log, channel_id, message.content, prefix, True, is_mod, private, get_vars)
+        actions = await commands.process_message(log, channel_id, message.content, prefix, True, is_mod, private, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
