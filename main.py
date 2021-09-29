@@ -81,6 +81,8 @@ def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     if isinstance(q, int):
         txt, tags = db().get_text(v['channel_id'], q)
     else:
+        if inf:
+            q = f'({q}) and morph'
         txt, tags = db().get_random_text(v['channel_id'], q)
     if not txt:
         v['_log'].info(f'no matchin text is found')

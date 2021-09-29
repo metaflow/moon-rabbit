@@ -23,11 +23,10 @@ from lark.tree import Tree
 from lark.visitors import Transformer
 
 query_grammar = """
-?start: except -> start
-?except: and | and "except"i and
+?start: and -> start
 ?and: or | and "&" or | and "and"i or
 ?or: atom | or "|" atom | or "," atom | or "or"i atom
-?atom: NAME | "(" and ")"
+?atom: NAME | "(" and ")" | "not" atom -> not
 NAME: (LETTER|"-"|"_"|DIGIT)+
 %import common.LETTER
 %import common.DIGIT
@@ -60,8 +59,8 @@ class Matcher(Transformer):
             return children[0] or children[1]
         if data == 'and':
             return children[0] and children[1]
-        if data == 'except':
-            return children[0] and not children[1]
+        if data == 'not':
+            return not children[0]
         if data == 'start':
             return children[0]
         raise Exception('unexpected tree node "{data}", {children}, {meta}')
