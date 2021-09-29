@@ -307,9 +307,9 @@ if __name__ == "__main__":
         logging.info('starting Twitch Bot')
         with db().conn.cursor() as cur:
             cur.execute(
-                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events FROM channels")
+                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events, twitch_events_auth FROM channels")
             for row in cur.fetchall():
-                id, prefix, name, token, events = row
+                id, prefix, name, token, events, pubsub_token = row
                 if not name or not token:
                     continue
                 watch: List[twitch_bot.TwitchEvent] = []
@@ -317,7 +317,7 @@ if __name__ == "__main__":
                     for x in events.split(','):
                         watch.append(twitch_bot.TwitchEvent[x.strip()])
                 logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch}')
-                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, loop=loop)
+                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch or args.discord:
         loop.create_task(expireVariables())

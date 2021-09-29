@@ -32,8 +32,9 @@ class TwitchEvent(str, Enum):
     channel_points = 'channel_points'
 
 class Twitch(twitchio.Client):
-    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, watch: List[TwitchEvent] = None, client_secret: str = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
+    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[TwitchEvent] = None, client_secret: str = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
         self.token = token
+        self.pubsub_token = pubsub_token
         self.channel_name = channel
         self.channel_id = internal_channel_id
         self.prefix = prefix
@@ -47,13 +48,14 @@ class Twitch(twitchio.Client):
         logging.info(f'Logged in as "{self.nick}"')
         channel_user = (await self.fetch_users([self.channel_name]))[0]
         logging.info(f'fetched channel user {channel_user}')
-        topics: List[pubsub.Topic] = []
-        for w in self.watch:
-            if w == TwitchEvent.moderation_user_action:
-                topics.append(pubsub.moderation_user_action(self.token)[channel_user.id][channel_user.id])
-            if w == TwitchEvent.channel_points:
-                topics.append(pubsub.channel_points(self.token)[channel_user.id])
-        await self.pubsub.subscribe_topics(topics)
+        if self.pubsub_token:
+            topics: List[pubsub.Topic] = []
+            for w in self.watch:
+                if w == TwitchEvent.moderation_user_action:
+                    topics.append(pubsub.moderation_user_action(self.pubsub_token)[channel_user.id][channel_user.id])
+                if w == TwitchEvent.channel_points:
+                    topics.append(pubsub.channel_points(self.pubsub_token)[channel_user.id])
+            await self.pubsub.subscribe_topics(topics)
 
     async def event_pubsub_moderation(self, event):
         logging.info(f'event_pubsub_moderation {event}')
