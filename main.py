@@ -153,8 +153,7 @@ templates.globals['dt'] = discord_or_twitch
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 
-
-
+# https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
     def __init__(self, *args, **kwargs):
         self.channels: Dict[str, Any] = {}
@@ -304,8 +303,20 @@ if __name__ == "__main__":
         loop.create_task(twitchClient.connect())
     if args.twitch2:
         logging.info('starting Twitch Bot')
-        twitchClient = twitch_bot.Twitch(token=os.getenv('TWITCH_ACCESS_TOKEN', ''), loop=loop)
-        loop.create_task(twitchClient.connect())
+        with db().conn.cursor() as cur:
+            cur.execute(
+                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events FROM channels")
+            for row in cur.fetchall():
+                id, prefix, name, token, events = row
+                if not name or not token:
+                    continue
+                watch: List[twitch_bot.TwitchEvent] = []
+                if events:
+                    for x in events.split(','):
+                        watch.append(twitch_bot.TwitchEvent[x.strip()])
+                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch}')
+                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, loop=loop)
+                loop.create_task(t.connect())
     if args.twitch or args.discord:
         loop.create_task(expireVariables())
         loop.run_forever()

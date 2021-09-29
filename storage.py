@@ -92,7 +92,9 @@ DROP TABLE tags;
                 discord_guild_id varchar(50),
                 discord_command_prefix varchar(10),
                 twitch_channel_name varchar(50),
-                twitch_command_prefix varchar(10));
+                twitch_command_prefix varchar(10),
+                twitch_auth_token TEXT,
+                twitch_events TEXT);
             CREATE TABLE IF NOT EXISTS variables
                 (channel_id INT,
                 name varchar(100),
