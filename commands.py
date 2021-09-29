@@ -67,7 +67,7 @@ class Command(Protocol):
         return True
 
     def private_mod_only(self):
-        return txt
+        return False
 
     def for_discord(self):
         return True
