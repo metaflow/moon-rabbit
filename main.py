@@ -16,6 +16,8 @@
 
 # TODO twitch - reaction to channel-points redeems
 # TODO twitch error on too fast replies?
+# TODO add "any" or "choose" that randomly picks from a literal list
+# TODO updating text (incl txt-upload to accept ids)
 # TODO data struct to pass to command execution
 # TODO allow commands w/o prefix in private bot conversation
 # TODO check sandbox settings
