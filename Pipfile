@@ -17,6 +17,7 @@ pymorphy2-dicts-ru = "*"
 lark = "*"
 numpy = "*"
 llist = "*"
+twitchapi = "*"
 
 [dev-packages]
 autopep8 = "*"
