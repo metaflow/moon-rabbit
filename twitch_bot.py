@@ -54,7 +54,9 @@ class Twitch(twitchio.Client):
                 if w == TwitchEvent.moderation_user_action:
                     topics.append(pubsub.moderation_user_action(self.pubsub_token)[channel_user.id][channel_user.id])
                 if w == TwitchEvent.channel_points:
-                    topics.append(pubsub.channel_points(self.pubsub_token)[channel_user.id])
+                    topic = pubsub.channel_points(self.pubsub_token)[channel_user.id]
+                    logging.info(f'subscribing to {topic}')
+                    topics.append(topic)
             await self.pubsub.subscribe_topics(topics)
 
     async def event_pubsub_moderation(self, event):

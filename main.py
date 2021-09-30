@@ -316,7 +316,7 @@ if __name__ == "__main__":
                 if events:
                     for x in events.split(','):
                         watch.append(twitch_bot.TwitchEvent[x.strip()])
-                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch}')
+                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
                 t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch or args.discord:
