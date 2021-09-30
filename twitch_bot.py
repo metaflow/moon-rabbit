@@ -63,10 +63,6 @@ class Twitch(twitchio.Client):
     async def event_channel_points(self, event: pubsub.PubSubChannelPointsMessage):
         logging.info(f'event_channel_points {event.reward} {event.user}')
 
-    async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
-        logging.info(f'join channel {channel.name} user {user.name} {user.id}')
-        return await super().event_join(channel, user)
-
     async def event_message(self, message):
         # Ignore own messages.
         if message.echo:
