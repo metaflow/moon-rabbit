@@ -31,8 +31,9 @@ async def on_redeption(*args):
 APP_ID = os.getenv('TWITCH_API_APP_ID')
 APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
 # create instance of twitch API and create app authentication
-twitch = Twitch(APP_ID, '4abnt6fc2kjts5pgxl9u3yhl5eyac7')
+twitch = Twitch(APP_ID, APP_SECRET)
 twitch.authenticate_app([])
+twitch.set_user_authentication(token=os.getenv('TWITCH_API_USER_TOKEN'), scope=[AuthScope.CHAT_READ, AuthScope.CHANNEL_READ_REDEMPTIONS])
 TARGET_USERNAME = 'go_olga'
 WEBHOOK_URL = 'https://twitch.apexlegendsrecoils.online'
 # get ID of user
@@ -45,7 +46,7 @@ hook.unsubscribe_all()
 # start client
 hook.start()
 print('subscribing to hooks:')
-# hook.listen_channel_points_custom_reward_redemption_add(user_id, on_redeption)
+hook.listen_channel_points_custom_reward_redemption_add(user_id, on_redeption)
 # hook.listen_channel_follow(user_id, on_follow)
 try:
     input('press Enter to shut down...')
