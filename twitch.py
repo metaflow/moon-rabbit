@@ -33,6 +33,7 @@ APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
 # create instance of twitch API and create app authentication
 twitch = Twitch(APP_ID, APP_SECRET)
 twitch.authenticate_app([])
+twitch.auto_refresh_auth = False
 twitch.set_user_authentication(token=os.getenv('TWITCH_API_USER_TOKEN'), scope=[AuthScope.CHAT_READ, AuthScope.CHANNEL_READ_REDEMPTIONS])
 TARGET_USERNAME = 'go_olga'
 WEBHOOK_URL = 'https://twitch.apexlegendsrecoils.online'
