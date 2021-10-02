@@ -48,6 +48,7 @@ import logging.handlers
 import words
 import twitch_commands
 import twitch_bot
+from twitch import Twitch3
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -270,6 +271,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch', action='store_true')
     parser.add_argument('--twitch2', action='store_true')
+    parser.add_argument('--twitch3', action='store_true')
     parser.add_argument('--discord', action='store_true')
     parser.add_argument('--add_channel', action='store_true')
     parser.add_argument('--twitch_channel_name')
@@ -318,6 +320,22 @@ if __name__ == "__main__":
                         watch.append(twitch_bot.TwitchEvent[x.strip()])
                 logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
                 t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
+                loop.create_task(t.connect())
+    if args.twitch3:
+        logging.info('starting Twitch Bot 3')
+        with db().conn.cursor() as cur:
+            cur.execute(
+                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events, twitch_events_auth FROM channels")
+            for row in cur.fetchall():
+                id, prefix, name, token, events, pubsub_token = row
+                if not name or not token:
+                    continue
+                watch3: List[twitch_bot.TwitchEvent] = []
+                if events:
+                    for x in events.split(','):
+                        watch.append(twitch_bot.TwitchEvent[x.strip()])
+                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
+                t = Twitch3(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch3, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch or args.discord:
         loop.create_task(expireVariables())

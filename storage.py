@@ -94,8 +94,9 @@ DROP TABLE tags;
                 twitch_channel_name varchar(50),
                 twitch_command_prefix varchar(10),
                 twitch_auth_token TEXT,
-                twitch_events_auth TEXT,
-                twitch_events TEXT);
+                twitch_events TEXT,
+                twitch_api_app_id TEXT,
+                twitch_api_app_secret TEXT);
             CREATE TABLE IF NOT EXISTS variables
                 (channel_id INT,
                 name varchar(100),

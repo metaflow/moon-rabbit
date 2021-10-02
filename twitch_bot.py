@@ -34,7 +34,6 @@ class TwitchEvent(str, Enum):
 class Twitch(twitchio.Client):
     def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[TwitchEvent] = None, client_secret: str = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
         self.token = token
-        self.pubsub_token = pubsub_token
         self.channel_name = channel
         self.channel_id = internal_channel_id
         self.prefix = prefix
