@@ -28,6 +28,7 @@
 
 import asyncio
 from io import StringIO
+from twitchAPI import twitch
 from data import *
 from twitchio.ext import commands as twitchCommands  # type: ignore
 import argparse
@@ -37,7 +38,6 @@ import logging
 import os
 import sys
 import random
-import re
 import ttldict2  # type: ignore
 from storage import DB, db, set_db
 from typing import Any, Callable, List, Set, Union
@@ -48,7 +48,7 @@ import logging.handlers
 import words
 import twitch_commands
 import twitch_bot
-from twitch import Twitch3
+import twitch_api
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -157,6 +157,8 @@ templates.globals['dt'] = discord_or_twitch
 # templates.globals['log'] = lambda x: logging.info(x)
 
 # https://discordpy.readthedocs.io/en/latest/api.html
+
+
 class DiscordClient(discord.Client):
     def __init__(self, *args, **kwargs):
         self.channels: Dict[str, Any] = {}
@@ -262,6 +264,7 @@ class DiscordClient(discord.Client):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
+
 async def expireVariables():
     while True:
         db().expire_variables()
@@ -318,25 +321,21 @@ if __name__ == "__main__":
                 if events:
                     for x in events.split(','):
                         watch.append(twitch_bot.TwitchEvent[x.strip()])
-                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
-                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
+                logging.info(
+                    f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
+                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id,
+                                      prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch3:
-        logging.info('starting Twitch Bot 3')
-        with db().conn.cursor() as cur:
-            cur.execute(
-                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events, twitch_events_auth FROM channels")
-            for row in cur.fetchall():
-                id, prefix, name, token, events, pubsub_token = row
-                if not name or not token:
-                    continue
-                watch3: List[twitch_bot.TwitchEvent] = []
-                if events:
-                    for x in events.split(','):
-                        watch.append(twitch_bot.TwitchEvent[x.strip()])
-                logging.info(f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
-                t = Twitch3(token=token, channel=name, internal_channel_id=id, prefix=prefix, watch=watch3, loop=loop)
-                loop.create_task(t.connect())
+        logging.info('starting Twitch API')
+        twitch_api.Twitch3(
+            app_id=os.getenv('TWITCH_API_APP_ID', ''),
+            app_secret=os.getenv('TWITCH_API_APP_SECRET', ''),
+            url='https://twitch.apexlegendsrecoils.online',
+            port=8080,
+            watch={
+                'go_olga': [twitch_api.TwitchEvent.channel_points]
+            })
     if args.twitch or args.discord:
         loop.create_task(expireVariables())
         loop.run_forever()
