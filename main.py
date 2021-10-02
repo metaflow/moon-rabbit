@@ -328,7 +328,7 @@ if __name__ == "__main__":
                 loop.create_task(t.connect())
     if args.twitch3:
         logging.info('starting Twitch API')
-        twitch_api.Twitch3(
+        t = twitch_api.Twitch3(
             app_id=os.getenv('TWITCH_API_APP_ID', ''),
             app_secret=os.getenv('TWITCH_API_APP_SECRET', ''),
             url='https://twitch.apexlegendsrecoils.online',
@@ -336,7 +336,8 @@ if __name__ == "__main__":
             watch={
                 'go_olga': [twitch_api.TwitchEvent.channel_points]
             })
-    if args.twitch or args.discord:
+    if args.twitch or args.discord or args.twitch2 or args.twitch3:
+        logging.info('running the async loop')
         loop.create_task(expireVariables())
         loop.run_forever()
         sys.exit(0)
