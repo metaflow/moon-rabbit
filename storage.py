@@ -430,5 +430,5 @@ def db() -> DB:
     return _db
 
 
-def cursor() -> psycopg2.cursor:
+def cursor() -> psycopg2.extensions.cursor:
     return db().conn.cursor()
