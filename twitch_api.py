@@ -50,7 +50,7 @@ class Twitch3(twitchio.Client):
         logging.info(f'creating twitch bot {bot_id}')
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", bot_id)
+                "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
             self.channel_name, self.app_id, self.app_secret, self.auth_token, self.api_url, self.api_port = cur.fetchone()
         self.channels: Dict[str, ChannelInfo] = {}
         super().__init__(self.auth_token, loop=loop)
@@ -61,7 +61,7 @@ class Twitch3(twitchio.Client):
         has_events = False
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events FROM channels WHERE twitch_bot = %s", self.channel_name)
+                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events FROM channels WHERE twitch_bot = %s", (self.channel_name,))
             for row in cur.fetchall():
                 channel_id, twitch_channel_name, twitch_command_prefix, twitch_events = row
                 user = (await self.fetch_users([twitch_channel_name]))[0]
