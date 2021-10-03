@@ -134,12 +134,11 @@ class Twitch3(twitchio.Client):
             return variables
         actions = await commands.process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
-        ctx = await self.get_context(message)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                 if len(a.text) > 500:
                     a.text = a.text[:497] + "..."
-                await ctx.send(a.text)
+                await message.channel.send(a.text)
 
     def any_mention(self, txt: str, info: ChannelInfo, author):
         direct = self.mentions(txt)
