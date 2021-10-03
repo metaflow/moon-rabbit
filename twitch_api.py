@@ -41,7 +41,7 @@ class ChannelInfo:
     active_users: ttldict2.TTLDict
     prefix: str
     channel_id: int
-    twitch_user_id: int
+    twitch_user_id: str
     events: List[TwitchEvent]
 
 
@@ -53,19 +53,13 @@ class Twitch3(twitchio.Client):
                 "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
             self.channel_name, self.app_id, self.app_secret, self.auth_token, self.api_url, self.api_port = cur.fetchone()
         self.channels: Dict[str, ChannelInfo] = {}
-        super().__init__(self.auth_token, loop=loop)
 
-    async def event_ready(self):
-        # We are logged in and ready to chat and use commands...
-        logging.info(f'Logged in as {self.nick}')
         has_events = False
         with cursor() as cur:
             cur.execute(
                 "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events FROM channels WHERE twitch_bot = %s", (self.channel_name,))
             for row in cur.fetchall():
                 channel_id, twitch_channel_name, twitch_command_prefix, twitch_events = row
-                user = (await self.fetch_users([twitch_channel_name]))[0]
-                user_id = user.id
                 events: List[TwitchEvent] = []
                 if twitch_events:
                     for x in twitch_events.split(','):
@@ -75,11 +69,11 @@ class Twitch3(twitchio.Client):
                     active_users=ttldict2.TTLDict(ttl_seconds=3600.0),
                     prefix=twitch_command_prefix,
                     channel_id=channel_id,
-                    twitch_user_id=user_id,
+                    twitch_user_id='',
                     events=events)
         logging.info(f'channels {self.channels}')
         logging.info(f'joining channels {self.channels.keys()}')
-        await self.join_channels(self.channels.keys())
+
         if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
             logging.info(f'starting EventSub for {self.channel_name} {self}')
             self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret)
@@ -88,13 +82,21 @@ class Twitch3(twitchio.Client):
             hook.unsubscribe_all()
             hook.start()
             for name, c in self.channels.items():
+                uid = self.api.get_users(logins=[name])
+                c.twitch_user_id = str(uid['data'][0]['id'])
                 for e in c.events:
                     if e == TwitchEvent.channel_points:
                         logging.info(
                             f'subscribing {name} {c.twitch_user_id} to channel_points_custom_reward_redemption')
                         hook.listen_channel_points_custom_reward_redemption_add(
-                            str(c.twitch_user_id), self.on_redeption)
+                            c.twitch_user_id, self.on_redeption)
+        super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()))
 
+    async def event_ready(self):
+        # We are logged in and ready to chat and use commands...
+        logging.info(f'Logged in as {self.nick}')
+        # await self.join_channels(self.channels.keys())
+       
     async def event_message(self, message):
         # Ignore own messages.
         if message.echo:
