@@ -72,7 +72,6 @@ DROP TABLE tags;
             ''')
         self.conn.commit()
         self.init_db()
-
     def init_db(self):
         with self.conn.cursor() as cur:
             cur.execute('''
@@ -93,10 +92,16 @@ DROP TABLE tags;
                 discord_command_prefix varchar(10),
                 twitch_channel_name varchar(50),
                 twitch_command_prefix varchar(10),
-                twitch_auth_token TEXT,
                 twitch_events TEXT,
-                twitch_api_app_id TEXT,
-                twitch_api_app_secret TEXT);
+                twitch_bot TEXT);
+            CREATE TABLE IF NOT EXISTS twitch_bots
+                (id SERIAL,
+                channel_name TEXT,
+                api_app_id,
+                api_app_secret TEXT,
+                api_url TEXT,
+                api_port INT,
+                auth_token TEXT);
             CREATE TABLE IF NOT EXISTS variables
                 (channel_id INT,
                 name varchar(100),

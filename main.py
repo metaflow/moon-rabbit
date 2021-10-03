@@ -260,8 +260,7 @@ class DiscordClient(discord.Client):
             return ' '.join([discord_literal(x.mention) for x in msg.mentions])
         return ''
 
-    def any_mention(self, msg, users: List[str], exclude: List[str]):
-        direct = self.mentions(msg)
+def any_mention(self, msg, users: List[str], exclude: List[str]): 
         return direct if direct else self.random_mention(msg, users, exclude)
 
 
@@ -312,7 +311,7 @@ if __name__ == "__main__":
         logging.info('starting Twitch Bot')
         with db().conn.cursor() as cur:
             cur.execute(
-                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events, twitch_events_auth FROM channels")
+                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events FROM channels")
             for row in cur.fetchall():
                 id, prefix, name, token, events, pubsub_token = row
                 if not name or not token:
@@ -327,15 +326,10 @@ if __name__ == "__main__":
                                       prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch3:
-        logging.info('starting Twitch API')
-        t = twitch_api.Twitch3(
-            app_id=os.getenv('TWITCH_API_APP_ID', ''),
-            app_secret=os.getenv('TWITCH_API_APP_SECRET', ''),
-            url='https://twitch.apexlegendsrecoils.online',
-            port=8080,
-            watch={
-                'go_olga': [twitch_api.TwitchEvent.channel_points]
-            })
+        cur.execute("SELECT id FROM twitch_bots")
+        for r in cur.fetchall():
+            t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
+            loop.create_task(t.connect())
     if args.twitch or args.discord or args.twitch2 or args.twitch3:
         logging.info('running the async loop')
         loop.create_task(expireVariables())

@@ -32,37 +32,17 @@ class TwitchEvent(str, Enum):
     channel_points = 'channel_points'
 
 class Twitch(twitchio.Client):
-    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[TwitchEvent] = None, client_secret: str = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
+    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[TwitchEvent] = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
         self.token = token
         self.channel_name = channel
         self.channel_id = internal_channel_id
         self.prefix = prefix
         self.active_users = ttldict2.TTLDict(ttl_seconds=3600.0)
-        self.pubsub = pubsub.PubSubPool(self)
         self.watch = watch
-        super().__init__(token, client_secret=client_secret,
-                         initial_channels=[channel], loop=loop, heartbeat=heartbeat)
+        super().__init__(token, initial_channels=[channel], loop=loop, heartbeat=heartbeat)
 
     async def event_ready(self):
         logging.info(f'Logged in as "{self.nick}"')
-        channel_user = (await self.fetch_users([self.channel_name]))[0]
-        logging.info(f'fetched channel user {channel_user}')
-        if self.pubsub_token:
-            topics: List[pubsub.Topic] = []
-            for w in self.watch:
-                if w == TwitchEvent.moderation_user_action:
-                    topics.append(pubsub.moderation_user_action(self.pubsub_token)[channel_user.id][channel_user.id])
-                if w == TwitchEvent.channel_points:
-                    topic = pubsub.channel_points(self.pubsub_token)[channel_user.id]
-                    logging.info(f'subscribing to {topic}')
-                    topics.append(topic)
-            await self.pubsub.subscribe_topics(topics)
-
-    async def event_pubsub_moderation(self, event):
-        logging.info(f'event_pubsub_moderation {event}')
-    
-    async def event_channel_points(self, event: pubsub.PubSubChannelPointsMessage):
-        logging.info(f'event_channel_points {event.reward} {event.user}')
 
     async def event_message(self, message):
         # Ignore own messages.
