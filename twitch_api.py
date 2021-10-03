@@ -47,6 +47,7 @@ class ChannelInfo:
 
 class Twitch3(twitchio.Client):
     def __init__(self, bot_id: int, loop: asyncio.AbstractEventLoop):
+        logging.info(f'creating twitch bot {bot_id}')
         with cursor() as cur:
             cur.select(
                 "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", bot_id)

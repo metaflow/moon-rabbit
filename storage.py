@@ -97,7 +97,7 @@ DROP TABLE tags;
             CREATE TABLE IF NOT EXISTS twitch_bots
                 (id SERIAL,
                 channel_name TEXT,
-                api_app_id,
+                api_app_id TEXT,
                 api_app_secret TEXT,
                 api_url TEXT,
                 api_port INT,
