@@ -72,7 +72,7 @@ class Twitch3(twitchio.Client):
                         events.append(TwitchEvent[x.strip()])
                         has_events = True
                 self.channels[twitch_channel_name] = ChannelInfo(
-                    active_users=ttldict2.TTLDict(ttl_seconds=3600),
+                    active_users=ttldict2.TTLDict(ttl_seconds=3600.0),
                     prefix=twitch_command_prefix,
                     channel_id=channel_id,
                     twitch_user_id=user_id,
