@@ -39,7 +39,7 @@ import os
 import sys
 import random
 import ttldict2  # type: ignore
-from storage import DB, db, set_db
+from storage import DB, db, set_db, cursor
 from typing import Any, Callable, List, Set, Union
 import traceback
 import commands
@@ -260,7 +260,8 @@ class DiscordClient(discord.Client):
             return ' '.join([discord_literal(x.mention) for x in msg.mentions])
         return ''
 
-def any_mention(self, msg, users: List[str], exclude: List[str]): 
+    def any_mention(self, msg, users: List[str], exclude: List[str]): 
+        direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
 
@@ -326,10 +327,11 @@ if __name__ == "__main__":
                                       prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
                 loop.create_task(t.connect())
     if args.twitch3:
-        cur.execute("SELECT id FROM twitch_bots")
-        for r in cur.fetchall():
-            t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
-            loop.create_task(t.connect())
+        with cursor() as cur:
+            cur.execute("SELECT id FROM twitch_bots")
+            for r in cur.fetchall():
+                t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
+                loop.create_task(t.connect())
     if args.twitch or args.discord or args.twitch2 or args.twitch3:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
