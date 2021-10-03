@@ -81,7 +81,7 @@ class Twitch3(twitchio.Client):
         logging.info(f'joining channels {self.channels.keys()}')
         await self.join_channels(self.channels.keys())
         if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
-            logging.info(f'starting EventSub for {self.channel_name}')
+            logging.info(f'starting EventSub for {self.channel_name} {self}')
             self.api = Twitch(self.app_id, self.app_secret)
             self.api.authenticate_app([])
             hook = EventSub(self.api_url, self.app_id, self.api_port, self.api)
@@ -107,7 +107,7 @@ class Twitch3(twitchio.Client):
         prefix = info.prefix
         log = InvocationLog(f"channel={message.channel.name} ({channel_id})")
         author = message.author.name
-        info['active_users'][author] = 1
+        info.active_users[author] = 1
         log.info(f'{author} {message.content}')
         variables: Optional[Dict] = None
         is_mod = message.author.is_mod
