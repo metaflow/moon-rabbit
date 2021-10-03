@@ -72,6 +72,7 @@ DROP TABLE tags;
             ''')
         self.conn.commit()
         self.init_db()
+
     def init_db(self):
         with self.conn.cursor() as cur:
             cur.execute('''
@@ -282,25 +283,10 @@ DROP TABLE tags;
 
     def all_texts(self, channel_id: int) -> List[Tuple[int, str, Set[int]]]:
         with self.conn.cursor() as cur:
-            cur.execute('SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
+            cur.execute(
+                'SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
             text_tags = self.get_text_tags(channel_id)
             return [(row[0], row[1], text_tags.get(row[0], set())) for row in cur.fetchall()]
-
-    def get_random_list_item(self, channel_id: int, list_name: str) -> str:
-        info = self._get_list(channel_id, list_name)
-        n = len(info.items_ids)
-        if n == 0:
-            return ''
-        if n == 1:
-            item = self.get_list_item(channel_id, info.items_ids[0])
-            if not item:
-                return ''
-            return item[0]
-        info.idx = (info.idx + random.randint(1, n - 1)) % n
-        item = self.get_list_item(channel_id, info.items_ids[info.idx])
-        if not item:
-            return ''
-        return item[0]
 
     def get_texts_matching_tags(self, channel_id: int, q: str) -> Type[dllist]:
         q = q.strip()
@@ -444,5 +430,5 @@ def db() -> DB:
     return _db
 
 
-def cursor():
+def cursor() -> psycopg2.cursor:
     return db().conn.cursor()
