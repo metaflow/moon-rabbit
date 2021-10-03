@@ -82,9 +82,9 @@ class Twitch3(twitchio.Client):
         await self.join_channels(self.channels.keys())
         if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
             logging.info(f'starting EventSub for {self.channel_name} {self}')
-            self.api = Twitch(self.app_id, self.app_secret)
+            self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret)
             self.api.authenticate_app([])
-            hook = EventSub(self.api_url, self.app_id, self.api_port, self.api)
+            hook = EventSub(callback_url=self.api_url, api_client_id=self.app_id, port=self.api_port, twitch=self.api)
             hook.unsubscribe_all()
             hook.start()
             for name, c in self.channels.items():
@@ -93,7 +93,7 @@ class Twitch3(twitchio.Client):
                         logging.info(
                             f'subscribing {name} {c.twitch_user_id} to channel_points_custom_reward_redemption')
                         hook.listen_channel_points_custom_reward_redemption_add(
-                            c.twitch_user_id, self.on_redeption)
+                            str(c.twitch_user_id), self.on_redeption)
 
     async def event_message(self, message):
         # Ignore own messages.
