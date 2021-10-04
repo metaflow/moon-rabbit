@@ -27,7 +27,7 @@ import lark
 import words
 
 
-async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+async def process_message(log: InvocationLog, channel_id: int, txt: str, event: EventType, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
     actions: List[Action] = []
     try:
         cmds = get_commands(channel_id, prefix)
@@ -40,7 +40,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
                 continue
             if (not is_discord) and not cmd.for_twitch():
                 continue
-            a, next = await cmd.run(prefix, txt, is_discord, get_variables)
+            a, next = await cmd.run(prefix, txt, event, is_discord, get_variables)
             actions.extend(a)
             if not next:
                 break
@@ -54,7 +54,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, prefix:
 
 
 class Command(Protocol):
-    async def run(self, prefix: str, text: str, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         return [], True
 
     def help(self, prefix: str):
@@ -113,8 +113,8 @@ class PersistentCommand(Command):
     def for_twitch(self):
         return self.data.twitch
 
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not re.search(self.regex, text):
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        if event != self.data.event_type or not re.search(self.regex, text):
             return [], True
         variables = get_variables()
         if self.data.mod and not variables['is_mod']:
@@ -156,7 +156,7 @@ class PersistentCommand(Command):
 
 
 class Eval(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "eval"):
             return [], True
         v = get_variables()
@@ -178,7 +178,7 @@ class Eval(Command):
 
 
 class SetCommand(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "set"):
             return [], True
         v = get_variables()
@@ -245,7 +245,7 @@ It is the only way to customize a command to match a different regex, allow only
 '''
 
 class SetPrefix(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "prefix-set"):
             return [], True
         v = get_variables()
@@ -272,7 +272,7 @@ class SetPrefix(Command):
 
 
 class TagAdd(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tag-add"):
             return [], True
         v = get_variables()
@@ -294,7 +294,7 @@ class TagAdd(Command):
 
 
 class TagDelete(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tag-rm"):
             return [], True
         v = get_variables()
@@ -315,7 +315,7 @@ class TagDelete(Command):
 
 
 class TagList(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "tags"):
             return [], True
         v = get_variables()
@@ -334,7 +334,7 @@ class TagList(Command):
 
 
 class TextAdd(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "txt-add "):
             return [], True
         v = get_variables()
@@ -362,7 +362,7 @@ class TextAdd(Command):
 
 
 class TextSetTags(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "txt-tag"):
             return [], True
         v = get_variables()
@@ -399,7 +399,7 @@ class TextSetTags(Command):
 
 
 class TextUpload(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if text.strip() != prefix + "txt-upload":
             return [], True
         v = get_variables()
@@ -452,7 +452,7 @@ class TextUpload(Command):
 
 
 class TextDownload(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.strip().startswith(prefix + "txt-download"):
             return [], True
         v = get_variables()
@@ -492,7 +492,7 @@ class TextDownload(Command):
 
 
 class TextSearch(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "txt-search"):
             return [], True
         v = get_variables()
@@ -525,7 +525,7 @@ class TextSearch(Command):
 
 
 class TextRemove(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "txt-rm"):
             return [], True
         v = get_variables()
@@ -567,7 +567,7 @@ class TextRemove(Command):
 
 
 class Multiline(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "multiline"):
             return [], True
         v = get_variables()
@@ -588,7 +588,7 @@ class Multiline(Command):
                     continue
                 if (not is_discord) and not cmd.for_twitch():
                     continue
-                a, next = await cmd.run(prefix, line, is_discord, get_variables)
+                a, next = await cmd.run(prefix, line, event, is_discord, get_variables)
                 actions.extend(a)
                 if not next:
                     break
@@ -602,7 +602,7 @@ class Multiline(Command):
 
 
 class Debug(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "debug"):
             return [], True
         results: List[Action] = []
@@ -637,7 +637,7 @@ class Debug(Command):
 
 
 class HelpCommand(Command):
-    async def run(self, prefix: str, text: str, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
             return [], True
         v = get_variables()

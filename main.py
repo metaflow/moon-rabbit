@@ -233,7 +233,7 @@ class DiscordClient(discord.Client):
                     '_private': private,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, message.content, prefix, True, is_mod, private, get_vars)
+        actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
@@ -318,10 +318,10 @@ if __name__ == "__main__":
                 id, prefix, name, token, events, pubsub_token = row
                 if not name or not token:
                     continue
-                watch: List[twitch_bot.TwitchEvent] = []
+                watch: List[EventType] = []
                 if events:
                     for x in events.split(','):
-                        watch.append(twitch_bot.TwitchEvent[x.strip()])
+                        watch.append(EventType[x.strip()])
                 logging.info(
                     f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
                 t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id,

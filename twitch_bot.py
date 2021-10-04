@@ -24,15 +24,9 @@ import commands
 from storage import db
 import re
 import random
-from twitchio.ext import pubsub
-
-
-class TwitchEvent(str, Enum):
-    moderation_user_action = 'moderation_user_action'
-    channel_points = 'channel_points'
 
 class Twitch(twitchio.Client):
-    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[TwitchEvent] = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
+    def __init__(self, token: str, channel: str, internal_channel_id: int, prefix: str, pubsub_token: Optional[str], watch: List[EventType] = None, loop: asyncio.AbstractEventLoop = None, heartbeat: Optional[float] = 30):
         self.token = token
         self.channel_name = channel
         self.channel_id = internal_channel_id
@@ -80,7 +74,7 @@ class Twitch(twitchio.Client):
                     '_private': False,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
+        actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         # ctx = await self.get_context(message)
 

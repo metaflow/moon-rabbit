@@ -48,10 +48,15 @@ class Action:
     attachment: str = ''
     attachment_name: str = ''
 
+class EventType(str, Enum):
+    message = 'message'
+    twitch_reward_redemption = 'twitch_reward_redemption'
+
 
 @dataclasses.dataclass
 class CommandData:
     pattern: str
+    event_type: EventType = EventType.message
     discord: bool = True
     twitch: bool = True
     name: str = ''

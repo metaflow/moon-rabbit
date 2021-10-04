@@ -83,7 +83,7 @@ class TwitchCommands(twitchCommands.Bot):
                     '_private': False,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
+        actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         ctx = await self.get_context(message)
         for a in actions:

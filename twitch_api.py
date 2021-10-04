@@ -15,26 +15,20 @@
  """
 
 import asyncio
+from asyncio.locks import Event
 from os import curdir
-from twitchAPI.twitch import Twitch
-from twitchAPI.types import AuthScope
-from twitchAPI import Twitch, EventSub
+from twitchAPI.twitch import Twitch  # type: ignore
+from twitchAPI import Twitch, EventSub # type: ignore
 import logging
 from data import *
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Dict, Optional
 import twitchio  # type: ignore
 from storage import cursor, db
-import ttldict2
+import ttldict2 # type: ignore
 import commands
 import random
 import re
-
-
-class TwitchEvent(str, Enum):
-    moderation_user_action = 'moderation_user_action'
-    channel_points = 'channel_points'
-
 
 @dataclasses.dataclass
 class ChannelInfo:
@@ -42,7 +36,7 @@ class ChannelInfo:
     prefix: str
     channel_id: int
     twitch_user_id: str
-    events: List[TwitchEvent]
+    events: List[EventType]
     twitch_channel: Optional[twitchio.Channel]
 
 
@@ -61,10 +55,10 @@ class Twitch3(twitchio.Client):
                 "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events FROM channels WHERE twitch_bot = %s", (self.channel_name,))
             for row in cur.fetchall():
                 channel_id, twitch_channel_name, twitch_command_prefix, twitch_events = row
-                events: List[TwitchEvent] = []
+                events: List[EventType] = []
                 if twitch_events:
                     for x in twitch_events.split(','):
-                        events.append(TwitchEvent[x.strip()])
+                        events.append(EventType[x.strip()])
                         has_events = True
                 self.channels[twitch_channel_name] = ChannelInfo(
                     active_users=ttldict2.TTLDict(ttl_seconds=3600.0),
@@ -87,11 +81,11 @@ class Twitch3(twitchio.Client):
                 uid = self.api.get_users(logins=[name])
                 c.twitch_user_id = str(uid['data'][0]['id'])
                 for e in c.events:
-                    if e == TwitchEvent.channel_points:
+                    if e == EventType.twitch_reward_redemption:
                         logging.info(
                             f'subscribing {name} {c.twitch_user_id} to channel_points_custom_reward_redemption')
                         hook.listen_channel_points_custom_reward_redemption_add(
-                            c.twitch_user_id, self.on_redeption)
+                            c.twitch_user_id, self.on_redemption)
         super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()))
 
     async def event_ready(self):
@@ -100,8 +94,9 @@ class Twitch3(twitchio.Client):
         # await self.join_channels(self.channels.keys())
 
     async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
+        # Set channel just in case if reward redemption will happen before any message.
         info = self.channels.get(channel.name)
-        logging.info(f'join {channel.name} {user.name}')
+        # logging.info(f'join {channel.name} {user.name}')
         if info:
             info.twitch_channel = channel
        
@@ -144,7 +139,7 @@ class Twitch3(twitchio.Client):
                     '_private': False,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, message.content, prefix, False, is_mod, False, get_vars)
+        actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
@@ -168,7 +163,7 @@ class Twitch3(twitchio.Client):
             return "@" + random.choice(users)
         return "@" + author
 
-    async def on_redeption(self, data):
+    async def on_redemption(self, data):
         logging.info(f'on_redemption {data}')
         event = data.get('event', {})
         channel_name = event.get('broadcaster_user_login')
@@ -203,7 +198,7 @@ class Twitch3(twitchio.Client):
                     '_private': False,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, reward_title, info.prefix, False, is_mod, False, get_vars)
+        actions = await commands.process_message(log, channel_id, reward_title, EventType.twitch_reward_redemption, info.prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
