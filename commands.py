@@ -335,7 +335,7 @@ class TagList(Command):
 
 class TextAdd(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "txt-add "):
+        if not text.startswith(prefix + "txt-add ") and not text.startswith(prefix + "txt-set "):
             return [], True
         v = get_variables()
         parts = text.split(' ', 1)
@@ -345,20 +345,51 @@ class TextAdd(Command):
         value = value.strip()
         if not value:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        text_id: Optional[int] = None
+        tag_names: List[str] = []
+        if ';' in value and not value.startswith('"'):
+            parts = value.split(';')
+            if len(parts) >= 2:
+                value = parts[0].strip()
+                tag_names = parts[1].split(' ')
+                tag_names = [x.strip() for x in tag_names if x.strip()]
+                logging.info(f'new tags {tag_names}')
+            if len(parts) >= 3:
+                text_id = int(parts[2].strip())
+        elif value.startswith('"') and value.endswith('"') and len(value) > 2:
+            value = value[1:-1] # strip quotes
         channel_id = v['channel_id']
-        text_id, added = db().add_text(channel_id, value)
-        s = f'Added new text {text_id}' if added else f'Text {text_id} already exist'
-        if ' ' not in value:
-            tag_options = words.suggest_tags(value)
-            if tag_options:
-                s += '. Suggested tags:\n' + tag_options
+        s = ''
+        if text_id:
+            old_txt = db().set_text(channel_id, value, text_id)
+            if not old_txt:
+                return [Action(kind=ActionKind.REPLY, text=f'Text {text_id} does not exist')], False
+            s = f'Updated text #{text_id} from/to\n"{old_txt}"\n"{value}"'
+        else:
+            text_id, added = db().add_text(channel_id, value)
+            s = f'Added new text {text_id}' if added else f'Text {text_id} already exist'
+            s += f'\n"{value}"'
+            if ' ' not in value:
+                tag_options = words.suggest_tags(value)
+                if tag_options:
+                    s += '. Suggested tags:\n' + tag_options
+        if tag_names:
+            for t in tag_names:
+                if not query.tag_re.match(t):
+                    return [Action(kind=ActionKind.REPLY, text=f'tag name might consist of latin letters, digits, "_" and "-" characters, not "{t}"')], False
+                db().add_tag(channel_id, t)
+            tags_fw, tag_inverse = db().get_tags(channel_id)
+            new_tags = set([tags_fw[s.strip()] for s in tag_names])
+            old_tags = db().set_text_tags(channel_id, text_id, new_tags)
+            s += f'\nSet tags {", ".join([tag_inverse[x] for x in new_tags])}'
+            if old_tags:
+                s += f'\nPrevious tags: {", ".join([tag_inverse[x] for x in old_tags])}'
         return [Action(kind=ActionKind.REPLY, text=s)], False
-
     def help(self, prefix: str):
         return f'{prefix}txt-add'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-add <value>'
+        return f'{prefix}txt-add <value>[;tag1 tag2 tag3[;id]] or txt-add "<literal value>"'
 
 
 class TextSetTags(Command):
@@ -369,26 +400,26 @@ class TextSetTags(Command):
         parts = text.split(' ')
         if len(parts) < 3:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        value = int(parts[1])
+        text_id = int(parts[1])
         channel_id = v['channel_id']
-        txt_value, current_tags = db().get_text(channel_id, value)
+        txt_value, current_tags = db().get_text(channel_id, text_id)
         logging.info(f'{txt_value} {current_tags}')
         if not txt_value:
-            return [Action(kind=ActionKind.REPLY, text=f'No text with id {value} found')], False
+            return [Action(kind=ActionKind.REPLY, text=f'No text with id {text_id} found')], False
         set_tags = parts[2:]
         for t in set_tags:
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
-        s = f'Set tags for text {value} "{txt_value}": {", ".join(set_tags)}'
+        s = f'Set tags for text {text_id} "{txt_value}": {", ".join(set_tags)}'
         tags, tag_inverse = db().get_tags(channel_id)
         channel_id = v['channel_id']
         if current_tags:
             s += '\nPrevious tags: ' + ', '.join([tag_inverse[x] for x in current_tags])
-        db().delete_text_tags(channel_id, value)
+        db().delete_text_tags(channel_id, text_id)
         for t in set_tags:
             t = t.strip()
-            db().add_text_tag(channel_id, value, tags[t])
+            db().add_text_tag(channel_id, text_id, tags[t])
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
@@ -418,9 +449,7 @@ class TextUpload(Command):
         for s in lines:
             if len(s) < 2:
                 continue
-            for t in s[1].split(' '):
-                t = t.strip()
-                all_tags.add(t)
+            all_tags.update([x.strip() for x in s[1].split(' ') if x.strip()])
         for t in all_tags:
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
@@ -428,21 +457,27 @@ class TextUpload(Command):
         tags, _ = db().get_tags(channel_id)
         total = 0
         total_added = 0
+        total_updated = 0
         for s in lines:
             txt = s[0].strip()
             if not txt:
                 continue
             total += 1
-            text_id, added = db().add_text(channel_id, txt)
-            if added:
-                total_added += 1
+            text_id = 0
+            if len(s) >= 3:
+                text_id = int(s[2])
+                if db().set_text(channel_id, txt, text_id):
+                    total_updated += 1
             else:
-                db().delete_text_tags(channel_id, text_id)
+                text_id, added = db().add_text(channel_id, txt)
+                if added:
+                    total_added += 1
             if len(s) < 2:
                 continue
-            for t in s[1].split(' '):
-                db().add_text_tag(channel_id, text_id, tags[t.strip()])
-        return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} texts from non-empty {total} lines with tags {all_tags}")], False
+            tag_names = s[1].split(' ')
+            tag_names = [x.strip() for x in tag_names if x.strip()]
+            db().set_text_tags(channel_id, text_id, set([tags[t] for t in tag_names]))
+        return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):
         return f'{prefix}txt-upload'

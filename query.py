@@ -35,7 +35,7 @@ NAME: (LETTER|"-"|"_"|DIGIT)+
 """
 
 query_parser = lark.Lark(query_grammar)
-tag_re = re.compile('[a-z0-9-_]*', re.IGNORECASE)
+tag_re = re.compile('[a-z0-9-_]+', re.IGNORECASE)
 
 class Normalize(Transformer):
     def __init__(self, tags: Dict[str, int]) -> None:
