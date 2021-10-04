@@ -71,7 +71,8 @@ class Twitch3(twitchio.Client):
                     prefix=twitch_command_prefix,
                     channel_id=channel_id,
                     twitch_user_id='',
-                    events=events)
+                    events=events,
+                    twitch_channel=None)
         logging.info(f'channels {self.channels}')
         logging.info(f'joining channels {self.channels.keys()}')
 
