@@ -43,6 +43,7 @@ class ChannelInfo:
     channel_id: int
     twitch_user_id: str
     events: List[TwitchEvent]
+    twitch_channel: Optional[twitchio.Channel]
 
 
 class Twitch3(twitchio.Client):
@@ -96,6 +97,12 @@ class Twitch3(twitchio.Client):
         # We are logged in and ready to chat and use commands...
         logging.info(f'Logged in as {self.nick}')
         # await self.join_channels(self.channels.keys())
+
+    async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
+        info = self.channels.get(channel.name)
+        logging.info(f'join {channel.name} {user.name}')
+        if info:
+            info.twitch_channel = channel
        
     async def event_message(self, message):
         # Ignore own messages.
@@ -105,9 +112,10 @@ class Twitch3(twitchio.Client):
         if not info:
             logging.info(f'unknown channel {message.channel.name}')
             return
+        info.twitch_channel = message.channel
         channel_id = info.channel_id
         prefix = info.prefix
-        log = InvocationLog(f"channel={message.channel.name} ({channel_id})")
+        log = InvocationLog(f"twitch channel {message.channel.name} ({channel_id})")
         author = message.author.name
         info.active_users[author] = 1
         info.active_users.drop_old_items()
@@ -141,7 +149,7 @@ class Twitch3(twitchio.Client):
             if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                 if len(a.text) > 500:
                     a.text = a.text[:497] + "..."
-                await message.channel.send(a.text)
+                await info.twitch_channel.send(a.text)
 
     def any_mention(self, txt: str, info: ChannelInfo, author):
         direct = self.mentions(txt)
@@ -159,5 +167,46 @@ class Twitch3(twitchio.Client):
             return "@" + random.choice(users)
         return "@" + author
 
-    async def on_redeption(self, *args):
-        logging.info(f'on_redemption {args}')
+    async def on_redeption(self, data):
+        logging.info(f'on_redemption {data}')
+        event = data.get('event', {})
+        channel_name = event.get('broadcaster_user_login')
+        author = event.get('user_name')
+        text = event.get('user_input')
+        reward_title = event.get('reward', {}).get('title')
+        info: Optional[ChannelInfo] = self.channels.get(channel_name)
+        if not info:
+            logging.info(f'unknown channel {channel_name}')
+            return
+        channel_id = info.channel_id
+        log = InvocationLog(f"twitch channel {channel_name} ({info.channel_id})")
+        log.info(f'reward {reward_title} for user {author}')
+        variables: Optional[Dict] = None
+        is_mod = False
+        def get_vars():
+            nonlocal variables
+            if not variables:
+                variables = {
+                    'author': str(author),
+                    'author_name': str(author),
+                    'mention': Lazy(lambda: self.any_mention(text, info, author)),
+                    'direct_mention': Lazy(lambda: self.mentions(text)),
+                    'random_mention': Lazy(lambda: self.random_mention(info, author)),
+                    'media': 'twitch',
+                    'text': text,
+                    'is_mod': is_mod,
+                    'prefix': info.prefix,
+                    'bot': self.nick,
+                    'channel_id': info.channel_id,
+                    '_log': log,
+                    '_private': False,
+                }
+            return variables
+        actions = await commands.process_message(log, channel_id, reward_title, info.prefix, False, is_mod, False, get_vars)
+        db().add_log(channel_id, log)
+        for a in actions:
+            if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
+                if len(a.text) > 500:
+                    a.text = a.text[:497] + "..."
+                if info.twitch_channel:
+                    await info.twitch_channel.send(a.text)
