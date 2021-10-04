@@ -547,7 +547,7 @@ class TextSearch(Command):
         rr = []
         for ii in items:
             tag_names = [inverse_tags[x] for x in ii[2]]
-            rr.append(f'{ii[0]} "{ii[1]}" {" ".join(tag_names)}')
+            rr.append(f'{ii[1]};{" ".join(tag_names)};{ii[0]}')
         if not rr:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
