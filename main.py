@@ -202,9 +202,10 @@ class DiscordClient(discord.Client):
             f'guild={guild_id} channel={channel_id} author={message.author.id}')
         if channel_id not in self.channels:
             self.channels[channel_id] = {
-                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0)}
+                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0 * 2)}
         self.channels[channel_id]['active_users'][discord_literal(
             message.author.mention)] = '+'
+        self.channels[channel_id]['active_users'].drop_old_items()
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
         # postpone variable calculations as much as possible

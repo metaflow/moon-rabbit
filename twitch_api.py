@@ -110,6 +110,7 @@ class Twitch3(twitchio.Client):
         log = InvocationLog(f"channel={message.channel.name} ({channel_id})")
         author = message.author.name
         info.active_users[author] = 1
+        info.active_users.drop_old_items()
         log.info(f'{author} {message.content}')
         variables: Optional[Dict] = None
         is_mod = message.author.is_mod
