@@ -184,9 +184,7 @@ class UserAuthenticator:
             url = build_url(TWITCH_AUTH_BASE_URL + 'oauth2/token', param)
             response = requests.post(url)
             data: dict = response.json()
-            logging.info(f'{data}')
-            if callback_func:
-                callback_func(data['access_token'], data['refresh_token'])
+            logging.info(f'auth data {data}')
 
 
 logging.basicConfig(stream=sys.stdout,
