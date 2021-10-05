@@ -195,7 +195,7 @@ logging.basicConfig(stream=sys.stdout,
 
 # APP_ID = os.getenv('TWITCH_API_APP_ID')
 # APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
-# AUTH_URL = os.getenv('TWITCH_API_AUTH_URL', 'http://localhost:17563')
+AUTH_URL = os.getenv('TWITCH_API_AUTH_URL', 'http://localhost:17563')
 
 def auth_callback(*args):
     logging.info(f'auth callback {args}')
@@ -211,6 +211,5 @@ with storage.cursor() as cur:
     print(f'auth server for app_id {app_id} app_secret {app_secret} api_url {api_url} api_port {api_port}')
     twitch = Twitch(app_id, app_secret)
     target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN]
-    auth = UserAuthenticator(twitch, target_scope,
-                            force_verify=False, url='https://twitch-auth.apexlegendsrecoils.online')
+    auth = UserAuthenticator(twitch, target_scope, force_verify=False, url=AUTH_URL)
     auth.authenticate(callback_func=auth_callback)
