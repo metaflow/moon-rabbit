@@ -170,22 +170,24 @@ class UserAuthenticator:
         print(auth.return_auth_url())
         print()
         while True:
-            logging.info('waiting for auth')
-            while self.__user_token is None:
-                sleep(0.01)
-            # now we need to actually get the correct token
-            param = {
-                'client_id': self.__client_id,
-                'client_secret': self.__twitch.app_secret,
-                'code': self.__user_token,
-                'grant_type': 'authorization_code',
-                'redirect_uri': self.url
-            }
-            url = build_url(TWITCH_AUTH_BASE_URL + 'oauth2/token', param)
-            response = requests.post(url)
-            data: dict = response.json()
-            logging.info(f'auth data {data}')
-            self.__user_token = None
+            try:
+                logging.info('waiting for auth')
+                while self.__user_token is None:
+                    sleep(0.01)
+                # now we need to actually get the correct token
+                param = {
+                    'client_id': self.__client_id,
+                    'client_secret': self.__twitch.app_secret,
+                    'code': self.__user_token,
+                    'grant_type': 'authorization_code',
+                    'redirect_uri': self.url
+                }
+                url = build_url(TWITCH_AUTH_BASE_URL + 'oauth2/token', param)
+                response = requests.post(url)
+                data: dict = response.json()
+                logging.info(f'auth data {data}')
+            finally:
+                self.__user_token = None
 
 
 logging.basicConfig(stream=sys.stdout,
