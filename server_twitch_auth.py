@@ -204,6 +204,7 @@ if len(sys.argv) < 2:
     print('specify id from twitch_bots table')
 bot_id = sys.argv[1]
 
+storage.set_db(storage.DB(os.getenv('DB_CONNECTION')))
 with storage.cursor() as cur:
     cur.execute("SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
     channel_name, app_id, app_secret, auth_token, api_url, api_port = cur.fetchone()
