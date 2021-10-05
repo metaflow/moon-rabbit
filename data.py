@@ -117,3 +117,9 @@ class Lazy():
 
     def __repr__(self):
         return self.func()
+
+def str_to_int(s: str) -> int:
+    s = s.strip()
+    if s.isdigit():
+        return int(s)
+    return 0

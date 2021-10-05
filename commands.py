@@ -304,7 +304,7 @@ class TagDelete(Command):
         _, value = parts
         value = value.strip()
         channel_id = v['channel_id']
-        deleted = db().delete_tag(channel_id, int(value))
+        deleted = db().delete_tag(channel_id, str_to_int(value))
         return [Action(kind=ActionKind.REPLY, text=('OK' if deleted == 1 else 'no such tag'))], False
 
     def help(self, prefix: str):
@@ -355,7 +355,7 @@ class TextAdd(Command):
                 tag_names = [x.strip() for x in tag_names if x.strip()]
                 logging.info(f'new tags {tag_names}')
             if len(parts) >= 3:
-                text_id = int(parts[2].strip())
+                text_id = str_to_int(parts[2])
         elif value.startswith('"') and value.endswith('"') and len(value) > 2:
             value = value[1:-1] # strip quotes
         channel_id = v['channel_id']
@@ -380,10 +380,11 @@ class TextAdd(Command):
                 db().add_tag(channel_id, t)
             tags_fw, tag_inverse = db().get_tags(channel_id)
             new_tags = set([tags_fw[s.strip()] for s in tag_names])
-            old_tags = db().set_text_tags(channel_id, text_id, new_tags)
-            s += f'\nSet tags {", ".join([tag_inverse[x] for x in new_tags])}'
-            if old_tags:
-                s += f'\nPrevious tags: {", ".join([tag_inverse[x] for x in old_tags])}'
+            old_tags, updated = db().set_text_tags(channel_id, text_id, new_tags)
+            if updated:
+                s += f'\nSet tags {", ".join([tag_inverse[x] for x in new_tags])}'
+                if old_tags:
+                    s += f'\nPrevious tags: {", ".join([tag_inverse[x] for x in old_tags])}'
         return [Action(kind=ActionKind.REPLY, text=s)], False
     def help(self, prefix: str):
         return f'{prefix}txt-add'
@@ -400,7 +401,7 @@ class TextSetTags(Command):
         parts = text.split(' ')
         if len(parts) < 3:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        text_id = int(parts[1])
+        text_id = str_to_int(parts[1])
         channel_id = v['channel_id']
         txt_value, current_tags = db().get_text(channel_id, text_id)
         logging.info(f'{txt_value} {current_tags}')
@@ -465,7 +466,8 @@ class TextUpload(Command):
             total += 1
             text_id = 0
             if len(s) >= 3:
-                text_id = int(s[2])
+                text_id = str_to_int(s[2])
+            if text_id:
                 if db().set_text(channel_id, txt, text_id):
                     total_updated += 1
             else:
@@ -568,8 +570,8 @@ class TextRemove(Command):
         parts = text.split(' ', 1)
         if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        txt = parts[1]
-        if txt.isnumeric():
+        txt = parts[1].strip()
+        if txt.isdigit():
             t = db().delete_text(channel_id, int(txt))
             if not t:
                 return [Action(kind=ActionKind.REPLY, text=f'No text with id {txt} found')], False

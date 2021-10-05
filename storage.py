@@ -227,15 +227,15 @@ DROP TABLE tags;
             cur.execute(
                 'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text, tag))
 
-    def set_text_tags(self, channel_id: int, text_id: int, new_tags: Set[int]) -> Optional[Set[int]]:
+    def set_text_tags(self, channel_id: int, text_id: int, new_tags: Set[int]) -> Tuple[Optional[Set[int]], bool]:
         """returns previous and new tags if text exists"""
         txt_value, current_tags = db().get_text(channel_id, text_id)
         if not txt_value:
-            return None
+            return (None, False)
         self.delete_text_tags(channel_id, text_id)
         for x in new_tags:
             self.add_text_tag(channel_id, text_id, x)
-        return current_tags
+        return (current_tags, True)
 
     def delete_text_tags(self, channel_id: int, text_id: int) -> int:
         self.purge_text_to_tag_cache(channel_id)
