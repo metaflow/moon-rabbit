@@ -185,6 +185,7 @@ class UserAuthenticator:
             response = requests.post(url)
             data: dict = response.json()
             logging.info(f'auth data {data}')
+            self.__user_token = None
 
 
 logging.basicConfig(stream=sys.stdout,
