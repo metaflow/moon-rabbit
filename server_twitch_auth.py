@@ -18,6 +18,7 @@ from time import sleep
 import requests
 from concurrent.futures._base import CancelledError
 from logging import getLogger, Logger
+import storage
 
 
 class UserAuthenticator:
@@ -192,17 +193,23 @@ logging.basicConfig(stream=sys.stdout,
                     format='%(asctime)s %(levelname)s %(message)s',
                     level=logging.INFO)
 
-APP_ID = os.getenv('TWITCH_API_APP_ID')
-APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
-AUTH_URL = os.getenv('TWITCH_API_AUTH_URL', 'http://localhost:17563')
-
+# APP_ID = os.getenv('TWITCH_API_APP_ID')
+# APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
+# AUTH_URL = os.getenv('TWITCH_API_AUTH_URL', 'http://localhost:17563')
 
 def auth_callback(*args):
     logging.info(f'auth callback {args}')
 
+if len(sys.argv) < 2:
+    print('specify id from twitch_bots table')
+bot_id = sys.argv[1]
 
-twitch = Twitch(APP_ID, APP_SECRET)
-target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS]
-auth = UserAuthenticator(twitch, target_scope,
-                         force_verify=False, url=AUTH_URL)
-auth.authenticate(callback_func=auth_callback)
+with storage.cursor() as cur:
+    cur.execute("SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
+    channel_name, app_id, app_secret, auth_token, api_url, api_port = cur.fetchone()
+    print(f'auth server for app_id {app_id} app_secret {app_secret} api_url {api_url} api_port {api_port}')
+    twitch = Twitch(app_id, app_secret)
+    target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN]
+    auth = UserAuthenticator(twitch, target_scope,
+                            force_verify=False, url='https://twitch-auth.apexlegendsrecoils.online')
+    auth.authenticate(callback_func=auth_callback)
