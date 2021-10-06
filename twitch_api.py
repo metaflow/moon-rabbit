@@ -86,6 +86,12 @@ class Twitch3(twitchio.Client):
                             f'subscribing {name} {c.twitch_user_id} to channel_points_custom_reward_redemption')
                         hook.listen_channel_points_custom_reward_redemption_add(
                             c.twitch_user_id, self.on_redemption)
+                    if e == EventType.twitch_hype_train:
+                        logging.info(
+                            f'subscribing {name} {c.twitch_user_id} to hype train events')
+                        hook.listen_hype_train_begin(c.twitch_user_id, self.on_hype_train_begins)
+                        hook.listen_hype_train_progress(c.twitch_user_id, self.on_hype_train_progress)
+                        hook.listen_hype_train_end(c.twitch_user_id, self.on_hype_train_ends)
         super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()))
 
     async def event_ready(self):
@@ -162,6 +168,15 @@ class Twitch3(twitchio.Client):
         if users:
             return "@" + random.choice(users)
         return "@" + author
+
+    async def on_hype_train_begins(self, *args):
+        logging.info(f'on hype train beings {args}')
+
+    async def on_hype_train_progress(self, *args):
+        logging.info(f'on hype train progress {args}')
+    
+    async def on_hype_train_ends(self, *args):
+        logging.info(f'on hype train ends {args}')
 
     async def on_redemption(self, data):
         logging.info(f'on_redemption {data}')

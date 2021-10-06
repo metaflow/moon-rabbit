@@ -51,6 +51,7 @@ class Action:
 class EventType(str, Enum):
     message = 'message'
     twitch_reward_redemption = 'twitch_reward_redemption'
+    twitch_hype_train = 'twitch_hype_train'
 
 
 @dataclasses.dataclass
