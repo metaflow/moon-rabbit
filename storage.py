@@ -47,18 +47,49 @@ def escape_like(t):
     return t.replace('=', '==').replace('%', '=%').replace('_', '=_')
 
 
+@dataclasses.dataclass
+class ChannelCache:
+    tags: Optional[Tuple[Dict[str, int], Dict[int, str]]]
+    text_tags: Optional[Dict[int, Set[int]]]
+    # ttldict query -> dllist[int]
+    text_queries: Any
+    # plan:
+    # make a dict queries (str -> [id(int), size, parsed query])
+    # TTL dict of active queries 
+    # and a dict of text_id -> [set(id of matched queries), pointer to list element]
+    # for every text store all queries it matches
+    #   - new query added - add new id, evaluate all texts for it, store size of match
+    #   - query expired - remove it from every text. Cleanup every minute with variables.
+    # tags:
+    #   - added tag - noop
+    #   - removed tag - noop (there should be no active queries with this flag)
+    # text - tag update:
+    #   - evaluate every query on text and update text dict and counter on queries
+    # text:
+    #   - add - add it to the front of the queue and dict
+    #   - remove - drop
+    # select random for query:
+    # pick a random number N within the size of the query and iterate over the list until we find N-th text that matches this query
+    # move the element to the end of the queue
+
+
 class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
         self.conn.set_session(autocommit=True)
-        self.cache = TTLCache(maxsize=100, ttl=600)
-        self.tags: Dict[int, Tuple[Dict[str, int], Dict[int, str]]] = {}
-        self.text_tags: Dict[int, Dict[int, Set[int]]] = {}
-        # channel -> query -> dllist[int]
-        self.text_queries: Dict[int, Type[Any]] = {}
+        self.channels: Dict[int, Type[ChannelCache]] = {}
         self.logs = {}
         self.rng = np.random.default_rng()
         self.init_db()
+
+    def channel(self, channel_id: int) -> ChannelCache:
+        if channel_id not in self.channels:
+            self.channels[channel_id] = ChannelCache(
+                tags=None,
+                text_tags=None,
+                text_queries=ttldict2.TTLDict(
+                    ttl_seconds=3600.0 * 24 * 14))
+        return self.channels.get(channel_id)
 
     def recreate_tables(self):
         logging.warning('dropping and creating tables anew')
@@ -175,15 +206,16 @@ DROP TABLE tags;
             return 0
 
     def get_tags(self, channel_id: int) -> Tuple[Dict[str, int], Dict[int, str]]:
-        if channel_id not in self.tags:
-            self.tags[channel_id] = ({}, {})
+        ch = self.channel(channel_id)
+        if not ch.tags:
+            ch.tags = ({}, {})
             with self.conn.cursor() as cur:
                 cur.execute(
                     "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
                 for row in cur.fetchall():
-                    self.tags[channel_id][0][row[1]] = row[0]
-                    self.tags[channel_id][1][row[0]] = row[1]
-        return self.tags[channel_id]
+                    ch.tags[0][row[1]] = row[0]
+                    ch.tags[1][row[0]] = row[1]
+        return ch.tags
 
     def add_tag(self, channel_id: int, tag_name: str):
         if not tag_re.match(tag_name):
@@ -191,24 +223,26 @@ DROP TABLE tags;
         with self.conn.cursor() as cur:
             cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
                         (channel_id, tag_name))
-            self.tags.pop(channel_id, None)
+            self.channel(channel_id).tags = None
 
     def purge_text_to_tag_cache(self, channel_id: int):
-        self.text_queries.pop(channel_id, None)
-        self.text_tags.pop(channel_id, None)
+        ch = self.channel(channel_id)
+        ch.text_queries.clear()
+        ch.text_tags = None
 
     def delete_tag(self, channel_id: int, tag_id: int):
         with self.conn.cursor() as cur:
             logging.info(f'delete tag "{tag_id}" from {channel_id}')
             cur.execute('DELETE FROM tags WHERE channel_id = %s AND id = %s',
                         (channel_id, tag_id))
-            self.tags.pop(channel_id, None)
+            self.channel(channel_id).tags = None
             self.purge_text_to_tag_cache(channel_id)
             return cur.rowcount
 
     def get_text_tags(self, channel_id: int) -> Dict[int, Set[int]]:
-        if channel_id in self.text_tags:
-            return self.text_tags[channel_id]
+        ch = self.channel(channel_id)
+        if ch.text_tags:
+            return ch.text_tags
         z: Dict[int, Set[int]] = {}
         with self.conn.cursor() as cur:
             cur.execute(
@@ -218,7 +252,7 @@ DROP TABLE tags;
                 if text not in z:
                     z[text] = set()
                 z[text].add(tag)
-        self.text_tags[channel_id] = z
+        ch.text_tags = z
         return z
 
     def add_text_tag(self, channel_id: int, text: int, tag: int):
@@ -258,8 +292,8 @@ DROP TABLE tags;
             row = cur.fetchone()
             if not row:
                 return None, None
-            text_tags = self.get_text_tags(channel_id)
-            return row[0], text_tags.get(id)
+            # TODO: really need to return tags?
+            return row[0], self.get_text_tags(channel_id).get(id)
 
     def add_text(self, channel_id: int, value: str) -> Tuple[int, bool]:
         with self.conn.cursor() as cur:
@@ -304,16 +338,13 @@ DROP TABLE tags;
         with self.conn.cursor() as cur:
             cur.execute(
                 'SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
-            text_tags = self.get_text_tags(channel_id)
-            return [(row[0], row[1], text_tags.get(row[0], set())) for row in cur.fetchall()]
+            tt = self.get_text_tags(channel_id)
+            return [(row[0], row[1], tt.get(row[0], set())) for row in cur.fetchall()]
 
     def get_texts_matching_tags(self, channel_id: int, q: str) -> Type[dllist]:
         q = q.strip()
-        if channel_id not in self.text_queries:
-            # TTL with long expiration to garbage collect no longer used queries.
-            self.text_queries[channel_id] = ttldict2.TTLDict(
-                ttl_seconds=3600.0 * 24 * 14)
-        z = self.text_queries[channel_id].get(q, None, True)
+        ch = self.channel(channel_id)
+        z = ch.text_queries.get(q, None, True)
         if z:
             return z
         texts = self.get_text_tags(channel_id)
@@ -325,8 +356,8 @@ DROP TABLE tags;
             if not qt or query.match_tags(qt, tag_ids):
                 match.append(text_id)
         self.rng.shuffle(match)
-        self.text_queries[channel_id][q] = dllist(match)
-        return self.text_queries[channel_id][q]
+        ch.text_queries[q] = dllist(match)
+        return ch.text_queries[q]
 
     def get_random_text(self, channel_id: int, q: str) -> Tuple[Optional[str], Optional[Set[int]]]:
         tt = self.get_texts_matching_tags(channel_id, q)
