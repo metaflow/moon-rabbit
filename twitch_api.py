@@ -180,13 +180,16 @@ class Twitch3(twitchio.Client):
         logging.info(f'on hype train progress {args}')
     
     async def on_hype_train_ends(self, data):
-        logging.info(f'on_hype_train_ends {data}')
         data = json.loads("{'subscription': {'id': '713e2e8b-53f6-4f2d-b205-a98447d8ed75', 'status': 'enabled', 'type': 'channel.hype_train.end', 'version': '1', 'condition': {'broadcaster_user_id': '411667551'}, 'transport': {'method': 'webhook', 'callback': 'https://moon-robot.apexlegendsrecoils.online/callback'}, 'created_at': '2021-10-06T09:38:15.718111872Z', 'cost': 0}, 'event': {'id': '8ea3c3e3-e074-4c7d-beea-887ac00571e3', 'broadcaster_user_id': '411667551', 'broadcaster_user_login': 'jl_in_july', 'broadcaster_user_name': 'jl_in_july', 'total': 15400, 'top_contributions': [{'user_id': '31456554', 'user_login': 'botester', 'user_name': 'Botester', 'type': 'bits', 'total': 10000}, {'user_id': '497649742', 'user_login': 'rollingar', 'user_name': 'Rollingar', 'type': 'subscription', 'total': 5000}], 'started_at': '2021-10-09T11:35:58.955635704Z', 'level': 5, 'ended_at': '2021-10-09T11:40:59.437330772Z', 'cooldown_ends_at': '2021-10-09T13:40:59.437330772Z'}}")
+        logging.info(f'on_hype_train_ends {data}')
         event = data.get('event', {})
+        logging.info(f'event {event}')
         channel_name = event.get('broadcaster_user_login')
         author = ''
         text = str(event.get('level'))
         contributors = ' '.join(['@' + c.get('user_name') for c in event.get('top_contributions')])
+        logging.info(f'contributors {contributors}')
+        logging.info(f'text "{text}"')
         info: Optional[ChannelInfo] = self.channels.get(channel_name)
         if not info:
             logging.info(f'unknown channel {channel_name}')
@@ -214,6 +217,7 @@ class Twitch3(twitchio.Client):
                     '_private': False,
                 }
             return variables
+        logging.info('discpathcing hype train event message')
         actions = await commands.process_message(log, channel_id, text, EventType.twitch_hype_train, info.prefix, False, is_mod, False, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
