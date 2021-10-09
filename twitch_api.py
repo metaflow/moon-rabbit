@@ -29,6 +29,7 @@ import ttldict2 # type: ignore
 import commands
 import random
 import re
+import json
 
 @dataclasses.dataclass
 class ChannelInfo:
@@ -125,7 +126,9 @@ class Twitch3(twitchio.Client):
         variables: Optional[Dict] = None
         is_mod = message.author.is_mod
         # postpone variable calculations as much as possible
-
+        text = message.content
+        if text == 'on_hype_train_ends':
+            self.on_hype_train_ends({})
         def get_vars():
             nonlocal variables
             if not variables:
@@ -175,8 +178,49 @@ class Twitch3(twitchio.Client):
     async def on_hype_train_progress(self, *args):
         logging.info(f'on hype train progress {args}')
     
-    async def on_hype_train_ends(self, *args):
-        logging.info(f'on hype train ends {args}')
+    async def on_hype_train_ends(self, data):
+        logging.info(f'on_hype_train_ends {data}')
+        data = json.loads("{'subscription': {'id': '713e2e8b-53f6-4f2d-b205-a98447d8ed75', 'status': 'enabled', 'type': 'channel.hype_train.end', 'version': '1', 'condition': {'broadcaster_user_id': '411667551'}, 'transport': {'method': 'webhook', 'callback': 'https://moon-robot.apexlegendsrecoils.online/callback'}, 'created_at': '2021-10-06T09:38:15.718111872Z', 'cost': 0}, 'event': {'id': '8ea3c3e3-e074-4c7d-beea-887ac00571e3', 'broadcaster_user_id': '411667551', 'broadcaster_user_login': 'jl_in_july', 'broadcaster_user_name': 'jl_in_july', 'total': 15400, 'top_contributions': [{'user_id': '31456554', 'user_login': 'botester', 'user_name': 'Botester', 'type': 'bits', 'total': 10000}, {'user_id': '497649742', 'user_login': 'rollingar', 'user_name': 'Rollingar', 'type': 'subscription', 'total': 5000}], 'started_at': '2021-10-09T11:35:58.955635704Z', 'level': 5, 'ended_at': '2021-10-09T11:40:59.437330772Z', 'cooldown_ends_at': '2021-10-09T13:40:59.437330772Z'}}")
+        event = data.get('event', {})
+        channel_name = event.get('broadcaster_user_login')
+        author = ''
+        text = str(event.get('level'))
+        contributors = ' '.join(['@' + c.get('user_name') for c in event.get('top_contributions')])
+        info: Optional[ChannelInfo] = self.channels.get(channel_name)
+        if not info:
+            logging.info(f'unknown channel {channel_name}')
+            return
+        channel_id = info.channel_id
+        log = InvocationLog(f"twitch channel {channel_name} ({info.channel_id})")
+        variables: Optional[Dict] = None
+        is_mod = False
+        def get_vars():
+            nonlocal variables
+            if not variables:
+                variables = {
+                    'author': str(author),
+                    'author_name': str(author),
+                    'mention': Lazy(lambda: contributors),
+                    'direct_mention': Lazy(lambda: contributors),
+                    'random_mention': Lazy(lambda: contributors),
+                    'media': 'twitch',
+                    'text': text,
+                    'is_mod': is_mod,
+                    'prefix': info.prefix,
+                    'bot': self.nick,
+                    'channel_id': info.channel_id,
+                    '_log': log,
+                    '_private': False,
+                }
+            return variables
+        actions = await commands.process_message(log, channel_id, text, EventType.twitch_hype_train, info.prefix, False, is_mod, False, get_vars)
+        db().add_log(channel_id, log)
+        for a in actions:
+            if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
+                if len(a.text) > 500:
+                    a.text = a.text[:497] + "..."
+                if info.twitch_channel:
+                    await info.twitch_channel.send(a.text)
 
     async def on_redemption(self, data):
         logging.info(f'on_redemption {data}')
