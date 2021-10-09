@@ -122,13 +122,14 @@ class Twitch3(twitchio.Client):
         author = message.author.name
         info.active_users[author] = 1
         info.active_users.drop_old_items()
-        log.info(f'{author} {message.content}')
+        log.info(f'{author} "{message.content}"')
         variables: Optional[Dict] = None
         is_mod = message.author.is_mod
         # postpone variable calculations as much as possible
         text = message.content
         if text == 'on_hype_train_ends':
-            self.on_hype_train_ends({})
+            logging.info('triggering hype train end')
+            await self.on_hype_train_ends({})
         def get_vars():
             nonlocal variables
             if not variables:

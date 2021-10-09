@@ -28,6 +28,7 @@ import words
 
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, event: EventType, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
+    logging.info(f'process message "{txt}" type {event}')
     actions: List[Action] = []
     try:
         cmds = get_commands(channel_id, prefix)
