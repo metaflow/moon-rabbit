@@ -15,7 +15,8 @@
  """
 
 import dataclasses
-from typing import Any, Dict, List, Optional, Set, Tuple, Type
+from io import open_code
+from typing import Any, Dict, List, Optional, Set, Text, Tuple, Type
 from ttldict2.impl import TTLDict
 from data import *
 import psycopg2  # type: ignore
@@ -48,15 +49,47 @@ def escape_like(t):
 
 
 @dataclasses.dataclass
+class TextEntry:
+    id: int
+    queue_nodes: Dict[int, Any]
+    tags: Set[int]
+    in_all: Optional[Any]
+
+
+@dataclasses.dataclass
+class QueryQueue:
+    id: int
+    queue: Type[dllist]
+    parsed: lark.Tree
+
+
+@dataclasses.dataclass
 class ChannelCache:
-    tags: Optional[Tuple[Dict[str, int], Dict[int, str]]]
-    text_tags: Optional[Dict[int, Set[int]]]
-    # ttldict query -> dllist[int]
+    active_queries: Any
     text_queries: Any
+    queries: Dict[str, QueryQueue]
+    tags: Optional[Tuple[Dict[str, int], Dict[int, str]]] = None
+    text_tags: Optional[Dict[int, Set[int]]] = None
+    # ttldict query -> dllist[int]
+    query_counter = 0
+    
+    all_texts: Optional[Type[dllist]] = None
+
     # plan:
     # make a dict queries (str -> [id(int), size, parsed query])
-    # TTL dict of active queries 
+    # TTL dict of active queries
     # and a dict of text_id -> [set(id of matched queries), pointer to list element]
+    #
+    # alternative
+    #
+    # have a queue for every query
+    # store all nodes in a text
+    # have a global ordering of texts
+    # when adding a tag to the text - find which queues it matches and put text into the correct position within every queue
+    #
+    # 1. tag modificatons O(q), search O(n * ~q)
+    # 2. tag modifications O(q + n), search O(n + q)
+    #
     # for every text store all queries it matches
     #   - new query added - add new id, evaluate all texts for it, store size of match
     #   - query expired - remove it from every text. Cleanup every minute with variables.
@@ -77,7 +110,7 @@ class DB:
     def __init__(self, connection):
         self.conn = psycopg2.connect(connection)
         self.conn.set_session(autocommit=True)
-        self.channels: Dict[int, Type[ChannelCache]] = {}
+        self.channels: Dict[int, ChannelCache] = {}
         self.logs = {}
         self.rng = np.random.default_rng()
         self.init_db()
@@ -85,11 +118,10 @@ class DB:
     def channel(self, channel_id: int) -> ChannelCache:
         if channel_id not in self.channels:
             self.channels[channel_id] = ChannelCache(
-                tags=None,
-                text_tags=None,
-                text_queries=ttldict2.TTLDict(
-                    ttl_seconds=3600.0 * 24 * 14))
-        return self.channels.get(channel_id)
+                text_queries=ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14),
+                active_queries=ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14),
+                queries = {})
+        return self.channels[channel_id]
 
     def recreate_tables(self):
         logging.warning('dropping and creating tables anew')
@@ -196,6 +228,32 @@ DROP TABLE tags;
                     id, guild_id, prefix])
         logging.info(f"added Discord channel ID '{guild_id}' #{id}")
         return id, prefix
+
+    def get_all_texts(self, channel_id: int) -> dllist:
+        ch = self.channel(channel_id)
+        if ch.all_texts:
+            return ch.all_texts
+        ch.queries.clear()
+        ch.active_queries.clear()
+        z: Dict[int, Set[int]] = {}
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT tt.text_id, tt.tag_id FROM texts t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [channel_id])
+            for row in cur.fetchall():
+                text, tag = row
+                if text not in z:
+                    z[text] = set()
+                z[text].add(tag)
+        lst: List[TextEntry] = []
+        for text_id, tags in z.items():
+            te = TextEntry(id=text_id, queue_nodes={}, tags=tags, in_all=None)
+            lst.append(te)
+        self.rng.shuffle(lst)
+        texts = dllist()
+        for te in lst:
+            te.in_all = texts.append(te)
+        ch.all_texts = texts
+        return texts
 
     def new_channel_id(self):
         with self.conn.cursor() as cur:
@@ -334,7 +392,7 @@ DROP TABLE tags;
                     z.append((text_id, text, tags))
             return z
 
-    def all_texts(self, channel_id: int) -> List[Tuple[int, str, Set[int]]]:
+    def all_texts(self, channel_id: int) -> dllist:
         with self.conn.cursor() as cur:
             cur.execute(
                 'SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
@@ -355,19 +413,51 @@ DROP TABLE tags;
         for text_id, tag_ids in texts.items():
             if not qt or query.match_tags(qt, tag_ids):
                 match.append(text_id)
-        self.rng.shuffle(match)
+
         ch.text_queries[q] = dllist(match)
         return ch.text_queries[q]
 
     def get_random_text(self, channel_id: int, q: str) -> Tuple[Optional[str], Optional[Set[int]]]:
-        tt = self.get_texts_matching_tags(channel_id, q)
-        if tt.size == 0:
-            return None, None
-        j = int(self.rng.pareto(4) * tt.size) % tt.size
-        node = tt.nodeat(j)
-        tt.remove(node)
-        tt.append(node)
-        return self.get_text(channel_id, node.value)
+        ch = self.channel(channel_id)
+        texts = self.get_all_texts(channel_id)
+        if q not in ch.queries:
+            ch.query_counter += 1
+            tags, _ = self.get_tags(channel_id)
+            qq = QueryQueue(id=ch.query_counter, queue=dllist(),
+                            parsed=query.parse_query(tags, q))
+            ch.queries[q] = qq
+            t: TextEntry
+            for t in texts:
+                if query.match_tags(qq.parsed, t.tags):
+                    e = qq.queue.append(t)
+                    t.queue_nodes[qq.id] = e
+        ch.active_queries[q] = '+'
+        # logging.info('picking a random text')
+        # logging.info(f'all texts {len(texts)}: {[t.id for t in texts]}')
+        # for q, qq in ch.queries.items():
+            # logging.info(f'{q} {qq.id} {len(qq.queue)}: {[t.id for t in qq.queue]}')
+        qq = ch.queries[q]
+        j = int(self.rng.pareto(4) * qq.queue.size) % qq.queue.size
+        node = qq.queue.nodeat(j)
+        t = node.value
+        if not t:
+            raise Exception('bad list node')
+        # logging.info(f'picked item {j} in queue {qq.id}: {t.id}. it has {len(t.queue_nodes)} matching queues')
+        ll = t.in_all.owner()
+        ll.remove(t.in_all)
+        ll.append(t.in_all)
+        for qn in t.queue_nodes.values(): 
+            ll = qn.owner()
+            ll.remove(qn)
+            ll.append(qn)
+        # tt = self.get_texts_matching_tags(channel_id, q)
+        # if tt.size == 0:
+        #     return None, None
+        # j = int(self.rng.pareto(4) * tt.size) % tt.size
+        # node = tt.nodeat(j)
+        # tt.remove(node)
+        # tt.append(node)
+        return self.get_text(channel_id, t.id)
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
