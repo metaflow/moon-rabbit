@@ -320,7 +320,7 @@ class TagList(Command):
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
-        tags, _ = db().get_tags(channel_id)
+        tags = db().tag_by_value(channel_id)
         s = 'no tags'
         if tags:
             t: List[str] = []
@@ -378,13 +378,14 @@ class TextAdd(Command):
                 if not query.tag_re.match(t):
                     return [Action(kind=ActionKind.REPLY, text=f'tag name might consist of latin letters, digits, "_" and "-" characters, not "{t}"')], False
                 db().add_tag(channel_id, t)
-            tags_fw, tag_inverse = db().get_tags(channel_id)
-            new_tags = set([tags_fw[s.strip()] for s in tag_names])
+            tags_by_value = db().tag_by_value(channel_id)
+            tag_by_id = db().tag_by_id(channel_id)
+            new_tags = set([tags_by_value[s.strip()] for s in tag_names])
             old_tags, updated = db().set_text_tags(channel_id, text_id, new_tags)
             if updated:
-                s += f'\nSet tags {", ".join([tag_inverse[x] for x in new_tags])}'
+                s += f'\nNew tags: {", ".join([tag_by_id[x] for x in new_tags])}'
                 if old_tags:
-                    s += f'\nPrevious tags: {", ".join([tag_inverse[x] for x in old_tags])}'
+                    s += f'\nPrevious tags: {", ".join([tag_by_id[x] for x in old_tags])}'
         return [Action(kind=ActionKind.REPLY, text=s)], False
     def help(self, prefix: str):
         return f'{prefix}txt-add'
@@ -403,24 +404,25 @@ class TextSetTags(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         text_id = str_to_int(parts[1])
         channel_id = v['channel_id']
-        txt_value, current_tags = db().get_text(channel_id, text_id)
-        logging.info(f'{txt_value} {current_tags}')
+        txt_value = db().get_text(channel_id, text_id)
         if not txt_value:
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {text_id} found')], False
-        set_tags = parts[2:]
+        set_tags = [x.strip() for x in parts[2:] if x.strip()]
         for t in set_tags:
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t.strip())
         s = f'Set tags for text {text_id} "{txt_value}": {", ".join(set_tags)}'
-        tags, tag_inverse = db().get_tags(channel_id)
         channel_id = v['channel_id']
+        tags_by_value = db().tag_by_value(channel_id)
+        tags_by_id = db().tag_by_id(channel_id)
+        current_tags = db().get_text_tags(channel_id, text_id)
         if current_tags:
-            s += '\nPrevious tags: ' + ', '.join([tag_inverse[x] for x in current_tags])
-        db().delete_text_tags(channel_id, text_id)
+            s += '\nPrevious tags: ' + ', '.join([tags_by_id[x] for x in current_tags])
+        new_tags: Set[int] = set()
         for t in set_tags:
-            t = t.strip()
-            db().add_text_tag(channel_id, text_id, tags[t])
+            new_tags.add(tags_by_value[t])
+        db().set_text_tags(channel_id, text_id, new_tags)
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
@@ -455,7 +457,7 @@ class TextUpload(Command):
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t)
-        tags, _ = db().get_tags(channel_id)
+        tag_by_value = db().tag_by_value(channel_id)
         total = 0
         total_added = 0
         total_updated = 0
@@ -478,7 +480,7 @@ class TextUpload(Command):
                 continue
             tag_names = s[1].split(' ')
             tag_names = [x.strip() for x in tag_names if x.strip()]
-            db().set_text_tags(channel_id, text_id, set([tags[t] for t in tag_names]))
+            db().set_text_tags(channel_id, text_id, set([tag_by_value[t] for t in tag_names]))
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):
@@ -508,9 +510,9 @@ class TextDownload(Command):
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         rr = []
-        _, tag_id2value = db().get_tags(channel_id)
+        tag_by_id = db().tag_by_id(channel_id)
         for ii in items:
-            tags = [tag_id2value[x] for x in ii[2]]
+            tags = [tag_by_id[x] for x in ii[2]]
             rr.append(f'{ii[1]}\t{" ".join(tags)}\t{ii[0]}')
         att = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY,
@@ -545,10 +547,10 @@ class TextSearch(Command):
         items = db().text_search(channel_id, substring, tag_query)
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
-        _, inverse_tags = db().get_tags(channel_id)
+        tag_by_id = db().tag_by_id(channel_id)
         rr = []
         for ii in items:
-            tag_names = [inverse_tags[x] for x in ii[2]]
+            tag_names = [tag_by_id[x] for x in ii[2]]
             rr.append(f'{ii[1]};{" ".join(tag_names)};{ii[0]}')
         if not rr:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
@@ -589,9 +591,9 @@ class TextRemove(Command):
             db().delete_text(channel_id, id)
             return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
         rr = []
-        _, inverse_tags = db().get_tags(channel_id)
+        tag_by_id = db().tag_by_id(channel_id)
         for ii in items:
-            tag_names = [inverse_tags[x] for x in ii[2]]
+            tag_names = [tag_by_id[x] for x in ii[2]]
             rr.append(f'{ii[0]} {ii[1]} "{", ".join(tag_names)}"')
         s = '\n'.join(rr)
         return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False

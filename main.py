@@ -28,7 +28,6 @@
 
 import asyncio
 from io import StringIO
-from twitchAPI import twitch
 from data import *
 from twitchio.ext import commands as twitchCommands  # type: ignore
 import argparse
@@ -61,19 +60,6 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
 
-
-@jinja2.pass_context
-def render_list_item(ctx, list_name: str):
-    v = ctx.get_all()
-    v['_render_depth'] += 1
-    if v['_render_depth'] > 5:
-        v['_log'].error('rendering depth is > 5')
-        return ''
-    txt = db().get_random_list_item(v['channel_id'], list_name)
-    v['_log'].info(f'rendering {txt}')
-    return render(txt, v)
-
-
 @jinja2.pass_context
 def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     v = ctx.get_all()
@@ -81,22 +67,29 @@ def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     if v['_render_depth'] > 50:
         v['_log'].error('rendering depth is > 50')
         return ''
+    text_id: Optional[int] = None
+    channel_id = v['channel_id']
     if isinstance(q, int):
-        txt, tags = db().get_text(v['channel_id'], q)
+        text_id = q
     else:
         if inf:
             q = f'({q}) and morph'
-        txt, tags = db().get_random_text(v['channel_id'], q)
-    if not txt:
-        v['_log'].info(f'no matchin text is found')
+        text_id = db().get_random_text_id(channel_id, q)
+    if not text_id:
+        v['_log'].info(f'no matching text is found')
+        return ''
+    txt = db().get_text(channel_id, text_id)
+    tags = db().get_text_tags(channel_id, text_id)
+    if not txt or not tags:
+        v['_log'].info(f'failed to get text {text_id}')
         return ''
     if inf:
         channel_id = v['channel_id']
-        _, inv_tags = db().get_tags(channel_id)
+        tab_by_id = db().tag_by_id(channel_id)
         filter = []
         if tags:
             for tag_id in tags:
-                name = inv_tags[tag_id]
+                name = tab_by_id[tag_id]
                 if name in words.morph_tags:
                     filter.append(words.morph_tags[name])
         return words.inflect_word(txt, inf, filter)
@@ -269,7 +262,8 @@ class DiscordClient(discord.Client):
 async def expireVariables():
     while True:
         db().expire_variables()
-        await asyncio.sleep(120)
+        db().expire_old_queries()
+        await asyncio.sleep(300)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')

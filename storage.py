@@ -65,45 +65,16 @@ class QueryQueue:
 
 @dataclasses.dataclass
 class ChannelCache:
-    active_queries: Any
-    text_queries: Any
-    queries: Dict[str, QueryQueue]
-    tags: Optional[Tuple[Dict[str, int], Dict[int, str]]] = None
-    text_tags: Optional[Dict[int, Set[int]]] = None
-    # ttldict query -> dllist[int]
+    channel_id: int
+    active_queries: Any # str -> str
+    query_to_id: Dict[str, int]
+    queries: Dict[int, QueryQueue]
+    all_text_by_id: Dict[int, TextEntry]
+    all_texts_list: Type[dllist]
+    # tags: Tuple[Dict[str, int], Dict[int, str]]
+    tag_by_id: Dict[int, str]
+    tag_by_value: Dict[str, int]
     query_counter = 0
-    
-    all_texts: Optional[Type[dllist]] = None
-
-    # plan:
-    # make a dict queries (str -> [id(int), size, parsed query])
-    # TTL dict of active queries
-    # and a dict of text_id -> [set(id of matched queries), pointer to list element]
-    #
-    # alternative
-    #
-    # have a queue for every query
-    # store all nodes in a text
-    # have a global ordering of texts
-    # when adding a tag to the text - find which queues it matches and put text into the correct position within every queue
-    #
-    # 1. tag modificatons O(q), search O(n * ~q)
-    # 2. tag modifications O(q + n), search O(n + q)
-    #
-    # for every text store all queries it matches
-    #   - new query added - add new id, evaluate all texts for it, store size of match
-    #   - query expired - remove it from every text. Cleanup every minute with variables.
-    # tags:
-    #   - added tag - noop
-    #   - removed tag - noop (there should be no active queries with this flag)
-    # text - tag update:
-    #   - evaluate every query on text and update text dict and counter on queries
-    # text:
-    #   - add - add it to the front of the queue and dict
-    #   - remove - drop
-    # select random for query:
-    # pick a random number N within the size of the query and iterate over the list until we find N-th text that matches this query
-    # move the element to the end of the queue
 
 
 class DB:
@@ -116,12 +87,21 @@ class DB:
         self.init_db()
 
     def channel(self, channel_id: int) -> ChannelCache:
-        if channel_id not in self.channels:
-            self.channels[channel_id] = ChannelCache(
-                text_queries=ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14),
-                active_queries=ttldict2.TTLDict(ttl_seconds=3600.0 * 24 * 14),
-                queries = {})
-        return self.channels[channel_id]
+        if channel_id in self.channels:
+            return self.channels[channel_id]
+        ch = ChannelCache(
+            channel_id=channel_id,
+            active_queries=ttldict2.TTLDict(ttl_seconds=float(10.0 * 3600 * 24)),
+            queries = {},
+            all_text_by_id = {},
+            all_texts_list=dllist(),
+            tag_by_id={},
+            tag_by_value={},
+            query_to_id = {})
+        self.reload_texts(ch)
+        self.reload_tags(ch)
+        self.channels[channel_id] = ch
+        return ch
 
     def recreate_tables(self):
         logging.warning('dropping and creating tables anew')
@@ -229,31 +209,38 @@ DROP TABLE tags;
         logging.info(f"added Discord channel ID '{guild_id}' #{id}")
         return id, prefix
 
-    def get_all_texts(self, channel_id: int) -> dllist:
-        ch = self.channel(channel_id)
-        if ch.all_texts:
-            return ch.all_texts
+    def reload_tags(self, ch: ChannelCache): 
+        with self.conn.cursor() as cur:
+            ch.tag_by_id.clear()
+            ch.tag_by_value.clear()
+            cur.execute(
+                "SELECT id, value FROM tags WHERE channel_id = %s", [ch.channel_id])
+            for row in cur.fetchall():
+                ch.tag_by_id[row[0]] = row[1]
+                ch.tag_by_value[row[1]] = row[0]
+
+    def reload_texts(self, ch: ChannelCache):
+        ch.all_texts_list.clear()
         ch.queries.clear()
         ch.active_queries.clear()
         z: Dict[int, Set[int]] = {}
         with self.conn.cursor() as cur:
             cur.execute(
-                "SELECT tt.text_id, tt.tag_id FROM texts t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [channel_id])
+                "SELECT tt.text_id, tt.tag_id FROM texts t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [ch.channel_id])
             for row in cur.fetchall():
                 text, tag = row
                 if text not in z:
                     z[text] = set()
                 z[text].add(tag)
         lst: List[TextEntry] = []
+        ch.all_text_by_id.clear()
         for text_id, tags in z.items():
             te = TextEntry(id=text_id, queue_nodes={}, tags=tags, in_all=None)
             lst.append(te)
+            ch.all_text_by_id[text_id] = te
         self.rng.shuffle(lst)
-        texts = dllist()
         for te in lst:
-            te.in_all = texts.append(te)
-        ch.all_texts = texts
-        return texts
+            te.in_all = ch.all_texts_list.append(te)
 
     def new_channel_id(self):
         with self.conn.cursor() as cur:
@@ -263,17 +250,11 @@ DROP TABLE tags;
                 return int(row[0]) + 1
             return 0
 
-    def get_tags(self, channel_id: int) -> Tuple[Dict[str, int], Dict[int, str]]:
-        ch = self.channel(channel_id)
-        if not ch.tags:
-            ch.tags = ({}, {})
-            with self.conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, value FROM tags WHERE channel_id = %s", [channel_id])
-                for row in cur.fetchall():
-                    ch.tags[0][row[1]] = row[0]
-                    ch.tags[1][row[0]] = row[1]
-        return ch.tags
+    def tag_by_id(self, channel_id: int) -> Dict[int, str]:
+        return self.channel(channel_id).tag_by_id
+
+    def tag_by_value(self, channel_id: int) -> Dict[str, int]:
+        return self.channel(channel_id).tag_by_value
 
     def add_tag(self, channel_id: int, tag_name: str):
         if not tag_re.match(tag_name):
@@ -281,77 +262,79 @@ DROP TABLE tags;
         with self.conn.cursor() as cur:
             cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
                         (channel_id, tag_name))
-            self.channel(channel_id).tags = None
-
-    def purge_text_to_tag_cache(self, channel_id: int):
-        ch = self.channel(channel_id)
-        ch.text_queries.clear()
-        ch.text_tags = None
+            self.reload_tags(self.channel(channel_id))
 
     def delete_tag(self, channel_id: int, tag_id: int):
         with self.conn.cursor() as cur:
-            logging.info(f'delete tag "{tag_id}" from {channel_id}')
             cur.execute('DELETE FROM tags WHERE channel_id = %s AND id = %s',
                         (channel_id, tag_id))
-            self.channel(channel_id).tags = None
-            self.purge_text_to_tag_cache(channel_id)
+            ch = self.channel(channel_id)
+            self.reload_tags(ch)
+            self.reload_texts(ch)
             return cur.rowcount
 
-    def get_text_tags(self, channel_id: int) -> Dict[int, Set[int]]:
-        ch = self.channel(channel_id)
-        if ch.text_tags:
-            return ch.text_tags
-        z: Dict[int, Set[int]] = {}
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "SELECT tt.text_id, tt.tag_id FROM texts t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [channel_id])
-            for row in cur.fetchall():
-                text, tag = row
-                if text not in z:
-                    z[text] = set()
-                z[text].add(tag)
-        ch.text_tags = z
-        return z
-
-    def add_text_tag(self, channel_id: int, text: int, tag: int):
-        self.purge_text_to_tag_cache(channel_id)
-        with self.conn.cursor() as cur:
-            cur.execute(
-                'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text, tag))
+    def get_text_tags(self, channel_id: int, text_id: int) -> Optional[Set[int]]:
+        te = self.channel(channel_id).all_text_by_id.get(text_id)
+        if not te:
+            return None
+        return te.tags
 
     def set_text_tags(self, channel_id: int, text_id: int, new_tags: Set[int]) -> Tuple[Optional[Set[int]], bool]:
         """returns previous and new tags if text exists"""
-        txt_value, current_tags = db().get_text(channel_id, text_id)
-        if not txt_value:
+        ch = self.channel(channel_id)
+        te = ch.all_text_by_id.get(text_id)
+        if not te:
             return (None, False)
-        self.delete_text_tags(channel_id, text_id)
-        for x in new_tags:
-            self.add_text_tag(channel_id, text_id, x)
-        return (current_tags, True)
-
-    def delete_text_tags(self, channel_id: int, text_id: int) -> int:
-        self.purge_text_to_tag_cache(channel_id)
+        previous_tags = te.tags
+        if not previous_tags:
+            return (None, False)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM text_tags WHERE text_id = %s', (text_id, ))
-            return cur.rowcount
+            for x in new_tags:
+                cur.execute(
+                    'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text_id, x))
+        te.tags = set(new_tags)
+        prev: Set[int] = set(te.queue_nodes.keys())
+        current: Set[int] = set()
+        for qq in ch.queries.values():
+            if query.match_tags(qq.parsed, te.tags):
+                current.add(qq.id)
+        # Remove from the queries we don't match anymore.
+        for qid in (prev - current):
+            node = te.queue_nodes[qid]
+            node.owner().remove(node)
+            te.queue_nodes.pop(qid, None)
+        # Add to queries we now match.
+        # Technically this is not correct and we should insert according to the global order.
+        # But it's quite tricky and doesn't seems worth it for this corner case.
+        for qid in (current - prev):
+            qq = ch.queries[qid]
+            te.queue_nodes[qid] = qq.queue.appendleft(te)
+        return (previous_tags, True)
 
     def delete_text(self, channel_id: int, text_id: int) -> int:
-        self.purge_text_to_tag_cache(channel_id)
+        ch = self.channel(channel_id)
+        te = ch.all_text_by_id.get(text_id)
+        ch.tag_by_id.pop(text_id, None)
+        if te:
+            for node in te.queue_nodes.values():
+                node.owner().remove(node)
+            if te.in_all:
+                te.in_all.owner().remove(te.in_all)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM texts WHERE id = %s AND channel_id = %s', (text_id, channel_id))
             return cur.rowcount
 
-    def get_text(self, channel_id: int, id: int) -> Tuple[Optional[str], Optional[Set[int]]]:
+    def get_text(self, channel_id: int, id: int) -> Optional[str]:
         with self.conn.cursor() as cur:
             cur.execute("SELECT value FROM texts WHERE channel_id = %s AND id = %s",
                         [channel_id, id])
             row = cur.fetchone()
             if not row:
-                return None, None
-            # TODO: really need to return tags?
-            return row[0], self.get_text_tags(channel_id).get(id)
+                return None
+            return row[0]
 
     def add_text(self, channel_id: int, value: str) -> Tuple[int, bool]:
         with self.conn.cursor() as cur:
@@ -360,13 +343,18 @@ DROP TABLE tags;
             row = cur.fetchone()
             if row:
                 return row[0], False
-            self.purge_text_to_tag_cache(channel_id)
             cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;',
                         (channel_id, value, value))
-            return cur.fetchone()[0], True
+            text_id = cur.fetchone()[0]
+            ch = self.channel(channel_id)
+            te = TextEntry(id=text_id, queue_nodes={}, tags=set(),in_all=None)
+            ch.all_text_by_id[text_id] = te
+            te.in_all = ch.all_texts_list.append(te)
+            # No need to check agains queries as we don't expect any query to match a text w/o any tags.
+            return text_id, True
 
     def set_text(self, channel_id: int, value: str, id: int) -> Optional[str]:
-        txt, _ = self.get_text(channel_id, id)
+        txt = self.get_text(channel_id, id)
         if not txt:
             return None
         with self.conn.cursor() as cur:
@@ -375,89 +363,71 @@ DROP TABLE tags;
             return txt
 
     def text_search(self, channel_id: int, txt: str, q: str = '') -> List[Tuple[int, str, Set[int]]]:
-        logging.info(f'text search "{txt}" "{q}"')
         with self.conn.cursor() as cur:
             cur.execute('select id, value from texts WHERE (channel_id = %s) AND (value LIKE %s)',
                         (channel_id, '%' + escape_like(txt.strip()) + '%'))
+            ch = self.channel(channel_id)
             qt: Optional[lark.Tree] = None
-            texts: Optional[Dict[int, Set[int]]]
-            texts = self.get_text_tags(channel_id)
             if q:
-                qt = query.parse_query(self.get_tags(channel_id)[0], q)
+                qt = query.parse_query(ch.tag_by_value, q)
             z: List[Tuple[int, str, Set[int]]] = []
             for row in cur.fetchall():
                 text_id, text = row[0], row[1]
-                tags = texts.get(text_id, set())
-                if not qt or (tags and query.match_tags(qt, tags)):
+                tags = self.get_text_tags(channel_id, text_id)
+                if not tags:
+                    tags = set()
+                if not qt or query.match_tags(qt, tags):
                     z.append((text_id, text, tags))
             return z
 
-    def all_texts(self, channel_id: int) -> dllist:
+    def all_texts(self, channel_id: int) -> List[Tuple[int, str, Set[int]]]:
         with self.conn.cursor() as cur:
             cur.execute(
                 'SELECT id, value from texts t WHERE (channel_id = %s)', (channel_id,))
-            tt = self.get_text_tags(channel_id)
-            return [(row[0], row[1], tt.get(row[0], set())) for row in cur.fetchall()]
-
-    def get_texts_matching_tags(self, channel_id: int, q: str) -> Type[dllist]:
-        q = q.strip()
-        ch = self.channel(channel_id)
-        z = ch.text_queries.get(q, None, True)
-        if z:
+            # tt = self.get_text_tags(channel_id)
+            # self.get_tags(channel_id)
+            z = []
+            for row in cur.fetchall():
+                text_id = int(row[0])
+                value = str(row[1])
+                tags = self.get_text_tags(channel_id, text_id)
+                if not tags:
+                    tags = set()
+                z.append((text_id, value, tags))
             return z
-        texts = self.get_text_tags(channel_id)
-        match: List[int] = []
-        qt: Optional[lark.Tree] = None
-        if q:
-            qt = query.parse_query(self.get_tags(channel_id)[0], q)
-        for text_id, tag_ids in texts.items():
-            if not qt or query.match_tags(qt, tag_ids):
-                match.append(text_id)
 
-        ch.text_queries[q] = dllist(match)
-        return ch.text_queries[q]
-
-    def get_random_text(self, channel_id: int, q: str) -> Tuple[Optional[str], Optional[Set[int]]]:
+    def get_random_text_id(self, channel_id: int, q: str) -> Optional[int]:
         ch = self.channel(channel_id)
-        texts = self.get_all_texts(channel_id)
-        if q not in ch.queries:
+        if q not in ch.query_to_id:
+            # Add a new query an match every text against it.
             ch.query_counter += 1
-            tags, _ = self.get_tags(channel_id)
-            qq = QueryQueue(id=ch.query_counter, queue=dllist(),
-                            parsed=query.parse_query(tags, q))
-            ch.queries[q] = qq
+            qid = ch.query_counter
+            ch.query_to_id[q] = qid
+            qq = QueryQueue(id=qid, queue=dllist(),
+                            parsed=query.parse_query(ch.tag_by_value, q))
+            ch.queries[qid] = qq
             t: TextEntry
-            for t in texts:
+            for t in ch.all_texts_list:
                 if query.match_tags(qq.parsed, t.tags):
-                    e = qq.queue.append(t)
-                    t.queue_nodes[qq.id] = e
+                    t.queue_nodes[qid] = qq.queue.append(t)
         ch.active_queries[q] = '+'
-        # logging.info('picking a random text')
-        # logging.info(f'all texts {len(texts)}: {[t.id for t in texts]}')
-        # for q, qq in ch.queries.items():
-            # logging.info(f'{q} {qq.id} {len(qq.queue)}: {[t.id for t in qq.queue]}')
-        qq = ch.queries[q]
+        qid = ch.query_to_id[q]
+        qq = ch.queries[qid]
+        if qq.queue.size == 0:
+            return None
         j = int(self.rng.pareto(4) * qq.queue.size) % qq.queue.size
+        # Move picked text to the end of all queues.
         node = qq.queue.nodeat(j)
         t = node.value
-        if not t:
-            raise Exception('bad list node')
-        # logging.info(f'picked item {j} in queue {qq.id}: {t.id}. it has {len(t.queue_nodes)} matching queues')
-        ll = t.in_all.owner()
-        ll.remove(t.in_all)
-        ll.append(t.in_all)
+        if t.in_all:
+            ll = t.in_all.owner()
+            ll.remove(t.in_all)
+            ll.appendnode(t.in_all)
         for qn in t.queue_nodes.values(): 
             ll = qn.owner()
             ll.remove(qn)
-            ll.append(qn)
-        # tt = self.get_texts_matching_tags(channel_id, q)
-        # if tt.size == 0:
-        #     return None, None
-        # j = int(self.rng.pareto(4) * tt.size) % tt.size
-        # node = tt.nodeat(j)
-        # tt.remove(node)
-        # tt.append(node)
-        return self.get_text(channel_id, t.id)
+            ll.appendnode(qn)
+        return t.id
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
         with self.conn.cursor() as cur:
@@ -554,10 +524,25 @@ DROP TABLE tags;
                 [prefix, channel_id])
             self.conn.commit()
             self.discord_channel_info.cache_clear()
+    
+    def expire_old_queries(self):
+        for ch in self.channels.values():
+            prev = set(ch.active_queries.keys())
+            ch.active_queries.drop_old_items()
+            active = set(ch.active_queries.keys())
+            for query_text in (prev - active):
+                qid = ch.query_to_id[query_text]
+                qq = ch.queries[qid]
+                logging.info(f'query {query_text} {qid} has expired')
+                t: TextEntry
+                for t in qq.queue:
+                    t.queue_nodes.pop(qid, None)
+                qq.queue.clear()
+                ch.queries.pop(qid, None)
+                ch.query_to_id.pop(query_text, None)
 
 
 _db: Optional[DB]
-
 
 def set_db(d: DB):
     global _db
