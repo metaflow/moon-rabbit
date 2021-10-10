@@ -155,6 +155,7 @@ class Twitch3(twitchio.Client):
                         a.text = a.text[:497] + "..."
                     await info.twitch_channel.send(a.text)
                     if '!echo' in message.content:
+                        logging.info('echo message')
                         await info.twitch_channel.send(a.text)
         except Exception as e:
             log.error(f"event_message: {str(e)}")
