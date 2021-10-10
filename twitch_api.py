@@ -154,8 +154,6 @@ class Twitch3(twitchio.Client):
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
-                    if '!echo' in message.content:
-                        await self.send_message(info, 'echo ' + a.text)
         except Exception as e:
             log.error(f"event_message: {str(e)}")
             log.error(traceback.format_exc())
