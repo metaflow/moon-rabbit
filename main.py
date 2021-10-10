@@ -76,7 +76,6 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
             q = f'({q}) and morph'
         text_id = db().get_random_text_id(channel_id, q)
     else:
-        logging.info(f'list {q}')
         queries = q[::2]
         weights = np.array([abs(float(x)) for x in q[1::2]])
         weights /= np.sum(weights)
@@ -174,7 +173,7 @@ class DiscordClient(discord.Client):
         # Don't react to own messages.
         if message.author == discordClient.user:
             return
-        logging.info(f'channel {message.channel} {message.channel.type}')
+        # logging.info(f'channel {message.channel} {message.channel.type}')
         guild_id = ''
         is_mod = False
         private = False
@@ -192,7 +191,7 @@ class DiscordClient(discord.Client):
             is_mod = permissions.ban_members or permissions.administrator
             if is_mod:
                 self.mods[str(message.author.id)] = guild_id
-                logging.info(f'set {message.author.id} as mod for {guild_id}')
+                # logging.info(f'set {message.author.id} as mod for {guild_id}')
         try:
             channel_id, prefix = db().discord_channel_info(
                 db().conn.cursor(), guild_id)
