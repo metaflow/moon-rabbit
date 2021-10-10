@@ -18,6 +18,7 @@ lark = "*"
 numpy = "*"
 llist = "*"
 twitchapi = "*"
+asyncio-throttle = "*"
 
 [dev-packages]
 autopep8 = "*"

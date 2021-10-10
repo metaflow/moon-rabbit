@@ -31,6 +31,7 @@ import commands
 import random
 import re
 import json
+from asyncio_throttle import Throttler
 
 @dataclasses.dataclass
 class ChannelInfo:
@@ -50,6 +51,7 @@ class Twitch3(twitchio.Client):
                 "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
             self.channel_name, self.app_id, self.app_secret, self.auth_token, self.api_url, self.api_port = cur.fetchone()
         self.channels: Dict[str, ChannelInfo] = {}
+        self.throttler = Throttler(rate_limit=1, period=10)
 
         has_events = False
         with cursor() as cur:
@@ -153,10 +155,12 @@ class Twitch3(twitchio.Client):
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     if len(a.text) > 500:
                         a.text = a.text[:497] + "..."
-                    await info.twitch_channel.send(a.text)
-                    if '!echo' in message.content:
-                        logging.info('echo message')
+                    async with self.throttler:
                         await info.twitch_channel.send(a.text)
+                    if '!echo' in message.content:
+                        async with self.throttler:
+                            logging.info('echo message')
+                            await info.twitch_channel.send(a.text)
         except Exception as e:
             log.error(f"event_message: {str(e)}")
             log.error(traceback.format_exc())
