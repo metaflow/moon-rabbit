@@ -66,7 +66,7 @@ class QueryQueue:
 @dataclasses.dataclass
 class ChannelCache:
     channel_id: int
-    active_queries: Any # str -> str
+    active_queries: Any  # str -> str
     query_to_id: Dict[str, int]
     queries: Dict[int, QueryQueue]
     all_text_by_id: Dict[int, TextEntry]
@@ -91,13 +91,14 @@ class DB:
             return self.channels[channel_id]
         ch = ChannelCache(
             channel_id=channel_id,
-            active_queries=ttldict2.TTLDict(ttl_seconds=float(10.0 * 3600 * 24)),
-            queries = {},
-            all_text_by_id = {},
+            active_queries=ttldict2.TTLDict(
+                ttl_seconds=float(10.0 * 3600 * 24)),
+            queries={},
+            all_text_by_id={},
             all_texts_list=dllist(),
             tag_by_id={},
             tag_by_value={},
-            query_to_id = {})
+            query_to_id={})
         self.reload_texts(ch)
         self.reload_tags(ch)
         self.channels[channel_id] = ch
@@ -209,7 +210,7 @@ DROP TABLE tags;
         logging.info(f"added Discord channel ID '{guild_id}' #{id}")
         return id, prefix
 
-    def reload_tags(self, ch: ChannelCache): 
+    def reload_tags(self, ch: ChannelCache):
         with self.conn.cursor() as cur:
             ch.tag_by_id.clear()
             ch.tag_by_value.clear()
@@ -223,17 +224,18 @@ DROP TABLE tags;
         ch.all_texts_list.clear()
         ch.queries.clear()
         ch.active_queries.clear()
+        ch.all_text_by_id.clear()
         z: Dict[int, Set[int]] = {}
         with self.conn.cursor() as cur:
+            cur.execute("SELECT id FROM texts t WHERE t.channel_id = %s", [ch.channel_id])
+            for row in cur.fetchall():
+                z[row[0]] = set()
             cur.execute(
                 "SELECT tt.text_id, tt.tag_id FROM texts t JOIN text_tags tt ON tt.text_id = t.id WHERE t.channel_id = %s", [ch.channel_id])
             for row in cur.fetchall():
                 text, tag = row
-                if text not in z:
-                    z[text] = set()
                 z[text].add(tag)
         lst: List[TextEntry] = []
-        ch.all_text_by_id.clear()
         for text_id, tags in z.items():
             te = TextEntry(id=text_id, queue_nodes={}, tags=tags, in_all=None)
             lst.append(te)
@@ -284,10 +286,9 @@ DROP TABLE tags;
         ch = self.channel(channel_id)
         te = ch.all_text_by_id.get(text_id)
         if not te:
+            logging.info(f'text {text_id} is not found')
             return (None, False)
         previous_tags = te.tags
-        if not previous_tags:
-            return (None, False)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM text_tags WHERE text_id = %s', (text_id, ))
@@ -347,7 +348,7 @@ DROP TABLE tags;
                         (channel_id, value, value))
             text_id = cur.fetchone()[0]
             ch = self.channel(channel_id)
-            te = TextEntry(id=text_id, queue_nodes={}, tags=set(),in_all=None)
+            te = TextEntry(id=text_id, queue_nodes={}, tags=set(), in_all=None)
             ch.all_text_by_id[text_id] = te
             te.in_all = ch.all_texts_list.append(te)
             # No need to check agains queries as we don't expect any query to match a text w/o any tags.
@@ -423,7 +424,7 @@ DROP TABLE tags;
             ll = t.in_all.owner()
             ll.remove(t.in_all)
             ll.appendnode(t.in_all)
-        for qn in t.queue_nodes.values(): 
+        for qn in t.queue_nodes.values():
             ll = qn.owner()
             ll.remove(qn)
             ll.appendnode(qn)
@@ -524,7 +525,7 @@ DROP TABLE tags;
                 [prefix, channel_id])
             self.conn.commit()
             self.discord_channel_info.cache_clear()
-    
+
     def expire_old_queries(self):
         for ch in self.channels.values():
             prev = set(ch.active_queries.keys())
@@ -543,6 +544,7 @@ DROP TABLE tags;
 
 
 _db: Optional[DB]
+
 
 def set_db(d: DB):
     global _db

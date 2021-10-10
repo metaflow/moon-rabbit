@@ -245,6 +245,7 @@ JSON format is ever changing, use "{prefix}debug <command>" to get a command rep
 It is the only way to customize a command to match a different regex, allow only for mods, hide it.
 '''
 
+
 class SetPrefix(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         if not text.startswith(prefix + "prefix-set"):
@@ -358,7 +359,7 @@ class TextAdd(Command):
             if len(parts) >= 3:
                 text_id = str_to_int(parts[2])
         elif value.startswith('"') and value.endswith('"') and len(value) > 2:
-            value = value[1:-1] # strip quotes
+            value = value[1:-1]  # strip quotes
         channel_id = v['channel_id']
         s = ''
         if text_id:
@@ -388,6 +389,7 @@ class TextAdd(Command):
                 if old_tags:
                     s += f'\nPrevious tags: {", ".join([tag_by_id[x] for x in old_tags])}'
         return [Action(kind=ActionKind.REPLY, text=s)], False
+
     def help(self, prefix: str):
         return f'{prefix}txt-add'
 
@@ -419,12 +421,15 @@ class TextSetTags(Command):
         tags_by_id = db().tag_by_id(channel_id)
         current_tags = db().get_text_tags(channel_id, text_id)
         if current_tags:
-            s += '\nPrevious tags: ' + ', '.join([tags_by_id[x] for x in current_tags])
+            s += '\nPrevious tags: ' + \
+                ', '.join([tags_by_id[x] for x in current_tags])
         new_tags: Set[int] = set()
         for t in set_tags:
             new_tags.add(tags_by_value[t])
-        db().set_text_tags(channel_id, text_id, new_tags)
-        return [Action(kind=ActionKind.REPLY, text=s)], False
+        _, ok = db().set_text_tags(channel_id, text_id, new_tags)
+        if ok:
+            return [Action(kind=ActionKind.REPLY, text=s)], False
+        return [Action(kind=ActionKind.REPLY, text=f'Failed to set tags {text_id} {new_tags}')], False
 
     def help(self, prefix: str):
         return f'{prefix}txt-tag'
@@ -481,7 +486,8 @@ class TextUpload(Command):
                 continue
             tag_names = s[1].split(' ')
             tag_names = [x.strip() for x in tag_names if x.strip()]
-            db().set_text_tags(channel_id, text_id, set([tag_by_value[t] for t in tag_names]))
+            db().set_text_tags(channel_id, text_id, set(
+                [tag_by_value[t] for t in tag_names]))
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):
@@ -671,7 +677,7 @@ class Debug(Command):
 
     def help_full(self, prefix: str):
         return f'"{prefix}debug" OR "{prefix}debug <command name>"'
-    
+
     def private_mod_only(self):
         return True
 
@@ -742,6 +748,6 @@ class HelpCommand(Command):
 
     def mod_only(self):
         return False
-    
+
     def hidden_help(self):
         return False

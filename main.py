@@ -87,10 +87,10 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
         v['_log'].info(f'no matching text is found')
         return ''
     txt = db().get_text(channel_id, text_id)
-    tags = db().get_text_tags(channel_id, text_id)
-    if not txt or not tags:
+    if not txt:
         v['_log'].info(f'failed to get text {text_id}')
         return ''
+    tags = db().get_text_tags(channel_id, text_id)
     if inf:
         channel_id = v['channel_id']
         tab_by_id = db().tag_by_id(channel_id)
