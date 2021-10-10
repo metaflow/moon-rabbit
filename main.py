@@ -82,10 +82,7 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
         queries = q[::2]
         weights = np.array([abs(float(x)) for x in q[1::2]])
         weights /= np.sum(weights)
-        query_text: str
-        for i in range(30):
-            query_text = db().rng.choice(queries, p=weights)
-            logging.info(f'picked {query_text}')
+        query_text: str = db().rng.choice(queries, p=weights)
         if inf:
             query_text = f'({query_text}) and morph'
         text_id = db().get_random_text_id(channel_id, query_text)
