@@ -48,6 +48,7 @@ import words
 import twitch_commands
 import twitch_bot
 import twitch_api
+import numpy as np
 
 errHandler = logging.FileHandler('errors.log', encoding='utf-8')
 errHandler.setLevel(logging.ERROR)
@@ -60,8 +61,9 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s',
     level=logging.INFO)
 
+
 @jinja2.pass_context
-def render_text_item(ctx, q: Union[str, int], inf: str = ''):
+def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str = ''):
     v = ctx.get_all()
     v['_render_depth'] += 1
     if v['_render_depth'] > 50:
@@ -71,10 +73,22 @@ def render_text_item(ctx, q: Union[str, int], inf: str = ''):
     channel_id = v['channel_id']
     if isinstance(q, int):
         text_id = q
-    else:
+    elif isinstance(q, str):
         if inf:
             q = f'({q}) and morph'
         text_id = db().get_random_text_id(channel_id, q)
+    else:
+        logging.info(f'list {q}')
+        queries = q[::2]
+        weights = np.array([abs(float(x)) for x in q[1::2]])
+        weights /= np.sum(weights)
+        query_text: str
+        for i in range(30):
+            query_text = db().rng.choice(queries, p=weights)
+            logging.info(f'picked {query_text}')
+        if inf:
+            query_text = f'({query_text}) and morph'
+        text_id = db().get_random_text_id(channel_id, query_text)
     if not text_id:
         v['_log'].info(f'no matching text is found')
         return ''
@@ -254,7 +268,7 @@ class DiscordClient(discord.Client):
             return ' '.join([discord_literal(x.mention) for x in msg.mentions])
         return ''
 
-    def any_mention(self, msg, users: List[str], exclude: List[str]): 
+    def any_mention(self, msg, users: List[str], exclude: List[str]):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
