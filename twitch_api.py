@@ -153,14 +153,9 @@ class Twitch3(twitchio.Client):
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                    if len(a.text) > 500:
-                        a.text = a.text[:497] + "..."
-                    async with self.throttler:
-                        await info.twitch_channel.send(a.text)
+                    await self.send_message(info, a.text)
                     if '!echo' in message.content:
-                        async with self.throttler:
-                            logging.info('echo message')
-                            await info.twitch_channel.send(a.text)
+                        await self.send_message(info, 'echo ' + a.text)
         except Exception as e:
             log.error(f"event_message: {str(e)}")
             log.error(traceback.format_exc())
@@ -230,13 +225,18 @@ class Twitch3(twitchio.Client):
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                    if len(a.text) > 500:
-                        a.text = a.text[:497] + "..."
-                    if info.twitch_channel:
-                        await info.twitch_channel.send(a.text)
+                    await self.send_message(info, a.text)
         except Exception as e:
             log.error(f"on_hype_train_ends: {str(e)}")
             log.error(traceback.format_exc())
+
+    async def send_message(self, info: ChannelInfo, txt: str):
+        if not info.twitch_channel:
+            return
+        if len(txt) > 500:
+            txt = txt[:497] + "..."
+        async with self.throttler:
+            await info.twitch_channel.send(txt)
 
     async def on_redemption(self, data):
         try:
@@ -278,10 +278,7 @@ class Twitch3(twitchio.Client):
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                    if len(a.text) > 500:
-                        a.text = a.text[:497] + "..."
-                    if info.twitch_channel:
-                        await info.twitch_channel.send(a.text)
+                    await self.send_messaged(a.text)
         except Exception as e:
             log.error(f"on_redemption: {str(e)}")
             log.error(traceback.format_exc())
