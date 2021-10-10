@@ -45,8 +45,6 @@ import commands
 import time
 import logging.handlers
 import words
-import twitch_commands
-import twitch_bot
 import twitch_api
 import numpy as np
 
@@ -279,7 +277,6 @@ async def expireVariables():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch', action='store_true')
-    parser.add_argument('--twitch2', action='store_true')
     parser.add_argument('--twitch3', action='store_true')
     parser.add_argument('--discord', action='store_true')
     parser.add_argument('--add_channel', action='store_true')
@@ -310,35 +307,12 @@ if __name__ == "__main__":
         discordClient = DiscordClient(intents=discord.Intents.all(), loop=loop)
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
-        logging.info('starting Twitch Commands')
-        twitchClient = twitch_commands.TwitchCommands(token=os.getenv(
-            'TWITCH_ACCESS_TOKEN'), loop=loop)
-        loop.create_task(twitchClient.connect())
-    if args.twitch2:
-        logging.info('starting Twitch Bot')
-        with db().conn.cursor() as cur:
-            cur.execute(
-                "SELECT channel_id, twitch_command_prefix, twitch_channel_name, twitch_auth_token, twitch_events FROM channels")
-            for row in cur.fetchall():
-                id, prefix, name, token, events, pubsub_token = row
-                if not name or not token:
-                    continue
-                watch: List[EventType] = []
-                if events:
-                    for x in events.split(','):
-                        watch.append(EventType[x.strip()])
-                logging.info(
-                    f'connecting to twitch {name} ({id}) prefix {prefix}, watch={watch} bot token="{token}" pubsub token="{pubsub_token}"')
-                t = twitch_bot.Twitch(token=token, channel=name, internal_channel_id=id,
-                                      prefix=prefix, watch=watch, pubsub_token=pubsub_token, loop=loop)
-                loop.create_task(t.connect())
-    if args.twitch3:
         with cursor() as cur:
             cur.execute("SELECT id FROM twitch_bots")
             for r in cur.fetchall():
                 t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
                 loop.create_task(t.connect())
-    if args.twitch or args.discord or args.twitch2 or args.twitch3:
+    if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
         loop.run_forever()
