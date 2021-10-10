@@ -101,7 +101,6 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
                 if name in words.morph_tags:
                     filter.append(words.morph_tags[name])
         return words.inflect_word(txt, inf, filter)
-    v['_log'].info(f'rendering {txt}')
     return render(txt, v)
 
 
