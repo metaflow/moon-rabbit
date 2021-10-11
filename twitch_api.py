@@ -276,7 +276,7 @@ class Twitch3(twitchio.Client):
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                    await self.send_message(a.text)
+                    await self.send_message(info, a.text)
         except Exception as e:
             log.error(f"on_redemption: {str(e)}")
             log.error(traceback.format_exc())
