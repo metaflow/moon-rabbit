@@ -53,6 +53,14 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, event: 
         log.error(f'{e}\n{traceback.format_exc()}')
     return actions
 
+def command_prefix(txt: str, prefix: str, s: List[str]) -> str:
+    for x in s: 
+        if txt.startswith(prefix + x):
+            # TODO: don't append an empty string and return additional bool instead.
+            return txt[len(prefix + x):] + ' '
+        if txt.startswith(prefix + ' ' + x):
+            return txt[len(prefix + ' ' + x):] + ' '
+    return ''
 
 class Command(Protocol):
     async def run(self, prefix: str, text: str, event: EventType, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -104,7 +112,7 @@ class PersistentCommand(Command):
 
     def __init__(self, data, prefix):
         self.data = data
-        p = data.pattern.replace('!prefix', re.escape(prefix))
+        p = data.pattern.replace('!prefix', re.escape(prefix) + ' ?')
         logging.info(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
@@ -158,15 +166,16 @@ class PersistentCommand(Command):
 
 class Eval(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "eval"):
+        text = command_prefix(text, prefix, ['eval'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        v['_log'].info(f'eval "{parts[1]}"')
+        v['_log'].info(f'eval "{text}"')
         v['_render_depth'] = 0
-        s = render(parts[1], v)
+        s = render(text, v)
         if not s:
             s = "<empty>"
         return [Action(kind=ActionKind.REPLY, text=s)], False
@@ -180,21 +189,23 @@ class Eval(Command):
 
 class SetCommand(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "set"):
+        text = command_prefix(text, prefix, ['command'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         log = v['_log']
         channel_id = v['channel_id']
         commands_cache.pop(f'commands_{channel_id}_{prefix}', None)
-        parts = text.split(' ', 2)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        name = parts[1]
-        if len(parts) == 2:
+        parts = text.split(' ', 1)
+        name = parts[0]
+        if len(parts) == 1:
             cursor().execute(
                 'DELETE FROM commands WHERE channel_id = %s AND name = %s', (channel_id, name))
             return [Action(kind=ActionKind.REPLY, text=f"Deleted command '{name}'")], False
-        command_text = parts[2]
+        command_text = parts[1]
         cmd = CommandData(pattern="!prefix" + re.escape(name) + "\\b")
         try:
             cmd = dictToCommandData(json.loads(command_text))
@@ -210,10 +221,10 @@ class SetCommand(Command):
         return [Action(kind=ActionKind.REPLY, text=f"Added new command '{name}' #{id}")], False
 
     def help(self, prefix: str):
-        return f'{prefix}set'
+        return f'{prefix}command'
 
     def help_full(self, prefix: str):
-        return f'''{prefix}set [<name> <template>|<JSON>]
+        return f'''{prefix}command [<name> <template>|<JSON>]
 Missing value deletes command.
 See https://jinja.palletsprojects.com/en/3.0.x/templates/ for the general template syntax.
 
@@ -248,23 +259,23 @@ It is the only way to customize a command to match a different regex, allow only
 
 class SetPrefix(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "prefix-set"):
+        text = command_prefix(text, prefix, ['prefix-set'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         log = v['_log']
         channel_id = v['channel_id']
         if v['bot'] not in str(v['direct_mention']):
             log.info('this bot is not mentioned directly')
             return [], True
-        parts = text.split(' ')
-        if len(parts) < 2:
+        if not text:
             return [], True
-        new_prefix = parts[1]
         if is_discord:
-            db().set_discord_prefix(channel_id, new_prefix)
+            db().set_discord_prefix(channel_id, text)
         else:
-            db().set_twitch_prefix(channel_id, new_prefix)
-        return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {v["media"]} to "{new_prefix}"')], False
+            db().set_twitch_prefix(channel_id, text)
+        return [Action(kind=ActionKind.REPLY, text=f'set new prefix for {v["media"]} to "{text}"')], False
 
     def help(self, prefix: str):
         return f'{prefix}prefix-set'
@@ -275,17 +286,17 @@ class SetPrefix(Command):
 
 class TagAdd(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "tag-add"):
+        text = command_prefix(text, prefix, ['tag-add'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        _, value = parts
         channel_id = v['channel_id']
-        if not query.tag_re.match(value):
+        if not query.tag_re.match(text):
             return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
-        db().add_tag(channel_id, value)
+        db().add_tag(channel_id, text)
         return [Action(kind=ActionKind.REPLY, text='OK')], False
 
     def help(self, prefix: str):
@@ -297,16 +308,15 @@ class TagAdd(Command):
 
 class TagDelete(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "tag-rm"):
+        text = command_prefix(text, prefix, ['tag-rm'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        _, value = parts
-        value = value.strip()
         channel_id = v['channel_id']
-        deleted = db().delete_tag(channel_id, str_to_int(value))
+        deleted = db().delete_tag(channel_id, str_to_int(text))
         return [Action(kind=ActionKind.REPLY, text=('OK' if deleted == 1 else 'no such tag'))], False
 
     def help(self, prefix: str):
@@ -318,7 +328,8 @@ class TagDelete(Command):
 
 class TagList(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "tags"):
+        text = command_prefix(text, prefix, ['tags'])
+        if not text:
             return [], True
         v = get_variables()
         channel_id = v['channel_id']
@@ -337,42 +348,39 @@ class TagList(Command):
 
 class TextAdd(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "txt-add ") and not text.startswith(prefix + "txt-set "):
+        text = command_prefix(text, prefix, ['add'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        _, value = parts
-        value = value.strip()
-        if not value:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         text_id: Optional[int] = None
         tag_names: List[str] = []
-        if ';' in value and not value.startswith('"'):
-            parts = value.split(';')
+        if ';' in text and not text.startswith('"'):
+            parts = text.split(';')
             if len(parts) >= 2:
-                value = parts[0].strip()
+                text = parts[0].strip()
                 tag_names = parts[1].split(' ')
                 tag_names = [x.strip() for x in tag_names if x.strip()]
                 logging.info(f'new tags {tag_names}')
             if len(parts) >= 3:
                 text_id = str_to_int(parts[2])
-        elif value.startswith('"') and value.endswith('"') and len(value) > 2:
-            value = value[1:-1]  # strip quotes
+        elif text.startswith('"') and text.endswith('"') and len(text) > 2:
+            text = text[1:-1]  # strip quotes
         channel_id = v['channel_id']
         s = ''
         if text_id:
-            old_txt = db().set_text(channel_id, value, text_id)
+            old_txt = db().set_text(channel_id, text, text_id)
             if not old_txt:
                 return [Action(kind=ActionKind.REPLY, text=f'Text {text_id} does not exist')], False
-            s = f'Updated text #{text_id} from/to\n"{old_txt}"\n"{value}"'
+            s = f'Updated text #{text_id} from/to\n"{old_txt}"\n"{text}"'
         else:
-            text_id, added = db().add_text(channel_id, value)
+            text_id, added = db().add_text(channel_id, text)
             s = f'Added new text {text_id}' if added else f'Text {text_id} already exist'
-            s += f'\n"{value}"'
-            if ' ' not in value:
-                tag_options = words.suggest_tags(value)
+            s += f'\n"{text}"'
+            if ' ' not in text:
+                tag_options = words.suggest_tags(text)
                 if tag_options:
                     s += '. Suggested tags:\n' + tag_options
         if tag_names:
@@ -391,26 +399,28 @@ class TextAdd(Command):
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-add'
+        return f'{prefix}add'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-add <value>[;tag1 tag2 tag3[;id]] or txt-add "<literal value>"'
+        return f'{prefix}add <value>[;tag1 tag2 tag3[;id]] or add "<literal value>"'
 
 
 class TextSetTags(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "txt-tag"):
+        text = command_prefix(text, prefix, ['tag'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         parts = text.split(' ')
-        if len(parts) < 3:
+        if len(parts) < 2:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        text_id = str_to_int(parts[1])
+        text_id = str_to_int(parts[0])
         channel_id = v['channel_id']
         txt_value = db().get_text(channel_id, text_id)
         if not txt_value:
             return [Action(kind=ActionKind.REPLY, text=f'No text with id {text_id} found')], False
-        set_tags = [x.strip() for x in parts[2:] if x.strip()]
+        set_tags = [x.strip() for x in parts[1:] if x.strip()]
         for t in set_tags:
             if not query.tag_re.match(t):
                 return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
@@ -432,15 +442,15 @@ class TextSetTags(Command):
         return [Action(kind=ActionKind.REPLY, text=f'Failed to set tags {text_id} {new_tags}')], False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-tag'
+        return f'{prefix}tag'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-tag <id> <tag> [<tag> [...]]\nexisting tags will be removed'
+        return f'{prefix}tag <id> <tag> [<tag> [...]]\nexisting tags will be removed'
 
 
 class TextUpload(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if text.strip() != prefix + "txt-upload":
+        if text.strip() != prefix + "upload":
             return [], True
         v = get_variables()
         log = v['_log']
@@ -491,7 +501,7 @@ class TextUpload(Command):
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-upload'
+        return f'{prefix}upload'
 
     def for_twitch(self):
         return False
@@ -499,16 +509,17 @@ class TextUpload(Command):
 
 class TextDownload(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.strip().startswith(prefix + "txt-download"):
+        text = command_prefix(text, prefix, ['download'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 2)
         items: List[Tuple[int, str, Set[int]]] = []
-        if len(parts) < 2:
+        if not text:
             items = db().all_texts(channel_id)
         else:
-            query_parts = parts[1].split(';', 1)
+            query_parts = text.split(';', 1)
             substring = query_parts[0]
             tag_query = ''
             if len(query_parts) > 1:
@@ -531,22 +542,23 @@ class TextDownload(Command):
         return False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-download'
+        return f'{prefix}download'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-download [<substring>[;<tag query>]]'
+        return f'{prefix}download [<substring>[;<tag query>]]'
 
 
 class TextSearch(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "txt-search"):
+        text = command_prefix(text, prefix, ['search'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        query_parts = parts[1].split(';', 1)
+        query_parts = text.split(';', 1)
         substring = query_parts[0]
         tag_query = ''
         if len(query_parts) > 1:
@@ -564,28 +576,28 @@ class TextSearch(Command):
         return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-search'
+        return f'{prefix}search'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-search <substring>[;<tag query>]'
+        return f'{prefix}search <substring>[;<tag query>]'
 
 
 class TextRemove(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "txt-rm"):
+        text = command_prefix(text, prefix, ['rm'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        txt = parts[1].strip()
-        if txt.isdigit():
-            t = db().delete_text(channel_id, int(txt))
+        if text.isdigit():
+            t = db().delete_text(channel_id, int(text))
             if not t:
-                return [Action(kind=ActionKind.REPLY, text=f'No text with id {txt} found')], False
-            return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{txt}')], False
-        query_parts = parts[1].split(';', 1)
+                return [Action(kind=ActionKind.REPLY, text=f'No text with id {text} found')], False
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{text}')], False
+        query_parts = text.split(';', 1)
         substring = query_parts[0]
         tag_query = ''
         if len(query_parts) > 1:
@@ -606,24 +618,28 @@ class TextRemove(Command):
         return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False
 
     def help(self, prefix: str):
-        return f'{prefix}txt-rm'
+        return f'{prefix}rm'
 
     def help_full(self, prefix: str):
-        return f'{prefix}txt-rm <id|substring;tag query>'
+        return f'{prefix}rm <id|substring;tag query>'
 
 
 class Multiline(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "multiline"):
+        text = command_prefix(text, prefix, ['multiline'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         channel_id = v['channel_id']
-        lines = text.split('\n')[1:]
+        lines = [x.strip() for x in text.split('\n')]
         is_mod = v['is_mod']
         private = v['_private']
         actions: List[Action] = []
         cmds = get_commands(channel_id, prefix)
         for line in lines:
+            if not line:
+                continue
             logging.info(f'executing line {line}')
             for cmd in cmds:
                 if cmd.private_mod_only() and not (is_mod and private):
@@ -649,22 +665,22 @@ class Multiline(Command):
 
 class Debug(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "debug"):
+        text = command_prefix(text, prefix, ['debug'])
+        if not text:
             return [], True
+        text = text.strip()
         results: List[Action] = []
         v = get_variables()
         channel_id = v['channel_id']
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             for e in db().get_logs(channel_id):
                 s = '\n'.join([discord.utils.escape_mentions(x[1])
                                for x in e.messages]) + '\n-----------------------------\n'
                 results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
             return results, False
-        txt = parts[1]
         commands = db().get_commands(channel_id, prefix)
         for cmd in commands:
-            if cmd.name == txt:
+            if cmd.name == text:
                 results.append(Action(ActionKind.PRIVATE_MESSAGE, f'{prefix}set {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
@@ -684,14 +700,15 @@ class Debug(Command):
 
 class HelpCommand(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if not text.startswith(prefix + "commands") and not text.startswith(prefix + "help"):
+        text = command_prefix(text, prefix, ['commands', 'help'])
+        if not text:
             return [], True
+        text = text.strip()
         v = get_variables()
         is_mod = v['is_mod']
         private = v['_private']
         channel_id = v['channel_id']
-        parts = text.split(' ', 1)
-        if len(parts) < 2:
+        if not text:
             hidden_commands = []
             names = []
             s = []
@@ -722,9 +739,6 @@ class HelpCommand(Command):
                     reply += ' (some commands are only available in private messages)'
             actions = [Action(kind=ActionKind.REPLY, text=reply)]
             return actions, False
-        sub = parts[1].strip()
-        if not sub:
-            return [], False
         s = []
         for c in get_commands(channel_id, prefix):
             if c.mod_only() and not is_mod:
@@ -737,7 +751,7 @@ class HelpCommand(Command):
                 continue
             hf = c.help_full(prefix)
             h = c.help(prefix)
-            if h == sub or h == prefix + sub or h.startswith(sub + ' ') or h.startswith(prefix + sub + ' '):
+            if h == text or h == prefix + text or h.startswith(text + ' ') or h.startswith(prefix + text + ' '):
                 s.append(hf)
         if not s:
             return [], False
