@@ -304,7 +304,7 @@ if __name__ == "__main__":
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
         with cursor() as cur:
-            t = twitch_api.Twitch3(bot_id=args.twitch, loop=loop)
+            t = twitch_api.Twitch3(channel_name=args.twitch, loop=loop)
             loop.create_task(t.connect())
             # cur.execute("SELECT id FROM twitch_bots")
             # for r in cur.fetchall():
