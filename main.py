@@ -48,18 +48,6 @@ import words
 import twitch_api
 import numpy as np
 
-errHandler = logging.FileHandler('errors.log', encoding='utf-8')
-errHandler.setLevel(logging.ERROR)
-
-rotatingHandler = logging.handlers.TimedRotatingFileHandler(
-    'bot.log', when='D', encoding='utf-8', backupCount=8)
-
-logging.basicConfig(
-    handlers=[rotatingHandler, errHandler],
-    format='%(asctime)s %(levelname)s %(message)s',
-    level=logging.INFO)
-
-
 @jinja2.pass_context
 def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str = ''):
     v = ctx.get_all()
@@ -282,7 +270,16 @@ if __name__ == "__main__":
     parser.add_argument('--channel_id')
     parser.add_argument('--drop_database', action='store_true')
     parser.add_argument('--alsologtostdout', action='store_true')
+    parser.add_argument('--log')
     args = parser.parse_args()
+    errHandler = logging.FileHandler(f'{args.log}.errors.log', encoding='utf-8')
+    errHandler.setLevel(logging.ERROR)
+    rotatingHandler = logging.handlers.TimedRotatingFileHandler(
+        f'{args.log}.log', when='D', encoding='utf-8', backupCount=8)
+    logging.basicConfig(
+        handlers=[rotatingHandler, errHandler],
+        format='%(asctime)s %(levelname)s %(message)s',
+        level=logging.INFO)
     print('connecting to', os.getenv('DB_CONNECTION'))
     set_db(DB(os.getenv('DB_CONNECTION')))
     print(f'args {args}')
