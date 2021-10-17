@@ -274,8 +274,7 @@ async def expireVariables():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
-    parser.add_argument('--twitch', action='store_true')
-    parser.add_argument('--twitch3', action='store_true')
+    parser.add_argument('--twitch')
     parser.add_argument('--discord', action='store_true')
     parser.add_argument('--add_channel', action='store_true')
     parser.add_argument('--twitch_channel_name')
@@ -286,7 +285,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print('connecting to', os.getenv('DB_CONNECTION'))
     set_db(DB(os.getenv('DB_CONNECTION')))
-
     print(f'args {args}')
     if args.alsologtostdout:
         stdoutHandler = logging.StreamHandler()
@@ -306,10 +304,12 @@ if __name__ == "__main__":
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
         with cursor() as cur:
-            cur.execute("SELECT id FROM twitch_bots")
-            for r in cur.fetchall():
-                t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
-                loop.create_task(t.connect())
+            t = twitch_api.Twitch3(bot_id=args.twitch, loop=loop)
+            loop.create_task(t.connect())
+            # cur.execute("SELECT id FROM twitch_bots")
+            # for r in cur.fetchall():
+            #     t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
+            #     loop.create_task(t.connect())
     if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
@@ -319,13 +319,14 @@ if __name__ == "__main__":
         if not args.twitch_channel_name:
             print('set --twitch_channel_name')
             sys.exit(1)
-        id = args.channel_id
-        if not id:
-            id = db().new_channel_id()
+        channel_id = args.channel_id
+        if not channel_id:
+            channel_id = db().new_channel_id()
         with db().conn.cursor() as cur:
             cur.execute('UPDATE channels SET twitch_channel_name = %s, twitch_command_prefix = %s WHERE id = %s',
-                        [args.twitch_channel_name, args.twitch_command_prefix, id])
+                        [args.twitch_channel_name, args.twitch_command_prefix, channel_id])
             db().conn.commit()
-        logging.info(f'updated channel #{id} {args.twitch_channel_name}')
+        logging.info(
+            f'updated channel #{channel_id} {args.twitch_channel_name}')
         sys.exit(0)
     print('add --twitch or --discord argument to run bot')
