@@ -14,6 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# migration plan:
+# - fix all search queries with "мн" in txt('мн,рд')
+# - announce
+# - backup database
+# - update code and restart
+# - download all texts (that will add morphems)
+# - reupload all texts
+# - check that everything still works
+# - check what tags we don't need and remove them (e.g. morph)
+# - update docs
+# - add missing mophems for nouns / adj / drinks
 # TODO data struct to pass to command execution
 # TODO allow commands w/o prefix in private bot conversation
 # TODO check sandbox settings

@@ -28,21 +28,24 @@ import words
 import io
 
 
-def str_to_tags(s: str) -> Optional[Dict[str, Optional[str]]]:
+def str_to_tags(s: str) -> Tuple[Dict[str, Optional[str]], bool]:
     z: Dict[str, Optional[str]] = {}
     if s.strip() == '':
-        return z
+        return (z, True)
     for line in s.split('\n'):
-        parts = line.split('=', 1)
+        x = line.strip()
+        if not x:
+            continue
+        parts = x.split('=', 1)
         value: Optional[str] = None
         name = parts[0].strip()
         if not query.good_tag_name(name):
             logging.warn(f'tag "{name}" is invalid')
-            return None 
+            return (z, False) 
         if len(parts) > 1:
             value = parts[1].strip()
         z[name] = value
-    return z
+    return (z, True)
 
 
 def tag_values_to_str(tags: Dict[str, Optional[str]]) -> str:
@@ -393,7 +396,7 @@ class TextAdd(Command):
         return f'{prefix}add'
 
     def help_full(self, prefix: str):
-        return f'{prefix}add <value>[;tag1 tag2 tag3[;id]] or add "<literal value>"'
+        return f'{prefix}add "some text";id;"tag1<newline>tag2<newline>tag3..."'
 
 
 def text_to_row(channel_id: int, text_id: int) -> Optional[str]:
@@ -497,17 +500,23 @@ def import_text_row(channel_id: int, row: List[str], tag_by_name: Dict[str, int]
         return (updated, added, 0)
     text_id = 0
     if len(row) >= 2:
-        text_id = str_to_int(row[1])
-    tags_info: Optional[Dict[str, Optional[str]]]
+        s = row[1].strip()
+        if s:
+            text_id = str_to_int(s)
+            if not text_id:
+                logging.warn('failed to convert "{s}" to number')
+                return (0, 0, 0)
+    tags_info: Optional[Dict[str, Optional[str]]] = None
     if len(row) >= 3:
-        tags_info = str_to_tags(row[2])
-        if not tags_info:
+        tags_info, ok = str_to_tags(row[2])
+        if not ok:
+            logging.warn(f'failed to get tags from "{row[2]}"')
             return (0, 0, 0)
     if text_id:
         if db().set_text(channel_id, txt, text_id):
             updated += 1
         else:
-            return (updated, added, 0)
+            return (0, 0, 0)
     else:
         existing = db().find_text(channel_id, txt)
         if existing:
@@ -549,8 +558,9 @@ class TextUpload(Command):
         for row in csv.reader(io.StringIO(content)):
             if len(row) < 3:
                 continue
-            tags = str_to_tags(row[2])
-            all_tags.update(tags.keys())
+            tags, ok = str_to_tags(row[2])
+            if ok:
+                all_tags.update(tags.keys())
         logging.info(f'all tags in file: {all_tags}')
         for t in all_tags:
             db().add_tag(channel_id, t)
@@ -558,12 +568,22 @@ class TextUpload(Command):
         total = 0
         total_added = 0
         total_updated = 0
+        bad_rows = []
+        i = 0
         for row in csv.reader(io.StringIO(content)):
-            updated, added, _ = import_text_row(channel_id, row, tag_by_name)
+            i += 1
+            if not row:
+                continue
+            updated, added, text_id = import_text_row(channel_id, row, tag_by_name)
+            if not text_id:
+                bad_rows.append(i)
             total_updated += updated
             total_added += added
             total += 1
-        return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
+        s = f"Added {total_added} and updated {total_updated} texts from non-empty {total} row with tags {all_tags}."
+        if bad_rows:
+            s += f'\nBad rows numbers: {",".join([str(i) for i in bad_rows])}'
+        return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
         return f'{prefix}upload'
