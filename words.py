@@ -17,7 +17,6 @@
 import logging
 from typing import Dict, List, Optional, Type
 import pymorphy2 # type: ignore
-from pymorphy2.analyzer import MorphAnalyzer  # type: ignore
 
 # Docs: https://pymorphy2.readthedocs.io/en/latest/user/index.html
 morph = pymorphy2.MorphAnalyzer(lang='ru')

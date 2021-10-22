@@ -28,7 +28,7 @@ import words
 
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, event: EventType, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
-    logging.info(f'process message "{txt}" type {event}')
+    logging.debug(f'process message "{txt}" type {event}')
     actions: List[Action] = []
     try:
         cmds = get_commands(channel_id, prefix)
@@ -46,7 +46,7 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, event: 
             if not next:
                 break
         log_actions = [a for a in actions if a.attachment == '']
-        log.info(f'actions (except download) {log_actions}')
+        log.debug(f'actions (except download) {log_actions}')
     except Exception as e:
         actions.append(
             Action(kind=ActionKind.REPLY, text='error ocurred'))
@@ -98,7 +98,7 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
                             Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
                             TagList(), TagAdd(), TagDelete(),
-                            TextSetTags(), TextAdd(), TextUpload(), TextDownload(), TextSearch(), TextRemove()
+                            TextSetTags(), TextAdd(), TextUpload(), TextDownload(), TextSearch(), TextRemove(), TextMorph(),
                             ]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -173,7 +173,7 @@ class Eval(Command):
         v = get_variables()
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
-        v['_log'].info(f'eval "{text}"')
+        # v['_log'].info(f'eval "{text}"')
         v['_render_depth'] = 0
         s = render(text, v)
         if not s:
@@ -404,6 +404,83 @@ class TextAdd(Command):
     def help_full(self, prefix: str):
         return f'{prefix}add <value>[;tag1 tag2 tag3[;id]] or add "<literal value>"'
 
+def print_morphs(text: str) -> List[str]:
+    parts = re.split(r'(\s+)', text.strip())
+    ww = [parts[i] for i in range(0, len(parts), 2)]
+    parses = [words.morph.parse(w) for w in ww]
+    # Remove non 'nomn' parses.
+    for i in range(len(parses)):
+        parses[i] = [p for p in parses[i] if 'nomn' in list(p.tag.grammemes)]
+    idx = [0] * len(parses)
+    # logging.info(f'parses {[len(p) for p in parses]} {parses}')
+    ok = True
+    z = []
+    while ok:
+        s = f'tag: **morph'
+        if any([i for i in idx if i > 0]):
+             s += f' morph_{"-".join([str(i) for i in idx])}'
+        s += '**\n'
+        g = []
+        for i in range(len(idx)):
+            if idx[i] < len(parses[i]):
+                g.append(' '.join(parses[i][idx[i]].tag.grammemes))
+            else:
+                g.append('X')
+        s += ', '.join(g) + '\n'
+        for c in words.cases:
+            t = c + ': '
+            for i in range(len(parts)):
+                j = i // 2
+                if i % 2 != 0 or idx[j] >= len(parses[j]):
+                    t += parts[i]
+                    continue
+                x = parses[j][idx[j]].inflect({c})
+                if not x:
+                    t += '?'
+                else:
+                    t += x.word
+            s += t + '\n'
+        s += 'plur:' + '\n'
+        for c in words.cases:
+            t = c + ': '
+            for i in range(len(parts)):
+                j = i // 2
+                if i % 2 != 0 or idx[j] >= len(parses[j]):
+                    t += parts[i]
+                    continue
+                x = parses[j][idx[j]].inflect({c, 'plur'})
+                if not x:
+                    t += '?'
+                else:
+                    t += x.word
+            s += t + '\n'
+        s += '\n'
+        idx[0] += 1
+        for i in range(len(idx)):
+            if idx[i] < len(parses[i]):
+                break
+            ok = i < len(idx) - 1
+            if ok:
+                idx[i] = 0
+                idx[i + 1] += 1
+        z.append(s)
+    return z
+
+class TextMorph(Command):
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        text = command_prefix(text, prefix, ['morph'])
+        if not text:
+            return [], True
+        text = text.strip()
+        if not text:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        return [Action(kind=ActionKind.REPLY, text=x) for x in print_morphs(text)], False
+
+    def help(self, prefix: str):
+        return f'{prefix}morph'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}morph <value>[;tag1 tag2...]'
 
 class TextSetTags(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:

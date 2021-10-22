@@ -47,6 +47,8 @@ import logging.handlers
 import words
 import twitch_api
 import numpy as np
+import timeit
+
 
 @jinja2.pass_context
 def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str = ''):
@@ -78,14 +80,14 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
     if not txt:
         v['_log'].info(f'failed to get text {text_id}')
         return ''
-    tags = db().get_text_tags(channel_id, text_id)
     if inf:
         channel_id = v['channel_id']
-        tab_by_id = db().tag_by_id(channel_id)
         filter = []
+        tags = db().get_text_tags(channel_id, text_id)
         if tags:
+            tag_by_id = db().tag_by_id(channel_id)
             for tag_id in tags:
-                name = tab_by_id[tag_id]
+                name = tag_by_id[tag_id]
                 if name in words.morph_tags:
                     filter.append(words.morph_tags[name])
         return words.inflect_word(txt, inf, filter)
@@ -148,9 +150,10 @@ templates.globals['dt'] = discord_or_twitch
 
 
 class DiscordClient(discord.Client):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, profile: bool, *args, **kwargs):
         self.channels: Dict[str, Any] = {}
         self.mods: Dict[str, str] = {}
+        self.profile = profile
         super().__init__(*args, **kwargs)
 
     async def on_ready(self):
@@ -221,7 +224,18 @@ class DiscordClient(discord.Client):
                     '_private': private,
                 }
             return variables
-        actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
+
+        if self.profile:
+            start = time.time_ns()
+            i = 0
+            ns = 1000_000_000
+            while (time.time_ns() - start < ns):
+                i += 1
+                actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
+            actions.append(
+                Action(ActionKind.REPLY, text=f'{i} iterations in {time.time_ns() - start} ns'))
+        else:
+            actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
@@ -269,21 +283,24 @@ if __name__ == "__main__":
     parser.add_argument('--twitch_command_prefix', default='+')
     parser.add_argument('--channel_id')
     parser.add_argument('--drop_database', action='store_true')
-    parser.add_argument('--alsologtostdout', action='store_true')
-    parser.add_argument('--log')
+    parser.add_argument('--also_log_to_stdout', action='store_true')
+    parser.add_argument('--log', default='bot')
+    parser.add_argument('--profile', action='store_true')
+    parser.add_argument('--log_level', default='INFO')
     args = parser.parse_args()
-    errHandler = logging.FileHandler(f'{args.log}.errors.log', encoding='utf-8')
+    errHandler = logging.FileHandler( 
+        f'{args.log}.errors.log', encoding='utf-8',)
     errHandler.setLevel(logging.ERROR)
     rotatingHandler = logging.handlers.TimedRotatingFileHandler(
         f'{args.log}.log', when='D', encoding='utf-8', backupCount=8)
     logging.basicConfig(
         handlers=[rotatingHandler, errHandler],
         format='%(asctime)s %(levelname)s %(message)s',
-        level=logging.INFO)
+        level=args.log_level)
     print('connecting to', os.getenv('DB_CONNECTION'))
     set_db(DB(os.getenv('DB_CONNECTION')))
     print(f'args {args}')
-    if args.alsologtostdout:
+    if args.also_log_to_stdout:
         stdoutHandler = logging.StreamHandler()
         stdoutHandler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s %(message)s'))
@@ -297,7 +314,8 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     if args.discord:
         logging.info('starting Discord Bot')
-        discordClient = DiscordClient(intents=discord.Intents.all(), loop=loop)
+        discordClient = DiscordClient(
+            intents=discord.Intents.all(), loop=loop, profile=args.profile)
         loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
     if args.twitch:
         with cursor() as cur:
@@ -311,6 +329,7 @@ if __name__ == "__main__":
         logging.info('running the async loop')
         loop.create_task(expireVariables())
         loop.run_forever()
+
         sys.exit(0)
     if args.add_channel:
         if not args.twitch_channel_name:

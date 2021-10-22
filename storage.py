@@ -170,6 +170,7 @@ DROP TABLE tags;
             CREATE TABLE IF NOT EXISTS text_tags (
                 tag_id INT REFERENCES tags (id) ON DELETE CASCADE,
                 text_id INT REFERENCES texts (id) ON DELETE CASCADE,
+                value TEXT,
                 CONSTRAINT uniq_text_tag UNIQUE (tag_id, text_id)
             );
             ''')
