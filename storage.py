@@ -14,10 +14,8 @@
  limitations under the License.
  """
 
-import dataclasses
 from io import open_code
 from typing import Any, Dict, List, Optional, Set, Text, Tuple, Type
-from ttldict2.impl import TTLDict
 from data import *
 import psycopg2  # type: ignore
 import psycopg2.extensions  # type: ignore
@@ -28,7 +26,6 @@ import collections
 import random
 import time
 from cachetools import TTLCache  # type: ignore
-from query import tag_re
 import query
 import lark
 import ttldict2  # type: ignore
@@ -260,8 +257,8 @@ DROP TABLE tags;
         return self.channel(channel_id).tag_by_value
 
     def add_tag(self, channel_id: int, tag_name: str):
-        if not tag_re.match(tag_name):
-            raise Exception("tag name mismatch")
+        if not query.good_tag_name(tag_name):
+            raise Exception("bad tag name")
         with self.conn.cursor() as cur:
             cur.execute('INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;',
                         (channel_id, tag_name))
@@ -282,23 +279,41 @@ DROP TABLE tags;
             return None
         return te.tags
 
-    def set_text_tags(self, channel_id: int, text_id: int, new_tags: Set[int]) -> Tuple[Optional[Set[int]], bool]:
+    def get_text_tag_values(self, channel_id: int, text_id: int) -> Dict[int, Optional[str]]:
+        z = {}
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT tt.tag_id, tt.value FROM text_tags tt JOIN texts t ON t.channel_id = %s AND t.id = tt.text_id WHERE tt.text_id = %s",
+                        [channel_id, text_id])
+            for row in cur.fetchall():
+                z[row[0]] = row[1]
+            return z
+
+    def get_text_tag_value(self, channel_id: int, text_id: int, tag_id: int) -> Optional[str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT tt.value FROM text_tags tt JOIN texts t ON t.channel_id = %s AND t.id = tt.text_id WHERE tt.text_id = %s and tt.tag_id = %s",
+                        [channel_id, text_id, tag_id])
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0]
+
+    def set_text_tags(self, channel_id: int, text_id: int, new_tags: Dict[int, Optional[str]]) -> Tuple[Optional[Dict[int, Optional[str]]], bool]:
         """returns previous and new tags if text exists"""
         ch = self.channel(channel_id)
-        te = ch.all_text_by_id.get(text_id)
+        te: Optional[TextEntry] = ch.all_text_by_id.get(text_id)
         if not te:
             logging.info(f'text {text_id} is not found')
             return (None, False)
-        previous_tags = te.tags
+        previous_tags = self.get_text_tag_values(channel_id, text_id)
         with self.conn.cursor() as cur:
             cur.execute(
                 'DELETE FROM text_tags WHERE text_id = %s', (text_id, ))
-            for x in new_tags:
+            for name, value in new_tags.items():
                 cur.execute(
-                    'INSERT INTO text_tags (text_id, tag_id) VALUES (%s, %s) ON CONFLICT DO NOTHING', (text_id, x))
-        te.tags = set(new_tags)
+                    'INSERT INTO text_tags (text_id, tag_id, value) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING', (text_id, name, value))
+        te.tags = set(new_tags.keys())
         prev: Set[int] = set(te.queue_nodes.keys())
-        current: Set[int] = set()
+        current: Set[int] = set() 
         for qq in ch.queries.values():
             if query.match_tags(qq.parsed, te.tags):
                 current.add(qq.id)
@@ -338,13 +353,17 @@ DROP TABLE tags;
                 return None
             return row[0]
 
-    def add_text(self, channel_id: int, value: str) -> Tuple[int, bool]:
+    def find_text(self, channel_id: int, value: str) -> Optional[int]:
         with self.conn.cursor() as cur:
             cur.execute(
                 'SELECT id FROM texts WHERE channel_id = %s and value = %s', (channel_id, value))
             row = cur.fetchone()
             if row:
-                return row[0], False
+                return row[0]
+            return None
+
+    def add_text(self, channel_id: int, value: str) -> int:
+        with self.conn.cursor() as cur:        
             cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;',
                         (channel_id, value, value))
             text_id = cur.fetchone()[0]
@@ -352,8 +371,8 @@ DROP TABLE tags;
             te = TextEntry(id=text_id, queue_nodes={}, tags=set(), in_all=None)
             ch.all_text_by_id[text_id] = te
             te.in_all = ch.all_texts_list.append(te)
-            # No need to check agains queries as we don't expect any query to match a text w/o any tags.
-            return text_id, True
+            # No need to check against queries as we don't expect any query to match a text w/o any tags.
+            return text_id
 
     def set_text(self, channel_id: int, value: str, id: int) -> Optional[str]:
         txt = self.get_text(channel_id, id)

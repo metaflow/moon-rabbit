@@ -27,15 +27,20 @@ query_grammar = """
 ?and: or | and "&" or | and "and"i or
 ?or: atom | or "|" atom | or "," atom | or "or"i atom
 ?atom: NAME | "(" and ")" | "not" atom -> not
-NAME: (LETTER|"-"|"_"|DIGIT)+
-%import common.LETTER
-%import common.DIGIT
+NAME: /(\w|[-.,])+/
 %import common.WS
 %ignore WS
 """
 
 query_parser = lark.Lark(query_grammar)
-tag_re = re.compile('[a-z0-9-_]+', re.IGNORECASE)
+# tag_re = re.compile('[a-z0-9-_а-я]+', re.IGNORECASE)
+_tag = re.compile('^(\w|[-.,])+$', re.IGNORECASE)
+
+def good_tag_name(s: str) -> bool:
+    s = s.strip().lower()
+    if s in ['', 'and', 'or', 'not', '&', '|', '(', ')'] or not _tag.match(s):
+        return False
+    return True
 
 class Normalize(Transformer):
     def __init__(self, tags: Dict[str, int]) -> None:

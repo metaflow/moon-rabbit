@@ -14,16 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO twitch - reaction to channel-points redeems
-# TODO twitch error on too fast replies?
-# TODO add "any" or "choose" that randomly picks from a literal list
-# TODO updating text (incl txt-upload to accept ids)
 # TODO data struct to pass to command execution
 # TODO allow commands w/o prefix in private bot conversation
 # TODO check sandbox settings
 # TODO test perf of compiled template VS from_string
 # TODO bingo or anagramms?
-# TODO indexes
+# TODO DB indexes
 """Bot entry point."""
 
 import asyncio
@@ -63,7 +59,7 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
         text_id = q
     elif isinstance(q, str):
         if inf:
-            q = f'({q}) and morph'
+            q = f'({q}) and {inf}'
         text_id = db().get_random_text_id(channel_id, q)
     else:
         queries = q[::2]
@@ -71,26 +67,18 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
         weights /= np.sum(weights)
         query_text: str = db().rng.choice(queries, p=weights)
         if inf:
-            query_text = f'({query_text}) and morph'
+            query_text = f'({query_text}) and {inf}'
         text_id = db().get_random_text_id(channel_id, query_text)
     if not text_id:
         v['_log'].info(f'no matching text is found')
         return ''
+    if inf:
+        tag_id = db().tag_by_value(channel_id)[inf]
+        return db().get_text_tag_value(channel_id, text_id, tag_id)
     txt = db().get_text(channel_id, text_id)
     if not txt:
         v['_log'].info(f'failed to get text {text_id}')
         return ''
-    if inf:
-        channel_id = v['channel_id']
-        filter = []
-        tags = db().get_text_tags(channel_id, text_id)
-        if tags:
-            tag_by_id = db().tag_by_id(channel_id)
-            for tag_id in tags:
-                name = tag_by_id[tag_id]
-                if name in words.morph_tags:
-                    filter.append(words.morph_tags[name])
-        return words.inflect_word(txt, inf, filter)
     return render(txt, v)
 
 

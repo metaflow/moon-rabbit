@@ -58,11 +58,13 @@ morph_tags: Dict[str, str] = {
 }
 
 cases = ['nomn', 'gent', 'datv', 'accs', 'ablt', 'loct']
+case_tags = ['рд','дт','вн','тв','пр','мн','рд,мн','дт,мн','вн,мн','тв,мн','пр,мн']
 
 def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = None) -> str:
     inf = morph.cyr2lat(inf)
     ss = set(inf.split(','))
-    logging.info(f'inflecting "{s}" to "{inf}"({ss}) filter={tagFilter}')
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.debug(f'inflecting "{s}" to "{inf}"({ss}) filter={tagFilter}')
     mm = morph.parse(s)
     if not mm:
         return s
@@ -76,14 +78,16 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
                     continue
                 match = False
             if match:
-                logging.info(f'matched parse {x}')
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug(f'matched parse {x}')
                 p = x
                 matched = True
                 break
             else:
-                logging.info(f'unmatched parse {x}')
+                if logging.getLogger().isEnabledFor(logging.DEBUG):
+                    logging.debug(f'unmatched parse {x}')
         if not matched:
-            logging.info(f'no matches found for {s} and filter {tagFilter}')
+            logging.warn(f'no matches found for {s} and filter {tagFilter}')
             return s
     if 'NOUN' in p.tag:
         if ss:
@@ -104,70 +108,3 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
             if x:
                 p = x
     return p.word
-
-def suggest_tags(s: str) -> str:
-    suggested = []
-    for p in morph.parse(s):
-        tags = list(p.tag.grammemes)
-        if 'nomn' not in tags:
-            continue
-        if ('ADJF' in tags) or ('ADJS' in tags) or ('PRTF' in tags) or ('PRTS' in tags):
-            tags.append('FEAT')
-        if ('ms-f' in tags):
-            tags.append('masc')
-            tags.append('femn')
-        tags = ["_" + x for x in tags if x != 'nomn']
-        tags.append("morph")
-        logging.info(f'morph parse {p} {p.tag.grammemes} {tags}')
-        inf = []
-        for c in cases:
-            x = p.inflect({c})
-            if not x:
-                inf.append('X')
-            else:
-                inf.append(x.word)
-        for c in cases:
-            x = p.inflect({c, 'plur'})
-            if not x:
-                inf.append('X')
-            else:
-                inf.append(x.word)
-        suggested.append(' '.join(tags) + '\n' + ', '.join(inf))
-    return '\n'.join(suggested)
-
-# def inflect(line: str, inf: str, tagFilter: List[str] = [], n: Optional[int] = None) -> str:
-#     inf = morph.cyr2lat(inf)
-#     ss: Set[str] = set(inf.split(','))
-#     parts = re.split(r'(\s+)', line.strip())
-#     for i in range(0, len(parts), 2):
-#         mm = morph.parse(parts[i])
-#         j = i // 2
-#         if len(tagFilter) > j:
-#             if not tagFilter[j]:
-#                 continue
-#             for or_match in tagFilter[j].split(';'):
-#                 tf = morph.cyr2lat(or_match).split(',')
-#                 mm = [x for x in mm if any((p in x.tag) for p in tf)]
-#         if not mm:
-#             continue
-#         t = mm[0]
-#         if 'NOUN' in t.tag:
-#             if ss:
-#                 x = t.inflect(ss)
-#                 if x:
-#                     t = x
-#             if n:
-#                 x = t.make_agree_with_number(n)
-#                 if x:
-#                     t = x
-#         else:
-#             if n:
-#                 x = t.make_agree_with_number(n)
-#                 if x:
-#                     t = x
-#             if ss:
-#                 x = t.inflect(ss)
-#                 if x:
-#                     t = x
-#         parts[i] = t.word
-#     return ''.join(parts)

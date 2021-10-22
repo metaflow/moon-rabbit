@@ -23,8 +23,36 @@ from typing import Callable, Dict, List, Set
 from storage import cursor, db
 import traceback
 import query
-import lark
+import csv
 import words
+import io
+
+
+def str_to_tags(s: str) -> Optional[Dict[str, Optional[str]]]:
+    z: Dict[str, Optional[str]] = {}
+    if s.strip() == '':
+        return z
+    for line in s.split('\n'):
+        parts = line.split('=', 1)
+        value: Optional[str] = None
+        name = parts[0].strip()
+        if not query.good_tag_name(name):
+            logging.warn(f'tag "{name}" is invalid')
+            return None 
+        if len(parts) > 1:
+            value = parts[1].strip()
+        z[name] = value
+    return z
+
+
+def tag_values_to_str(tags: Dict[str, Optional[str]]) -> str:
+    z = []
+    for n, v in tags.items():
+        if not v:
+            z.append(n)
+            continue
+        z.append(f'{n}={v}')
+    return '\n'.join(z)
 
 
 async def process_message(log: InvocationLog, channel_id: int, txt: str, event: EventType, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
@@ -53,14 +81,16 @@ async def process_message(log: InvocationLog, channel_id: int, txt: str, event: 
         log.error(f'{e}\n{traceback.format_exc()}')
     return actions
 
+
 def command_prefix(txt: str, prefix: str, s: List[str]) -> str:
-    for x in s: 
+    for x in s:
         if txt.startswith(prefix + x):
             # TODO: don't append an empty string and return additional bool instead.
             return txt[len(prefix + x):] + ' '
         if txt.startswith(prefix + ' ' + x):
             return txt[len(prefix + ' ' + x):] + ' '
     return ''
+
 
 class Command(Protocol):
     async def run(self, prefix: str, text: str, event: EventType, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
@@ -97,8 +127,9 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
         z: List[Command] = [HelpCommand(),
                             Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
-                            TagList(), TagAdd(), TagDelete(),
-                            TextSetTags(), TextAdd(), TextUpload(), TextDownload(), TextSearch(), TextRemove(), TextMorph(),
+                            TagList(), TagDelete(),
+                            TextAdd(), TextUpload(), TextDownload(),
+                            TextSearch(), TextRemove(), TextDescribe(), TextNew(),
                             ]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -284,28 +315,6 @@ class SetPrefix(Command):
         return f'{prefix}prefix-set <new prefix> <bot>'
 
 
-class TagAdd(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['tag-add'])
-        if not text:
-            return [], True
-        text = text.strip()
-        v = get_variables()
-        if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        channel_id = v['channel_id']
-        if not query.tag_re.match(text):
-            return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
-        db().add_tag(channel_id, text)
-        return [Action(kind=ActionKind.REPLY, text='OK')], False
-
-    def help(self, prefix: str):
-        return f'{prefix}tag-add'
-
-    def help_full(self, prefix: str):
-        return f'{prefix}tag-add <value>'
-
-
 class TagDelete(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
         text = command_prefix(text, prefix, ['tag-rm'])
@@ -316,8 +325,13 @@ class TagDelete(Command):
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
         channel_id = v['channel_id']
-        deleted = db().delete_tag(channel_id, str_to_int(text))
-        return [Action(kind=ActionKind.REPLY, text=('OK' if deleted == 1 else 'no such tag'))], False
+        tag_id: int
+        if text.isdigit():
+            tag_id = str_to_int(text)
+        else:
+            tag_id = db().tag_by_value(channel_id)[text]
+        deleted = db().delete_tag(channel_id, tag_id)
+        return [Action(kind=ActionKind.REPLY, text=(f'removed tag {text}' if deleted == 1 else 'no such tag'))], False
 
     def help(self, prefix: str):
         return f'{prefix}tag-rm'
@@ -355,47 +369,24 @@ class TextAdd(Command):
         v = get_variables()
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        text_id: Optional[int] = None
-        tag_names: List[str] = []
-        if ';' in text and not text.startswith('"'):
-            parts = text.split(';')
-            if len(parts) >= 2:
-                text = parts[0].strip()
-                tag_names = parts[1].split(' ')
-                tag_names = [x.strip() for x in tag_names if x.strip()]
-                logging.info(f'new tags {tag_names}')
-            if len(parts) >= 3:
-                text_id = str_to_int(parts[2])
-        elif text.startswith('"') and text.endswith('"') and len(text) > 2:
-            text = text[1:-1]  # strip quotes
+        row = [r for r in csv.reader(io.StringIO(text), delimiter=';')][0]
         channel_id = v['channel_id']
-        s = ''
+        prev: Optional[str] = None
+        if row:
+            if len(row) >= 2 and row[1].isdigit():
+                prev = text_to_row(channel_id, str_to_int(row[1]))
+            else:
+                text_id = db().find_text(channel_id, row[0].strip())
+                if text_id:
+                    prev = text_to_row(channel_id, text_id)
+        updated, _, text_id = import_text_row(
+            channel_id, row, db().tag_by_value(channel_id))
         if text_id:
-            old_txt = db().set_text(channel_id, text, text_id)
-            if not old_txt:
-                return [Action(kind=ActionKind.REPLY, text=f'Text {text_id} does not exist')], False
-            s = f'Updated text #{text_id} from/to\n"{old_txt}"\n"{text}"'
+            s = f'{"Updated" if updated else "Added"} text (text;id;tags):\n{text_to_row(channel_id, text_id)}'
+            if prev:
+                s += f'\nPrevious value:\n{prev}'
         else:
-            text_id, added = db().add_text(channel_id, text)
-            s = f'Added new text {text_id}' if added else f'Text {text_id} already exist'
-            s += f'\n"{text}"'
-            if ' ' not in text:
-                tag_options = words.suggest_tags(text)
-                if tag_options:
-                    s += '. Suggested tags:\n' + tag_options
-        if tag_names:
-            for t in tag_names:
-                if not query.tag_re.match(t):
-                    return [Action(kind=ActionKind.REPLY, text=f'tag name might consist of latin letters, digits, "_" and "-" characters, not "{t}"')], False
-                db().add_tag(channel_id, t)
-            tags_by_value = db().tag_by_value(channel_id)
-            tag_by_id = db().tag_by_id(channel_id)
-            new_tags = set([tags_by_value[s.strip()] for s in tag_names])
-            old_tags, updated = db().set_text_tags(channel_id, text_id, new_tags)
-            if updated:
-                s += f'\nNew tags: {", ".join([tag_by_id[x] for x in new_tags])}'
-                if old_tags:
-                    s += f'\nPrevious tags: {", ".join([tag_by_id[x] for x in old_tags])}'
+            raise Exception("failed to insert new text")
         return [Action(kind=ActionKind.REPLY, text=s)], False
 
     def help(self, prefix: str):
@@ -404,125 +395,139 @@ class TextAdd(Command):
     def help_full(self, prefix: str):
         return f'{prefix}add <value>[;tag1 tag2 tag3[;id]] or add "<literal value>"'
 
-def print_morphs(text: str) -> List[str]:
-    parts = re.split(r'(\s+)', text.strip())
-    ww = [parts[i] for i in range(0, len(parts), 2)]
-    parses = [words.morph.parse(w) for w in ww]
-    # Remove non 'nomn' parses.
-    for i in range(len(parses)):
-        parses[i] = [p for p in parses[i] if 'nomn' in list(p.tag.grammemes)]
-    idx = [0] * len(parses)
-    # logging.info(f'parses {[len(p) for p in parses]} {parses}')
-    ok = True
-    z = []
-    while ok:
-        s = f'tag: **morph'
-        if any([i for i in idx if i > 0]):
-             s += f' morph_{"-".join([str(i) for i in idx])}'
-        s += '**\n'
-        g = []
-        for i in range(len(idx)):
-            if idx[i] < len(parses[i]):
-                g.append(' '.join(parses[i][idx[i]].tag.grammemes))
-            else:
-                g.append('X')
-        s += ', '.join(g) + '\n'
-        for c in words.cases:
-            t = c + ': '
-            for i in range(len(parts)):
-                j = i // 2
-                if i % 2 != 0 or idx[j] >= len(parses[j]):
-                    t += parts[i]
-                    continue
-                x = parses[j][idx[j]].inflect({c})
-                if not x:
-                    t += '?'
-                else:
-                    t += x.word
-            s += t + '\n'
-        s += 'plur:' + '\n'
-        for c in words.cases:
-            t = c + ': '
-            for i in range(len(parts)):
-                j = i // 2
-                if i % 2 != 0 or idx[j] >= len(parses[j]):
-                    t += parts[i]
-                    continue
-                x = parses[j][idx[j]].inflect({c, 'plur'})
-                if not x:
-                    t += '?'
-                else:
-                    t += x.word
-            s += t + '\n'
-        s += '\n'
-        idx[0] += 1
-        for i in range(len(idx)):
-            if idx[i] < len(parses[i]):
-                break
-            ok = i < len(idx) - 1
-            if ok:
-                idx[i] = 0
-                idx[i + 1] += 1
-        z.append(s)
-    return z
 
-class TextMorph(Command):
+def text_to_row(channel_id: int, text_id: int) -> Optional[str]:
+    text_value = db().get_text(channel_id, text_id)
+    if not text_value:
+        return None
+    tags = db().get_text_tag_values(channel_id, text_id)
+    tag_by_id = db().tag_by_id(channel_id)
+    name_value: Dict[str, Optional[str]] = {}
+    for id, value in tags.items():
+        name = tag_by_id[id]
+        name_value[name] = value
+    sbuf = io.StringIO()
+    csv.writer(sbuf, delimiter=';').writerow(
+        [text_value, text_id, tag_values_to_str(name_value)])
+    return sbuf.getvalue().strip()
+
+
+class TextDescribe(Command):
     async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['morph'])
-        if not text:
-            return [], True
-        text = text.strip()
-        if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        return [Action(kind=ActionKind.REPLY, text=x) for x in print_morphs(text)], False
-
-    def help(self, prefix: str):
-        return f'{prefix}morph'
-
-    def help_full(self, prefix: str):
-        return f'{prefix}morph <value>[;tag1 tag2...]'
-
-class TextSetTags(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['tag'])
+        text = command_prefix(text, prefix, ['describe'])
         if not text:
             return [], True
         text = text.strip()
         v = get_variables()
-        parts = text.split(' ')
-        if len(parts) < 2:
+        if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        text_id = str_to_int(parts[0])
         channel_id = v['channel_id']
-        txt_value = db().get_text(channel_id, text_id)
-        if not txt_value:
-            return [Action(kind=ActionKind.REPLY, text=f'No text with id {text_id} found')], False
-        set_tags = [x.strip() for x in parts[1:] if x.strip()]
-        for t in set_tags:
-            if not query.tag_re.match(t):
-                return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
-            db().add_tag(channel_id, t.strip())
-        s = f'Set tags for text {text_id} "{txt_value}": {", ".join(set_tags)}'
-        channel_id = v['channel_id']
-        tags_by_value = db().tag_by_value(channel_id)
-        tags_by_id = db().tag_by_id(channel_id)
-        current_tags = db().get_text_tags(channel_id, text_id)
-        if current_tags:
-            s += '\nPrevious tags: ' + \
-                ', '.join([tags_by_id[x] for x in current_tags])
-        new_tags: Set[int] = set()
-        for t in set_tags:
-            new_tags.add(tags_by_value[t])
-        _, ok = db().set_text_tags(channel_id, text_id, new_tags)
-        if ok:
-            return [Action(kind=ActionKind.REPLY, text=s)], False
-        return [Action(kind=ActionKind.REPLY, text=f'Failed to set tags {text_id} {new_tags}')], False
+        name_value: Dict[str, Optional[str]] = {}
+        if not text.isdigit():
+            return [Action(kind=ActionKind.REPLY, text=f'Please provide a text id')], False
+        s = text_to_row(channel_id, str_to_int(text))
+        if not s:
+            return [Action(kind=ActionKind.REPLY, text=f'Text #{text} is not found')], False
+        return [Action(kind=ActionKind.REPLY, text=f'{prefix}add {s}')], False
 
     def help(self, prefix: str):
-        return f'{prefix}tag'
+        return f'{prefix}describe'
 
     def help_full(self, prefix: str):
-        return f'{prefix}tag <id> <tag> [<tag> [...]]\nexisting tags will be removed'
+        return f'{prefix}describe <text id>\nPrint full info about text.'
+
+
+class TextNew(Command):
+    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+        text = command_prefix(text, prefix, ['new'])
+        if not text:
+            return [], True
+        text = text.strip()
+        v = get_variables()
+        if not text:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+        name_value: Dict[str, Optional[str]] = {}
+        tt = text.strip().split(';', 1)
+        text_value = tt[0].strip()
+        parts = re.split(r'(\s+)', text_value.strip())
+        if len(tt) >= 2:
+            for s in tt[1].split(' '):
+                if query.good_tag_name(s):
+                    name_value[s] = None
+        ww = [parts[i] for i in range(0, len(parts), 2)]
+        parses = [words.morph.parse(w) for w in ww]
+        for i in range(len(parses)):
+            parses[i] = [p for p in parses[i]
+                         if 'nomn' in list(p.tag.grammemes)]
+        logging.info(f'morph parses for parts {parses}')
+        if any(parses):
+            for inf in words.case_tags:
+                ss = set(words.morph.cyr2lat(inf).split(','))
+                t = ''
+                for i in range(len(parts)):
+                    j = i // 2
+                    if i % 2 != 0 or not parses[j]:
+                        t += parts[i]
+                        continue
+                    x = parses[j][0].inflect(ss)
+                    if not x:
+                        t += parts[i]
+                    else:
+                        t += x.word
+                name_value[inf] = t
+        str_buf = io.StringIO()
+        csv.writer(str_buf, delimiter=';').writerow(
+            [text_value, "", tag_values_to_str(name_value)])
+        return [Action(kind=ActionKind.REPLY, text=f'{prefix}add {str_buf.getvalue()}')], False
+
+    def help(self, prefix: str):
+        return f'{prefix}new'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}new <text>;tag1 tag2 tag3\nTries to morphologically analyze text and prints new "add" command.'
+
+
+def import_text_row(channel_id: int, row: List[str], tag_by_name: Dict[str, int]) -> Tuple[int, int, int]:
+    updated = 0
+    added = 0
+    if not row:
+        return (updated, added, 0)
+    txt = row[0].strip()
+    if not txt:
+        return (updated, added, 0)
+    text_id = 0
+    if len(row) >= 2:
+        text_id = str_to_int(row[1])
+    tags_info: Optional[Dict[str, Optional[str]]]
+    if len(row) >= 3:
+        tags_info = str_to_tags(row[2])
+        if not tags_info:
+            return (0, 0, 0)
+    if text_id:
+        if db().set_text(channel_id, txt, text_id):
+            updated += 1
+        else:
+            return (updated, added, 0)
+    else:
+        existing = db().find_text(channel_id, txt)
+        if existing:
+            text_id = existing
+            updated += 1
+        else:
+            text_id = db().add_text(channel_id, txt)
+            added += 1
+    if tags_info:
+        tag_values: Dict[int, Optional[str]] = {}
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            logging.debug(
+                f'#{text_id} {txt} tags dict {tags_info}')
+        for name, value in tags_info.items():
+            if name not in tag_by_name:
+                db().add_tag(channel_id, name)
+                tag_by_name = db().tag_by_value(channel_id)
+            tag_values[tag_by_name[name]] = value
+        db().set_text_tags(channel_id, text_id, tag_values)
+    return (updated, added, text_id)
 
 
 class TextUpload(Command):
@@ -537,44 +542,27 @@ class TextUpload(Command):
         for att in msg.attachments:
             log.info(
                 f'attachment {att.filename} {att.size} {att.content_type}')
-            content += '\n' + (await att.read()).decode('utf-8')
+            content = (await att.read()).decode('utf-8')
+            break
         channel_id = v['channel_id']
-        values = [x.strip() for x in content.split('\n')]
-        lines = [x.split('\t') for x in values if x]
-        all_tags = set()
-        for s in lines:
-            if len(s) < 2:
+        all_tags: Set[str] = set()
+        for row in csv.reader(io.StringIO(content)):
+            if len(row) < 3:
                 continue
-            all_tags.update([x.strip() for x in s[1].split(' ') if x.strip()])
+            tags = str_to_tags(row[2])
+            all_tags.update(tags.keys())
+        logging.info(f'all tags in file: {all_tags}')
         for t in all_tags:
-            if not query.tag_re.match(t):
-                return [Action(kind=ActionKind.REPLY, text='tag name might consist of latin letters, digits, "_" and "-" characters')], False
             db().add_tag(channel_id, t)
-        tag_by_value = db().tag_by_value(channel_id)
+        tag_by_name = db().tag_by_value(channel_id)
         total = 0
         total_added = 0
         total_updated = 0
-        for s in lines:
-            txt = s[0].strip()
-            if not txt:
-                continue
+        for row in csv.reader(io.StringIO(content)):
+            updated, added, _ = import_text_row(channel_id, row, tag_by_name)
+            total_updated += updated
+            total_added += added
             total += 1
-            text_id = 0
-            if len(s) >= 3:
-                text_id = str_to_int(s[2])
-            if text_id:
-                if db().set_text(channel_id, txt, text_id):
-                    total_updated += 1
-            else:
-                text_id, added = db().add_text(channel_id, txt)
-                if added:
-                    total_added += 1
-            if len(s) < 2:
-                continue
-            tag_names = s[1].split(' ')
-            tag_names = [x.strip() for x in tag_names if x.strip()]
-            db().set_text_tags(channel_id, text_id, set(
-                [tag_by_value[t] for t in tag_names]))
         return [Action(kind=ActionKind.REPLY, text=f"Added {total_added} and updated {total_updated} texts from non-empty {total} lines with tags {all_tags}")], False
 
     def help(self, prefix: str):
@@ -596,6 +584,7 @@ class TextDownload(Command):
         if not text:
             items = db().all_texts(channel_id)
         else:
+            # TODO: also use newline and regex
             query_parts = text.split(';', 1)
             substring = query_parts[0]
             tag_query = ''
@@ -604,16 +593,33 @@ class TextDownload(Command):
             items = db().text_search(channel_id, substring, tag_query)
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
-        rr = []
         tag_by_id = db().tag_by_id(channel_id)
+        output = io.StringIO()
+        writer = csv.writer(output)
         for ii in items:
-            tags = [tag_by_id[x] for x in ii[2]]
-            rr.append(f'{ii[1]}\t{" ".join(tags)}\t{ii[0]}')
-        att = '\n'.join(rr)
+            text_id = ii[0]
+            txt = ii[1]
+            tags = db().get_text_tag_values(channel_id, text_id)
+            name_value: Dict[str, Optional[str]] = {}
+            for id, value in tags.items():
+                name = tag_by_id[id]
+                # TODO: remove when morph tag is migrated to tag values
+                if name == 'morph':
+                    filter = []
+                    if tags:
+                        for tag_id in tags.keys():
+                            name = tag_by_id[tag_id]
+                            if name in words.morph_tags:
+                                filter.append(words.morph_tags[name])
+                    for inf in words.case_tags:
+                        name_value[inf] = words.inflect_word(txt, inf, filter)
+                    continue
+                name_value[name] = value
+            writer.writerow([txt, text_id, tag_values_to_str(name_value)])
         return [Action(kind=ActionKind.REPLY,
                        text='texts',
-                       attachment=att,
-                       attachment_name=f'texts.tsv')], False
+                       attachment=output.getvalue(),
+                       attachment_name=f'texts.csv')], False
 
     def for_twitch(self):
         return False
@@ -644,19 +650,21 @@ class TextSearch(Command):
         if not items:
             return [Action(kind=ActionKind.REPLY, text='no results')], False
         tag_by_id = db().tag_by_id(channel_id)
-        rr = []
+        if not items:
+            return [Action(kind=ActionKind.REPLY, text='no results')], False
+        sbuf = io.StringIO()
         for ii in items:
             tag_names = [tag_by_id[x] for x in ii[2]]
-            rr.append(f'{ii[1]};{" ".join(tag_names)};{ii[0]}')
-        if not rr:
-            return [Action(kind=ActionKind.REPLY, text='no results')], False
-        return [Action(kind=ActionKind.REPLY, text='\n'.join(rr))], False
+            tag_names = [x for x in tag_names if not x in words.case_tags]
+            csv.writer(sbuf, delimiter=';').writerow(
+                [ii[1], ii[0], " ".join(tag_names)])
+        return [Action(kind=ActionKind.REPLY, text=sbuf.getvalue())], False
 
     def help(self, prefix: str):
         return f'{prefix}search'
 
     def help_full(self, prefix: str):
-        return f'{prefix}search <substring>[;<tag query>]'
+        return f'{prefix}search <substring><tag query>]'
 
 
 class TextRemove(Command):
@@ -669,30 +677,29 @@ class TextRemove(Command):
         channel_id = v['channel_id']
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+        text_id: Optional[int]
         if text.isdigit():
-            t = db().delete_text(channel_id, int(text))
-            if not t:
-                return [Action(kind=ActionKind.REPLY, text=f'No text with id {text} found')], False
-            return [Action(kind=ActionKind.REPLY, text=f'Deleted text #{text}')], False
-        query_parts = text.split(';', 1)
-        substring = query_parts[0]
-        tag_query = ''
-        if len(query_parts) > 1:
-            tag_query = query_parts[1]
-        items = db().text_search(channel_id, substring, tag_query)
-        if not items:
-            return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
-        if len(items) == 1:
-            id, text, _ = items[0]
-            db().delete_text(channel_id, id)
-            return [Action(kind=ActionKind.REPLY, text=f'Deleted text "{text}"')], False
-        rr = []
-        tag_by_id = db().tag_by_id(channel_id)
-        for ii in items:
-            tag_names = [tag_by_id[x] for x in ii[2]]
-            rr.append(f'{ii[0]} {ii[1]} "{", ".join(tag_names)}"')
-        s = '\n'.join(rr)
-        return [Action(kind=ActionKind.REPLY, text=f'Multiple matches: \n{s}')], False
+            text_id = str_to_int(text)
+        else:
+            query_parts = text.split(';', 1)
+            substring = query_parts[0]
+            tag_query = ''
+            if len(query_parts) > 1:
+                tag_query = query_parts[1]
+            items = db().text_search(channel_id, substring, tag_query)
+            if not items:
+                return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
+            if len(items) == 1:
+                text_id, text, _ = items[0]
+            else:
+                return [Action(kind=ActionKind.REPLY, text=f'Multiple matches for that query')], False
+        if not text_id:
+            return [Action(kind=ActionKind.REPLY, text=f'No text is found')], False
+        s = text_to_row(channel_id, text_id)
+        t = db().delete_text(channel_id, text_id)
+        if t:
+            return [Action(kind=ActionKind.REPLY, text=f'Deleted text\n{s}')], False
+        return [Action(kind=ActionKind.REPLY, text=f'Text #{text_id} is not found')], False
 
     def help(self, prefix: str):
         return f'{prefix}rm'
