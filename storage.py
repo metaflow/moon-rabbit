@@ -221,6 +221,7 @@ DROP TABLE tags;
     def reload_texts(self, ch: ChannelCache):
         ch.all_texts_list.clear()
         ch.queries.clear()
+        ch.query_to_id.clear()
         ch.active_queries.clear()
         ch.all_text_by_id.clear()
         z: Dict[int, Set[int]] = {}
