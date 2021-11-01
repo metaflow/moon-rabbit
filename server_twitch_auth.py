@@ -202,15 +202,15 @@ def auth_callback(*args):
     logging.info(f'auth callback {args}')
 
 if len(sys.argv) < 2:
-    print('specify id from twitch_bots table')
-bot_id = sys.argv[1]
+    print('specify bot channel name from twitch_bots table')
+bot_channel = sys.argv[1]
 
 storage.set_db(storage.DB(os.getenv('DB_CONNECTION')))
 with storage.cursor() as cur:
-    cur.execute("SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE id = %s", (bot_id,))
+    cur.execute("SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE channel_name = %s", (bot_channel,))
     channel_name, app_id, app_secret, auth_token, api_url, api_port = cur.fetchone()
     print(f'auth server for app_id {app_id} app_secret {app_secret} api_url {api_url} api_port {api_port}')
     twitch = Twitch(app_id, app_secret)
-    target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN]
+    target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN, AuthScope.CHANNEL_MODERATE]
     auth = UserAuthenticator(twitch, target_scope, force_verify=False, url=AUTH_URL)
     auth.authenticate(callback_func=auth_callback)
