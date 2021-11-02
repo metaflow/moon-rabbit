@@ -78,6 +78,8 @@ class Twitch3(twitchio.Client):
             logging.info(f'starting EventSub for {self.channel_name} {self}')
             self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret, target_app_auth_scope=[AuthScope.CHANNEL_MODERATE])
             self.api.authenticate_app([AuthScope.CHANNEL_MODERATE])
+            self.auth_token = self.api.get_app_token()
+            logging.info(f'using auth token {self.auth_token}')
             hook = EventSub(callback_url=self.api_url, api_client_id=self.app_id, port=self.api_port, twitch=self.api)
             hook.unsubscribe_all()
             hook.start()
@@ -96,7 +98,7 @@ class Twitch3(twitchio.Client):
                         hook.listen_hype_train_begin(c.twitch_user_id, self.on_hype_train_begins)
                         hook.listen_hype_train_progress(c.twitch_user_id, self.on_hype_train_progress)
                         hook.listen_hype_train_end(c.twitch_user_id, self.on_hype_train_ends)
-        super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()))
+        super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()), )
 
     async def event_ready(self):
         # We are logged in and ready to chat and use commands...
