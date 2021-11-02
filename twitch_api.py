@@ -18,7 +18,7 @@ import asyncio
 import traceback
 from asyncio.locks import Event
 from os import curdir
-from twitchAPI.twitch import Twitch  # type: ignore
+from twitchAPI.twitch import Twitch, AuthScope  # type: ignore
 from twitchAPI import Twitch, EventSub # type: ignore
 import logging
 from data import *
@@ -77,7 +77,7 @@ class Twitch3(twitchio.Client):
         if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
             logging.info(f'starting EventSub for {self.channel_name} {self}')
             self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret)
-            self.api.authenticate_app([])
+            self.api.authenticate_app([AuthScope.CHANNEL_MODERATE])
             hook = EventSub(callback_url=self.api_url, api_client_id=self.app_id, port=self.api_port, twitch=self.api)
             hook.unsubscribe_all()
             hook.start()
