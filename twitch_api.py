@@ -19,19 +19,20 @@ import traceback
 from asyncio.locks import Event
 from os import curdir
 from twitchAPI.twitch import Twitch, AuthScope  # type: ignore
-from twitchAPI import Twitch, EventSub # type: ignore
+from twitchAPI import Twitch, EventSub  # type: ignore
 import logging
 from data import *
 import logging
 from typing import Dict, Optional
 import twitchio  # type: ignore
 from storage import cursor, db
-import ttldict2 # type: ignore
+import ttldict2  # type: ignore
 import commands
 import random
 import re
 import json
 from asyncio_throttle import Throttler
+
 
 @dataclasses.dataclass
 class ChannelInfo:
@@ -76,9 +77,11 @@ class Twitch3(twitchio.Client):
 
         if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
             logging.info(f'starting EventSub for {self.channel_name} {self}')
-            self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret, target_app_auth_scope=[AuthScope.CHANNEL_MODERATE])
+            self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret,
+                              target_app_auth_scope=[AuthScope.CHANNEL_MODERATE])
             self.api.authenticate_app([AuthScope.CHANNEL_MODERATE])
-            hook = EventSub(callback_url=self.api_url, api_client_id=self.app_id, port=self.api_port, twitch=self.api)
+            hook = EventSub(callback_url=self.api_url,
+                            api_client_id=self.app_id, port=self.api_port, twitch=self.api)
             hook.unsubscribe_all()
             hook.start()
             for name, c in self.channels.items():
@@ -93,10 +96,14 @@ class Twitch3(twitchio.Client):
                     if e == EventType.twitch_hype_train:
                         logging.info(
                             f'subscribing {name} {c.twitch_user_id} to hype train events')
-                        hook.listen_hype_train_begin(c.twitch_user_id, self.on_hype_train_begins)
-                        hook.listen_hype_train_progress(c.twitch_user_id, self.on_hype_train_progress)
-                        hook.listen_hype_train_end(c.twitch_user_id, self.on_hype_train_ends)
-        super().__init__(self.auth_token, loop=loop, initial_channels=list(self.channels.keys()))
+                        hook.listen_hype_train_begin(
+                            c.twitch_user_id, self.on_hype_train_begins)
+                        hook.listen_hype_train_progress(
+                            c.twitch_user_id, self.on_hype_train_progress)
+                        hook.listen_hype_train_end(
+                            c.twitch_user_id, self.on_hype_train_ends)
+        super().__init__(self.auth_token, loop=loop,
+                         initial_channels=list(self.channels.keys()))
 
     async def event_ready(self):
         # We are logged in and ready to chat and use commands...
@@ -109,20 +116,22 @@ class Twitch3(twitchio.Client):
         # logging.info(f'join {channel.name} {user.name}')
         if info:
             info.twitch_channel = channel
-       
+
     async def event_message(self, message):
         try:
             # Ignore own messages.
             if message.echo:
                 return
-            info: Optional[ChannelInfo] = self.channels.get(message.channel.name)
+            info: Optional[ChannelInfo] = self.channels.get(
+                message.channel.name)
             if not info:
                 logging.info(f'unknown channel {message.channel.name}')
                 return
             info.twitch_channel = message.channel
             channel_id = info.channel_id
             prefix = info.prefix
-            log = InvocationLog(f"twitch channel {message.channel.name} ({channel_id})")
+            log = InvocationLog(
+                f"twitch channel {message.channel.name} ({channel_id})")
             author = message.author.name
             info.active_users[author] = 1
             info.active_users.drop_old_items()
@@ -130,6 +139,7 @@ class Twitch3(twitchio.Client):
             variables: Optional[Dict] = None
             is_mod = message.author.is_mod
             # postpone variable calculations as much as possible
+
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -179,7 +189,7 @@ class Twitch3(twitchio.Client):
 
     async def on_hype_train_progress(self, *args):
         logging.info(f'on hype train progress {args}')
-    
+
     async def on_hype_train_ends(self, data):
         try:
             logging.info(f'on_hype_train_ends {data}')
@@ -188,7 +198,8 @@ class Twitch3(twitchio.Client):
             channel_name = event.get('broadcaster_user_login')
             author = ''
             text = str(event.get('level'))
-            contributors = ', '.join(['@' + c.get('user_name') for c in event.get('top_contributions')])
+            contributors = ', '.join(['@' + c.get('user_name')
+                                     for c in event.get('top_contributions')])
             logging.info(f'contributors {contributors}')
             logging.info(f'text "{text}"')
             info: Optional[ChannelInfo] = self.channels.get(channel_name)
@@ -196,9 +207,11 @@ class Twitch3(twitchio.Client):
                 logging.info(f'unknown channel {channel_name}')
                 return
             channel_id = info.channel_id
-            log = InvocationLog(f"twitch channel {channel_name} ({info.channel_id})")
+            log = InvocationLog(
+                f"twitch channel {channel_name} ({info.channel_id})")
             variables: Optional[Dict] = None
             is_mod = False
+
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -250,10 +263,12 @@ class Twitch3(twitchio.Client):
                 logging.info(f'unknown channel {channel_name}')
                 return
             channel_id = info.channel_id
-            log = InvocationLog(f"twitch channel {channel_name} ({info.channel_id})")
+            log = InvocationLog(
+                f"twitch channel {channel_name} ({info.channel_id})")
             log.info(f'reward {reward_title} for user {author}')
             variables: Optional[Dict] = None
             is_mod = False
+
             def get_vars():
                 nonlocal variables
                 if not variables:

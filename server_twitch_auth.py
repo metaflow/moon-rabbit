@@ -211,6 +211,6 @@ with storage.cursor() as cur:
     channel_name, app_id, app_secret, auth_token, api_url, api_port = cur.fetchone()
     print(f'auth server for app_id {app_id} app_secret {app_secret} api_url {api_url} api_port {api_port}')
     twitch = Twitch(app_id, app_secret)
-    target_scope = [AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN, AuthScope.CHANNEL_MODERATE]
-    auth = UserAuthenticator(twitch, target_scope, force_verify=False, url=AUTH_URL)
+    target_scope = [AuthScope.CHAT_READ, AuthScope.CHAT_EDIT, AuthScope.CHANNEL_READ_REDEMPTIONS, AuthScope.BITS_READ, AuthScope.CHANNEL_READ_HYPE_TRAIN, AuthScope.CHANNEL_MODERATE]
+    auth = UserAuthenticator(twitch, target_scope, force_verify=True, url=AUTH_URL)
     auth.authenticate(callback_func=auth_callback)
