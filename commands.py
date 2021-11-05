@@ -77,8 +77,10 @@ async def process_message(msg: Message) -> List[Action]:
             if (not msg.is_discord) and not cmd.for_twitch():
                 continue
             a, next = await cmd.run(msg)
+            msg.log.info(f'normal actions {len(a)}, additional {len(msg.additionalActions)}')
             actions.extend(a)
             actions.extend(msg.additionalActions)
+            msg.log.info(f'total {len(actions)}')
             if not next:
                 break
         log_actions = [a for a in actions if a.attachment == '']
