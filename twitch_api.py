@@ -171,7 +171,7 @@ class Twitch3(twitchio.Client):
                 is_mod=is_mod,
                 private=False,
                 get_variables=get_vars)
-            actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, False, is_mod, False, get_vars)
+            actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
