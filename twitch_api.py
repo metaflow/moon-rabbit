@@ -241,6 +241,7 @@ class Twitch3(twitchio.Client):
                         'channel_id': info.channel_id,
                         '_log': log,
                         '_private': False,
+                        '_id': message_id,
                     }
                 return variables
             msg = Message(
