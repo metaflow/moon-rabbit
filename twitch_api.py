@@ -270,7 +270,7 @@ class Twitch3(twitchio.Client):
         if len(txt) > 500:
             txt = txt[:497] + "..."
         async with self.throttler:
-            logging.debug(f'sending {txt}')
+            logging.info(f'sending {txt}')
             await info.twitch_channel.send(txt)
 
     async def on_redemption(self, data):
