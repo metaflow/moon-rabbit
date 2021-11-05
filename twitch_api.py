@@ -30,7 +30,7 @@ import ttldict2  # type: ignore
 import commands
 import random
 import re
-import json
+import time
 from asyncio_throttle import Throttler
 
 
@@ -139,7 +139,7 @@ class Twitch3(twitchio.Client):
             variables: Optional[Dict] = None
             is_mod = message.author.is_mod
             # postpone variable calculations as much as possible
-
+            message_id = str(time.time_ns())
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -157,8 +157,20 @@ class Twitch3(twitchio.Client):
                         'channel_id': channel_id,
                         '_log': log,
                         '_private': False,
+                        '_id': message_id,
                     }
                 return variables
+            msg = Message(
+                id = message_id,
+                log = log,
+                channel_id=channel_id,
+                txt=message.content,
+                event=EventType.message,
+                prefix=info.prefix,
+                is_discord=False,
+                is_mod=is_mod,
+                private=False,
+                get_variables=get_vars)
             actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, False, is_mod, False, get_vars)
             db().add_log(channel_id, log)
             for a in actions:
@@ -211,7 +223,7 @@ class Twitch3(twitchio.Client):
                 f"twitch channel {channel_name} ({info.channel_id})")
             variables: Optional[Dict] = None
             is_mod = False
-
+            message_id = str(time.time_ns())
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -231,8 +243,19 @@ class Twitch3(twitchio.Client):
                         '_private': False,
                     }
                 return variables
+            msg = Message(
+                id = message_id,
+                log = log,
+                channel_id=channel_id,
+                txt=text,
+                event=EventType.twitch_hype_train,
+                prefix=info.prefix,
+                is_discord=False,
+                is_mod=is_mod,
+                private=False,
+                get_variables=get_vars)
             logging.info('discpathcing hype train event message')
-            actions = await commands.process_message(log, channel_id, text, EventType.twitch_hype_train, info.prefix, False, is_mod, False, get_vars)
+            actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
@@ -268,7 +291,7 @@ class Twitch3(twitchio.Client):
             log.info(f'reward {reward_title} for user {author}')
             variables: Optional[Dict] = None
             is_mod = False
-
+            message_id = str(time.time_ns())
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -286,9 +309,21 @@ class Twitch3(twitchio.Client):
                         'channel_id': info.channel_id,
                         '_log': log,
                         '_private': False,
+                        '_id': message_id,
                     }
                 return variables
-            actions = await commands.process_message(log, channel_id, reward_title, EventType.twitch_reward_redemption, info.prefix, False, is_mod, False, get_vars)
+            msg = Message(
+                id = message_id,
+                log = log,
+                channel_id=channel_id,
+                txt=reward_title,
+                event=EventType.twitch_reward_redemption,
+                prefix=info.prefix,
+                is_discord=False,
+                is_mod=is_mod,
+                private=False,
+                get_variables=get_vars)
+            actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:

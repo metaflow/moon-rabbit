@@ -507,6 +507,15 @@ DROP TABLE tags;
                         [channel_id, category])
             return cur.fetchone()[0]
 
+    def list_variables(self, channel_id: int, category: str) -> List[str]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT name, value FROM variables WHERE channel_id = %s AND category = %s",
+                        [channel_id, category])
+            z = []
+            for row in cur.fetchall():
+                z.append((row[0], row[1]))
+            return z
+
     def delete_category(self, channel_id: int, category: str) -> int:
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM variables WHERE channel_id = %s AND category = %s",

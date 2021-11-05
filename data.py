@@ -124,3 +124,17 @@ def str_to_int(s: str) -> int:
     if s.isdigit():
         return int(s)
     return 0
+
+@dataclasses.dataclass
+class Message:
+    id: str
+    log: InvocationLog
+    channel_id: int
+    txt: str
+    event: EventType
+    prefix: str
+    is_discord: bool
+    is_mod: bool
+    private: bool
+    get_variables: Callable[[], Dict]
+    additionalActions: List[Action] = dataclasses.field(default_factory=list)

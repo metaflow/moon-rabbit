@@ -14,18 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# migration plan:
-# - fix all search queries with "мн" in txt('мн,рд')
-# - announce
-# - backup database
-# - update code and restart
-# - download all texts (that will add morphems)
-# - reupload all texts
-# - check that everything still works
-# - check what tags we don't need and remove them (e.g. morph)
-# - update docs
-# - add missing mophems for nouns / adj / drinks
-# TODO data struct to pass to command execution
 # TODO allow commands w/o prefix in private bot conversation
 # TODO check sandbox settings
 # TODO test perf of compiled template VS from_string
@@ -126,10 +114,20 @@ def delete_category(ctx, name: str):
     db().delete_category(channel_id, name)
     return ''
 
+@jinja2.pass_context
+def list_category(ctx, name: str) -> List[Tuple[str,str]]:
+    channel_id = ctx.get('channel_id')
+    return db().list_variables(channel_id, name)
 
 @jinja2.pass_context
 def discord_or_twitch(ctx, vd: str, vt: str):
     return vd if ctx.get('media') == 'discord' else vt
+
+@jinja2.pass_context
+def new_message(ctx, s: str):
+    msg = commands.messages[ctx.get('_id')]
+    msg.additionalActions.append(Action(kind=ActionKind.NEW_MESSAGE, text=s))
+    return ''
 
 
 # templates.globals['list'] = render_list_item
@@ -139,7 +137,9 @@ templates.globals['discord_literal'] = discord_literal
 templates.globals['get'] = get_variable
 templates.globals['set'] = set_variable
 templates.globals['category_size'] = get_variables_category_size
+templates.globals['list_category'] = list_category
 templates.globals['delete_category'] = delete_category
+templates.globals['message'] = new_message
 templates.globals['timestamp'] = lambda: int(time.time())
 templates.globals['dt'] = discord_or_twitch
 # templates.globals['echo'] = lambda x: x
@@ -199,7 +199,7 @@ class DiscordClient(discord.Client):
         log.info(f'message "{message.content}"')
         variables: Optional[Dict] = None
         # postpone variable calculations as much as possible
-
+        message_id = str(message.id)
         def get_vars():
             nonlocal variables
             if not variables:
@@ -221,20 +221,31 @@ class DiscordClient(discord.Client):
                     '_log': log,
                     '_discord_message': message,
                     '_private': private,
+                    '_id': message_id,
                 }
             return variables
-
+        msg = Message(
+            id = message_id,
+            log = log,
+            channel_id=channel_id,
+            txt=message.content,
+            event=EventType.message,
+            prefix=prefix,
+            is_discord=True,
+            is_mod=is_mod,
+            private=private,
+            get_variables=get_vars)
         if self.profile:
             start = time.time_ns()
             i = 0
             ns = 1000_000_000
             while (time.time_ns() - start < ns):
                 i += 1
-                actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
+                actions = await commands.process_message(msg)
             actions.append(
                 Action(ActionKind.REPLY, text=f'{i} iterations in {time.time_ns() - start} ns'))
         else:
-            actions = await commands.process_message(log, channel_id, message.content, EventType.message, prefix, True, is_mod, private, get_vars)
+            actions = await commands.process_message(msg)
         db().add_log(channel_id, log)
         for a in actions:
             if len(a.text) > 2000:

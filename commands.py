@@ -19,7 +19,7 @@ from data import *
 import json
 import logging
 import re
-from typing import Callable, Dict, List, Set
+from typing import Dict, List, Set
 from storage import cursor, db
 import traceback
 import query
@@ -27,6 +27,8 @@ import csv
 import words
 import io
 
+# id: str -> Message 
+messages = ttldict2.TTLDict(ttl_seconds=600.0)
 
 def str_to_tags(s: str) -> Tuple[Dict[str, Optional[str]], bool]:
     z: Dict[str, Optional[str]] = {}
@@ -58,30 +60,31 @@ def tag_values_to_str(tags: Dict[str, Optional[str]]) -> str:
     return '\n'.join(z)
 
 
-async def process_message(log: InvocationLog, channel_id: int, txt: str, event: EventType, prefix: str, is_discord: bool, is_mod: bool, private: bool, get_variables: Callable[[], Dict]) -> List[Action]:
-    logging.debug(f'process message "{txt}" type {event}')
+async def process_message(msg: Message) -> List[Action]:
+    logging.debug(f'process message "{msg.txt}" type {msg.event}')
+    messages[msg.id] = msg
     actions: List[Action] = []
     try:
-        cmds = get_commands(channel_id, prefix)
+        cmds = get_commands(msg.channel_id, msg.prefix)
         for cmd in cmds:
-            if cmd.mod_only() and not is_mod:
+            if cmd.mod_only() and not msg.is_mod:
                 continue
-            if cmd.private_mod_only() and not (is_mod and private):
+            if cmd.private_mod_only() and not (msg.is_mod and msg.private):
                 continue
-            if is_discord and not cmd.for_discord():
+            if msg.is_discord and not cmd.for_discord():
                 continue
-            if (not is_discord) and not cmd.for_twitch():
+            if (not msg.is_discord) and not cmd.for_twitch():
                 continue
-            a, next = await cmd.run(prefix, txt, event, is_discord, get_variables)
+            a, next = await cmd.run(msg)
             actions.extend(a)
+            actions.extend(msg.additionalActions)
             if not next:
                 break
         log_actions = [a for a in actions if a.attachment == '']
-        log.debug(f'actions (except download) {log_actions}')
+        msg.log.debug(f'actions (except download) {log_actions}')
     except Exception as e:
-        actions.append(
-            Action(kind=ActionKind.REPLY, text='error ocurred'))
-        log.error(f'{e}\n{traceback.format_exc()}')
+        actions.append(Action(kind=ActionKind.REPLY, text='error ocurred'))
+        msg.log.error(f'{e}\n{traceback.format_exc()}')
     return actions
 
 
@@ -96,7 +99,7 @@ def command_prefix(txt: str, prefix: str, s: List[str]) -> str:
 
 
 class Command(Protocol):
-    async def run(self, prefix: str, text: str, event: EventType, discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
         return [], True
 
     def help(self, prefix: str):
@@ -156,10 +159,10 @@ class PersistentCommand(Command):
     def for_twitch(self):
         return self.data.twitch
 
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if event != self.data.event_type or not re.search(self.regex, text):
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        if msg.event != self.data.event_type or not re.search(self.regex, msg.txt):
             return [], True
-        variables = get_variables()
+        variables = msg.get_variables()
         if self.data.mod and not variables['is_mod']:
             logging.info('non mod called persistent')
             return [], True
@@ -199,14 +202,14 @@ class PersistentCommand(Command):
 
 
 class Eval(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['eval'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['eval'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
+        v = msg.get_variables()
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
         # v['_log'].info(f'eval "{text}"')
         v['_render_depth'] = 0
         s = render(text, v)
@@ -222,17 +225,16 @@ class Eval(Command):
 
 
 class SetCommand(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['command'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['command'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        log = v['_log']
-        channel_id = v['channel_id']
-        commands_cache.pop(f'commands_{channel_id}_{prefix}', None)
+        log = msg.log
+        channel_id = msg.channel_id
+        commands_cache.pop(f'commands_{channel_id}_{msg.prefix}', None)
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
         parts = text.split(' ', 1)
         name = parts[0]
         if len(parts) == 1:
@@ -249,6 +251,7 @@ class SetCommand(Command):
                 Action(text=command_text, kind=ActionKind.NEW_MESSAGE))
         cmd.name = name
         log.info(f'parsed command {cmd}')
+        v = msg.get_variables()
         id = db().set_command(cursor(), channel_id, v['author_name'], cmd)
         log.info(
             f"channel={channel_id} author={v['author_name']} added new command '{name}' #{id}")
@@ -292,20 +295,20 @@ It is the only way to customize a command to match a different regex, allow only
 
 
 class SetPrefix(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['prefix-set'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['prefix-set'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        log = v['_log']
-        channel_id = v['channel_id']
+        v = msg.get_variables()
+        log = msg.log
+        channel_id = msg.channel_id
         if v['bot'] not in str(v['direct_mention']):
             log.info('this bot is not mentioned directly')
             return [], True
         if not text:
             return [], True
-        if is_discord:
+        if msg.is_discord:
             db().set_discord_prefix(channel_id, text)
         else:
             db().set_twitch_prefix(channel_id, text)
@@ -319,15 +322,15 @@ class SetPrefix(Command):
 
 
 class TagDelete(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['tag-rm'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['tag-rm'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
+        v = msg.get_variables()
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        channel_id = v['channel_id']
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
+        channel_id = msg.channel_id
         tag_id: int
         if text.isdigit():
             tag_id = str_to_int(text)
@@ -344,12 +347,11 @@ class TagDelete(Command):
 
 
 class TagList(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['tags'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['tags'])
         if not text:
             return [], True
-        v = get_variables()
-        channel_id = v['channel_id']
+        channel_id = msg.channel_id
         tags = db().tag_by_value(channel_id)
         s = 'no tags'
         if tags:
@@ -364,16 +366,15 @@ class TagList(Command):
 
 
 class TextAdd(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['add'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['add'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
         row = [r for r in csv.reader(io.StringIO(text), delimiter=';')][0]
-        channel_id = v['channel_id']
+        channel_id = msg.channel_id
         prev: Optional[str] = None
         if row:
             if len(row) >= 2 and row[1].isdigit():
@@ -416,22 +417,20 @@ def text_to_row(channel_id: int, text_id: int) -> Optional[str]:
 
 
 class TextDescribe(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['describe'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['describe'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
-        channel_id = v['channel_id']
-        name_value: Dict[str, Optional[str]] = {}
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
+        channel_id = msg.channel_id
         if not text.isdigit():
             return [Action(kind=ActionKind.REPLY, text=f'Please provide a text id')], False
         s = text_to_row(channel_id, str_to_int(text))
         if not s:
             return [Action(kind=ActionKind.REPLY, text=f'Text #{text} is not found')], False
-        return [Action(kind=ActionKind.REPLY, text=f'{prefix}add {s}')], False
+        return [Action(kind=ActionKind.REPLY, text=f'{msg.prefix}add {s}')], False
 
     def help(self, prefix: str):
         return f'{prefix}describe'
@@ -441,14 +440,13 @@ class TextDescribe(Command):
 
 
 class TextNew(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['new'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['new'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help_full(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
         name_value: Dict[str, Optional[str]] = {}
         tt = text.strip().split(';', 1)
         text_value = tt[0].strip()
@@ -481,7 +479,7 @@ class TextNew(Command):
         str_buf = io.StringIO()
         csv.writer(str_buf, delimiter=';').writerow(
             [text_value, "", tag_values_to_str(name_value)])
-        return [Action(kind=ActionKind.REPLY, text=f'{prefix}add {str_buf.getvalue()}')], False
+        return [Action(kind=ActionKind.REPLY, text=f'{msg.prefix}add {str_buf.getvalue()}')], False
 
     def help(self, prefix: str):
         return f'{prefix}new'
@@ -540,20 +538,20 @@ def import_text_row(channel_id: int, row: List[str], tag_by_name: Dict[str, int]
 
 
 class TextUpload(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        if text.strip() != prefix + "upload":
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        if msg.txt.strip() != msg.prefix + "upload":
             return [], True
-        v = get_variables()
-        log = v['_log']
+        v = msg.get_variables()
+        log = msg.log
         content = ''
-        msg: discord.Message = v['_discord_message']
+        discord_msg: discord.Message = v['_discord_message']
         log.info('looking for attachments')
-        for att in msg.attachments:
+        for att in discord_msg.attachments:
             log.info(
                 f'attachment {att.filename} {att.size} {att.content_type}')
             content = (await att.read()).decode('utf-8')
             break
-        channel_id = v['channel_id']
+        channel_id = msg.channel_id
         all_tags: Set[str] = set()
         for row in csv.reader(io.StringIO(content)):
             if len(row) < 3:
@@ -593,13 +591,12 @@ class TextUpload(Command):
 
 
 class TextDownload(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['download'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['download'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        channel_id = v['channel_id']
+        channel_id = msg.channel_id
         items: List[Tuple[int, str, Set[int]]] = []
         if not text:
             items = db().all_texts(channel_id)
@@ -652,15 +649,15 @@ class TextDownload(Command):
 
 
 class TextSearch(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['search'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['search'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        channel_id = v['channel_id']
+        v = msg.get_variables()
+        channel_id = msg.channel_id
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
         query_parts = text.split(';', 1)
         substring = query_parts[0]
         tag_query = ''
@@ -688,15 +685,15 @@ class TextSearch(Command):
 
 
 class TextRemove(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['rm'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['rm'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        channel_id = v['channel_id']
+        v = msg.get_variables()
+        channel_id = msg.channel_id
         if not text:
-            return [Action(kind=ActionKind.REPLY, text=self.help(prefix))], False
+            return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
         text_id: Optional[int]
         if text.isdigit():
             text_id = str_to_int(text)
@@ -729,18 +726,17 @@ class TextRemove(Command):
 
 
 class Multiline(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['multiline'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['multiline'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        channel_id = v['channel_id']
+        channel_id = msg.channel_id
         lines = [x.strip() for x in text.split('\n')]
-        is_mod = v['is_mod']
-        private = v['_private']
+        is_mod = msg.is_mod
+        private = msg.private
         actions: List[Action] = []
-        cmds = get_commands(channel_id, prefix)
+        cmds = get_commands(channel_id, msg.prefix)
         for line in lines:
             if not line:
                 continue
@@ -750,11 +746,13 @@ class Multiline(Command):
                     continue
                 if cmd.mod_only() and not is_mod:
                     continue
-                if is_discord and not cmd.for_discord():
+                if msg.is_discord and not cmd.for_discord():
                     continue
-                if (not is_discord) and not cmd.for_twitch():
+                if (not msg.is_discord) and not cmd.for_twitch():
                     continue
-                a, next = await cmd.run(prefix, line, event, is_discord, get_variables)
+                cp = dataclasses.replace(msg)
+                cp.txt = line
+                a, next = await cmd.run(cp)
                 actions.extend(a)
                 if not next:
                     break
@@ -768,24 +766,24 @@ class Multiline(Command):
 
 
 class Debug(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['debug'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['debug'])
         if not text:
             return [], True
         text = text.strip()
         results: List[Action] = []
-        v = get_variables()
-        channel_id = v['channel_id']
+        v = msg.get_variables()
+        channel_id = msg.channel_id
         if not text:
             for e in db().get_logs(channel_id):
                 s = '\n'.join([discord.utils.escape_mentions(x[1])
                                for x in e.messages]) + '\n-----------------------------\n'
                 results.append(Action(kind=ActionKind.PRIVATE_MESSAGE, text=s))
             return results, False
-        commands = db().get_commands(channel_id, prefix)
+        commands = db().get_commands(channel_id, msg.prefix)
         for cmd in commands:
             if cmd.name == text:
-                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'{prefix}command {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
+                results.append(Action(ActionKind.PRIVATE_MESSAGE, f'{msg.prefix}command {cmd.name} ' + discord.utils.escape_markdown(discord.utils.escape_mentions(
                     json.dumps(dataclasses.asdict(cmd), ensure_ascii=False)))))
         return results, False
 
@@ -803,59 +801,58 @@ class Debug(Command):
 
 
 class HelpCommand(Command):
-    async def run(self, prefix: str, text: str, event: EventType, is_discord: bool, get_variables: Callable[[], Dict]) -> Tuple[List[Action], bool]:
-        text = command_prefix(text, prefix, ['commands', 'help'])
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['commands', 'help'])
         if not text:
             return [], True
         text = text.strip()
-        v = get_variables()
-        is_mod = v['is_mod']
-        private = v['_private']
-        channel_id = v['channel_id']
+        is_mod = msg.is_mod
+        private = msg.private
+        channel_id = msg.channel_id
         if not text:
             hidden_commands = []
             names = []
             s = []
-            for c in get_commands(channel_id, prefix):
+            for c in get_commands(channel_id, msg.prefix):
                 if isinstance(c, PersistentCommand):
                     names.append(c.data.name)
-                if is_discord and not c.for_discord():
-                    hidden_commands.append(c.help(prefix))
+                if msg.is_discord and not c.for_discord():
+                    hidden_commands.append(c.help(msg.prefix))
                     continue
-                if (not is_discord) and not c.for_twitch():
-                    hidden_commands.append(c.help(prefix))
+                if (not msg.is_discord) and not c.for_twitch():
+                    hidden_commands.append(c.help(msg.prefix))
                     continue
                 if c.mod_only() and not is_mod:
                     continue
                 if c.private_mod_only() and not (is_mod and private):
                     continue
                 if c.hidden_help():
-                    hidden_commands.append(c.help(prefix))
+                    hidden_commands.append(c.help(msg.prefix))
                     continue
-                s.append(c.help(prefix))
+                s.append(c.help(msg.prefix))
             reply = 'commands: ' + ', '.join(s)
             if is_mod:
                 if private:
                     reply += '\ncommand names: ' + \
                         ', '.join(names) + '\n' + 'hidden commands: ' + \
                         ', '.join(hidden_commands)
-                elif is_discord:
+                elif msg.is_discord:
                     reply += ' (some commands are only available in private messages)'
             actions = [Action(kind=ActionKind.REPLY, text=reply)]
             return actions, False
         s = []
-        for c in get_commands(channel_id, prefix):
+        for c in get_commands(channel_id, msg.prefix):
             if c.mod_only() and not is_mod:
                 continue
             if c.private_mod_only() and not (is_mod and private):
                 continue
-            if is_discord and not c.for_discord():
+            if msg.is_discord and not c.for_discord():
                 continue
-            if (not is_discord) and not c.for_twitch():
+            if (not msg.is_discord) and not c.for_twitch():
                 continue
-            hf = c.help_full(prefix)
-            h = c.help(prefix)
-            if h == text or h == prefix + text or h.startswith(text + ' ') or h.startswith(prefix + text + ' '):
+            hf = c.help_full(msg.prefix)
+            h = c.help(msg.prefix)
+            if h == text or h == msg.prefix + text or h.startswith(text + ' ') or h.startswith(msg.prefix + text + ' '):
                 s.append(hf)
         if not s:
             return [], False
