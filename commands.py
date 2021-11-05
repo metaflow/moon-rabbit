@@ -26,6 +26,7 @@ import query
 import csv
 import words
 import io
+import ttldict2
 
 # id: str -> Message 
 messages = ttldict2.TTLDict(ttl_seconds=600.0)
