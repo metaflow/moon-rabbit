@@ -125,7 +125,8 @@ def discord_or_twitch(ctx, vd: str, vt: str):
 
 @jinja2.pass_context
 def new_message(ctx, s: str):
-    msg = commands.messages[ctx.get('_id')]
+    msg: Message = commands.messages[ctx.get('_id')]
+    msg.log.info(f'add message "{s}"')
     msg.additionalActions.append(Action(kind=ActionKind.NEW_MESSAGE, text=s))
     return ''
 
