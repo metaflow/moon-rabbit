@@ -423,18 +423,21 @@ DROP TABLE tags;
         if q not in ch.query_to_id:
             # Add a new query an match every text against it.
             ch.query_counter += 1
-            qid = ch.query_counter
-            ch.query_to_id[q] = qid
-            qq = QueryQueue(id=qid, queue=dllist(),
+            n = ch.query_counter
+            ch.query_to_id[q] = n
+            ch.queries[n] = QueryQueue(id=n, queue=dllist(),
                             parsed=query.parse_query(ch.tag_by_value, q))
-            ch.queries[qid] = qq
             t: TextEntry
             for t in ch.all_texts_list:
-                if query.match_tags(qq.parsed, t.tags):
-                    t.queue_nodes[qid] = qq.queue.append(t)
+                if query.match_tags(ch.queries[n].parsed, t.tags):
+                    t.queue_nodes[n] = ch.queries[n].queue.append(t)
         ch.active_queries[q] = '+'
-        qid = ch.query_to_id[q]
-        qq = ch.queries[qid]
+        qid: Optional[int] = ch.query_to_id.get(q)
+        if not qid:
+            raise Exception(f'query id for "{q}"" not found in query_to_id')
+        qq: Optional[QueryQueue] = ch.queries.get(qid)
+        if not qq:
+            raise Exception(f'query with id {qid} not found in query_to_id')
         if qq.queue.size == 0:
             return None
         j = int(self.rng.pareto(4) * qq.queue.size) % qq.queue.size
