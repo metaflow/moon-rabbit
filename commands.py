@@ -135,8 +135,8 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
                             Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
                             TagList(), TagDelete(),
-                            TextAdd(), TextUpload(), TextDownload(),
-                            TextSearch(), TextRemove(), TextDescribe(), TextNew(),
+                            TextSet(), TextUpload(), TextDownload(),
+                            TextSearch(), TextRemove(), TextDescribe(), TextNew(), TextSetNew(),
                             ]
         z.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -366,7 +366,7 @@ class TagList(Command):
         return f'{prefix}tags'
 
 
-class TextAdd(Command):
+class TextSet(Command):
     async def run(self, msg: Message) -> Tuple[List[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ['add'])
         if not text:
@@ -439,6 +439,31 @@ class TextDescribe(Command):
     def help_full(self, prefix: str):
         return f'{prefix}describe <text id>\nPrint full info about text.'
 
+def morph_text(text_value: str) -> Dict[str, str]:
+    name_value: Dict[str, str] = {}
+    parts = re.split(r'(\s+)', text_value.strip())
+    ww = [parts[i] for i in range(0, len(parts), 2)]
+    parses = [words.morph.parse(w) for w in ww]
+    for i in range(len(parses)):
+        parses[i] = [p for p in parses[i]
+                        if 'nomn' in list(p.tag.grammemes)]
+    logging.info(f'morph parses for parts {parses}')
+    if any(parses):
+        for inf in words.case_tags:
+            ss = set(words.morph.cyr2lat(inf).split(','))
+            t = ''
+            for i in range(len(parts)):
+                j = i // 2
+                if i % 2 != 0 or not parses[j]:
+                    t += parts[i]
+                    continue
+                x = parses[j][0].inflect(ss)
+                if not x:
+                    t += parts[i]
+                else:
+                    t += x.word
+            name_value[inf] = t
+    return name_value
 
 class TextNew(Command):
     async def run(self, msg: Message) -> Tuple[List[Action], bool]:
@@ -448,35 +473,13 @@ class TextNew(Command):
         text = text.strip()
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
-        name_value: Dict[str, Optional[str]] = {}
         tt = text.strip().split(';', 1)
         text_value = tt[0].strip()
-        parts = re.split(r'(\s+)', text_value.strip())
+        name_value: Dict[str, Optional[str]] = morph_text(text_value)
         if len(tt) >= 2:
             for s in tt[1].split(' '):
                 if query.good_tag_name(s):
                     name_value[s] = None
-        ww = [parts[i] for i in range(0, len(parts), 2)]
-        parses = [words.morph.parse(w) for w in ww]
-        for i in range(len(parses)):
-            parses[i] = [p for p in parses[i]
-                         if 'nomn' in list(p.tag.grammemes)]
-        logging.info(f'morph parses for parts {parses}')
-        if any(parses):
-            for inf in words.case_tags:
-                ss = set(words.morph.cyr2lat(inf).split(','))
-                t = ''
-                for i in range(len(parts)):
-                    j = i // 2
-                    if i % 2 != 0 or not parses[j]:
-                        t += parts[i]
-                        continue
-                    x = parses[j][0].inflect(ss)
-                    if not x:
-                        t += parts[i]
-                    else:
-                        t += x.word
-                name_value[inf] = t
         str_buf = io.StringIO()
         csv.writer(str_buf, delimiter=';').writerow(
             [text_value, "", tag_values_to_str(name_value)])
@@ -487,6 +490,36 @@ class TextNew(Command):
 
     def help_full(self, prefix: str):
         return f'{prefix}new <text>;tag1 tag2 tag3\nTries to morphologically analyze text and prints new "add" command.'
+
+class TextSetNew(Command):
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['setnew'])
+        if not text:
+            return [], True
+        text = text.strip()
+        if not text:
+            return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
+        tt = text.strip().split(';', 1)
+        text_value = tt[0].strip()
+        name_value: Dict[str, Optional[str]] = morph_text(text_value)
+        if len(tt) >= 2:
+            for s in tt[1].split(' '):
+                if query.good_tag_name(s):
+                    name_value[s] = None
+        channel_id = msg.channel_id
+        updated, _, text_id = import_text_row(
+            channel_id, [text_value, "", tag_values_to_str(name_value)], db().tag_by_value(channel_id))
+        if text_id:
+            s = f'{"Updated" if updated else "Added"} text (text;id;tags):\n{text_to_row(channel_id, text_id)}'
+        else:
+            raise Exception("failed to insert new text")
+        return [Action(kind=ActionKind.REPLY, text=s)], False
+
+    def help(self, prefix: str):
+        return f'{prefix}setnew'
+
+    def help_full(self, prefix: str):
+        return f'{prefix}setnew <text>;tag1 tag2 tag3\nSame as running command returned by !new.'
 
 
 def import_text_row(channel_id: int, row: List[str], tag_by_name: Dict[str, int]) -> Tuple[int, int, int]:
