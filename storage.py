@@ -14,8 +14,7 @@
  limitations under the License.
  """
 
-from io import open_code
-from typing import Any, Dict, List, Optional, Set, Text, Tuple, Type
+from typing import Any, Dict, List, Optional, Set, Tuple, Type
 from data import *
 import psycopg2  # type: ignore
 import psycopg2.extensions  # type: ignore
@@ -23,9 +22,7 @@ import psycopg2.extras  # type: ignore
 import functools
 import logging
 import collections
-import random
 import time
-from cachetools import TTLCache  # type: ignore
 import query
 import lark
 import ttldict2  # type: ignore
@@ -226,7 +223,8 @@ DROP TABLE tags;
         ch.all_text_by_id.clear()
         z: Dict[int, Set[int]] = {}
         with self.conn.cursor() as cur:
-            cur.execute("SELECT id FROM texts t WHERE t.channel_id = %s", [ch.channel_id])
+            cur.execute("SELECT id FROM texts t WHERE t.channel_id = %s", [
+                        ch.channel_id])
             for row in cur.fetchall():
                 z[row[0]] = set()
             cur.execute(
@@ -314,7 +312,7 @@ DROP TABLE tags;
                     'INSERT INTO text_tags (text_id, tag_id, value) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING', (text_id, name, value))
         te.tags = set(new_tags.keys())
         prev: Set[int] = set(te.queue_nodes.keys())
-        current: Set[int] = set() 
+        current: Set[int] = set()
         for qq in ch.queries.values():
             if query.match_tags(qq.parsed, te.tags):
                 current.add(qq.id)
@@ -364,7 +362,7 @@ DROP TABLE tags;
             return None
 
     def add_text(self, channel_id: int, value: str) -> int:
-        with self.conn.cursor() as cur:        
+        with self.conn.cursor() as cur:
             cur.execute('INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;',
                         (channel_id, value, value))
             text_id = cur.fetchone()[0]
@@ -420,24 +418,23 @@ DROP TABLE tags;
 
     def get_random_text_id(self, channel_id: int, q: str) -> Optional[int]:
         ch = self.channel(channel_id)
-        if q not in ch.query_to_id:
+        qq: Optional[QueryQueue] = None
+        qid: Optional[int] = ch.query_to_id.get(q)
+        if qid is None:
             # Add a new query an match every text against it.
             ch.query_counter += 1
-            n = ch.query_counter
-            ch.query_to_id[q] = n
-            ch.queries[n] = QueryQueue(id=n, queue=dllist(),
+            qid = ch.query_counter
+            qq = QueryQueue(id=qid, queue=dllist(),
                             parsed=query.parse_query(ch.tag_by_value, q))
             t: TextEntry
             for t in ch.all_texts_list:
-                if query.match_tags(ch.queries[n].parsed, t.tags):
-                    t.queue_nodes[n] = ch.queries[n].queue.append(t)
-        ch.active_queries[q] = '+'
-        qid: Optional[int] = ch.query_to_id.get(q)
-        if not qid:
-            raise Exception(f'query id for "{q}"" not found in query_to_id')
-        qq: Optional[QueryQueue] = ch.queries.get(qid)
-        if not qq:
-            raise Exception(f'query with id {qid} not found in query_to_id')
+                if query.match_tags(qq.parsed, t.tags):
+                    t.queue_nodes[qid] = qq.queue.append(t)
+        else:
+            qq = ch.queries.get(qid)
+            if not qq:
+                raise Exception(
+                    f'query with id {qid} not found in query_to_id')
         if qq.queue.size == 0:
             return None
         j = int(self.rng.pareto(4) * qq.queue.size) % qq.queue.size
@@ -452,6 +449,10 @@ DROP TABLE tags;
             ll = qn.owner()
             ll.remove(qn)
             ll.appendnode(qn)
+        # Cache query at the very end to avoid caching invalid queries.
+        ch.query_to_id[q] = qid
+        ch.queries[qid] = qq
+        ch.active_queries[q] = '+'
         return t.id
 
     def get_commands(self, channel_id, prefix) -> List[CommandData]:
