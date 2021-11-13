@@ -79,7 +79,7 @@ class DiscordClient(discord.Client):
                     'author_name': discord_literal(str(message.author.display_name)),
                     'mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
                     'direct_mention': Lazy(lambda: self.mentions(message)),
-                    'random_mention': Lazy(lambda: self.random_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
+                    'random_mention': Lazy(lambda: self.random_mention(message, self.channels[channel_id]['active_users'].keys(), exclude), stick=False),
                     'media': 'discord',
                     'text': message.content,
                     'is_mod': is_mod,

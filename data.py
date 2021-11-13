@@ -113,11 +113,15 @@ def fold_actions(actions: List[Action]) -> List[Action]:
 
 
 class Lazy():
-    def __init__(self, f):
+    val: Optional[str] = None
+    def __init__(self, f, stick: bool = True):
         self.func = f
+        self.stick = stick
 
     def __repr__(self):
-        return self.func()
+        if (self.val is None) or not self.stick:
+            self.val = self.func()
+        return self.val
 
 def str_to_int(s: str) -> int:
     s = s.strip()
