@@ -133,6 +133,7 @@ templates.globals['delete_category'] = delete_category
 templates.globals['message'] = new_message
 templates.globals['timestamp'] = lambda: int(time.time())
 templates.globals['dt'] = discord_or_twitch
+templates.globals['discord_name'] = discord_literal
 # templates.globals['echo'] = lambda x: x
 # templates.globals['log'] = lambda x: logging.info(x)
 
