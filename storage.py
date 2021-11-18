@@ -132,7 +132,8 @@ DROP TABLE tags;
                 twitch_channel_name varchar(50),
                 twitch_command_prefix varchar(10),
                 twitch_events TEXT,
-                twitch_bot TEXT);
+                twitch_bot TEXT,
+                discord_allowed_channels TEXT);
             CREATE TABLE IF NOT EXISTS twitch_bots
                 (id SERIAL,
                 channel_name TEXT,
@@ -559,6 +560,23 @@ DROP TABLE tags;
                 [prefix, channel_id])
             self.conn.commit()
             self.discord_channel_info.cache_clear()
+
+    def get_discord_allowed_channels(self, channel_id: int) -> Set[str]:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "SELECT discord_allowed_channels FROM channels WHERE channel_id = %s",
+                [channel_id])
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return set()
+            return row[0].split(',')
+    
+    def set_discord_allowed_channels(self, channel_id: int, allowed: Set[str]):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE channels SET discord_allowed_channels = %s WHERE channel_id = %s",
+                [','.join(allowed), channel_id])
+            self.conn.commit()
 
     def expire_old_queries(self):
         for ch in self.channels.values():

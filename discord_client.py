@@ -47,7 +47,6 @@ class DiscordClient(discord.Client):
             is_mod = permissions.ban_members or permissions.administrator
             if is_mod:
                 self.mods[str(message.author.id)] = guild_id
-                # logging.info(f'set {message.author.id} as mod for {guild_id}')
         try:
             channel_id, prefix = db().discord_channel_info(
                 db().conn.cursor(), guild_id)
@@ -56,10 +55,28 @@ class DiscordClient(discord.Client):
                 f"'discord_channel_info': {e}\n{traceback.format_exc()}")
             return
         log = InvocationLog(
-            f'guild={guild_id} channel={channel_id} author={message.author.id}')
+            f'guild={guild_id} message_channel={message.channel.id} channel={channel_id} author={message.author.id}')
         if channel_id not in self.channels:
             self.channels[channel_id] = {
-                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0 * 2)}
+                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0 * 2),
+                'allowed_channels': db().get_discord_allowed_channels(channel_id)}
+        text = commands.command_prefix(message.content, prefix, ['allow_here'])
+        discord_channel = str(message.channel.id)
+        if text:
+            self.channels[channel_id]['allowed_channels'].add(discord_channel)
+            db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
+            log.info(f'discord channel {message.channel.id} is allowed')
+            await message.reply('this channel is now allowed')
+            return
+        text = commands.command_prefix(message.content, prefix, ['disallow_here'])
+        if text:
+            self.channels[channel_id]['allowed_channels'].remove(discord_channel)
+            db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
+            log.info(f'discord channel {message.channel.id} is allowed')
+            await message.reply('this channel is now disallowed')
+            return
+        if self.channels[channel_id]['allowed_channels'] and discord_channel not in self.channels[channel_id]['allowed_channels']:
+            return
         if not message.author.bot:
             self.channels[channel_id]['active_users'][discord_literal(
                 message.author.mention)] = '+'
