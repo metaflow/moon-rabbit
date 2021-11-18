@@ -75,7 +75,7 @@ class DiscordClient(discord.Client):
             log.info(f'discord channel {message.channel.id} is allowed')
             await message.reply('this channel is now disallowed')
             return
-        if self.channels[channel_id]['allowed_channels'] and discord_channel not in self.channels[channel_id]['allowed_channels']:
+        if (message.channel.type != discord.ChannelType.private) and self.channels[channel_id]['allowed_channels'] and (discord_channel not in self.channels[channel_id]['allowed_channels']):
             return
         if not message.author.bot:
             self.channels[channel_id]['active_users'][discord_literal(
