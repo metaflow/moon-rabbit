@@ -37,6 +37,7 @@ from asyncio_throttle import Throttler
 @dataclasses.dataclass
 class ChannelInfo:
     active_users: ttldict2.TTLDict
+    throttled_users: ttldict2.TTLDict # user -> time
     prefix: str
     channel_id: int
     twitch_user_id: str
@@ -57,9 +58,11 @@ class Twitch3(twitchio.Client):
         has_events = False
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events FROM channels WHERE twitch_bot = %s", (self.channel_name,))
+                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events, twitch_throttle FROM channels WHERE twitch_bot = %s", (self.channel_name,))
             for row in cur.fetchall():
-                channel_id, twitch_channel_name, twitch_command_prefix, twitch_events = row
+                channel_id, twitch_channel_name, twitch_command_prefix, twitch_events, twitch_throttle = row
+                if not twitch_throttle:
+                    twitch_throttle = 0.0
                 events: List[EventType] = []
                 if twitch_events:
                     for x in twitch_events.split(','):
@@ -71,7 +74,8 @@ class Twitch3(twitchio.Client):
                     channel_id=channel_id,
                     twitch_user_id='',
                     events=events,
-                    twitch_channel=None)
+                    twitch_channel=None,
+                    throttled_users=ttldict2.TTLDict(ttl_seconds=float(max(twitch_throttle, 1))))
         logging.info(f'channels {self.channels}')
         logging.info(f'joining channels {self.channels.keys()}')
 
@@ -134,6 +138,9 @@ class Twitch3(twitchio.Client):
                 f"twitch channel {message.channel.name} ({channel_id})")
             author = message.author.name
             info.active_users[author] = 1
+            info.throttled_users.drop_old_items()
+            if author in info.throttled_users:
+                return
             info.active_users.drop_old_items()
             log.info(f'{author} "{message.content}"')
             variables: Optional[Dict] = None
@@ -176,6 +183,8 @@ class Twitch3(twitchio.Client):
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
+            if actions and not is_mod:
+                info.throttled_users[author] = '+'
         except Exception as e:
             log.error(f"event_message: {str(e)}")
             log.error(traceback.format_exc())

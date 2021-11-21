@@ -133,6 +133,7 @@ DROP TABLE tags;
                 twitch_command_prefix varchar(10),
                 twitch_events TEXT,
                 twitch_bot TEXT,
+                twitch_throttle INT,
                 discord_allowed_channels TEXT);
             CREATE TABLE IF NOT EXISTS twitch_bots
                 (id SERIAL,
