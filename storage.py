@@ -570,7 +570,7 @@ DROP TABLE tags;
             row = cur.fetchone()
             if not row or not row[0]:
                 return set()
-            return row[0].split(',')
+            return set(row[0].split(','))
     
     def set_discord_allowed_channels(self, channel_id: int, allowed: Set[str]):
         with self.conn.cursor() as cur:

@@ -70,7 +70,7 @@ class DiscordClient(discord.Client):
             return
         text = commands.command_prefix(message.content, prefix, ['disallow_here'])
         if text:
-            self.channels[channel_id]['allowed_channels'].remove(discord_channel)
+            self.channels[channel_id]['allowed_channels'].discard(discord_channel)
             db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
             log.info(f'discord channel {message.channel.id} is allowed')
             await message.reply('this channel is now disallowed')
