@@ -97,6 +97,7 @@ class DiscordClient(discord.Client):
                     'mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
                     'direct_mention': Lazy(lambda: self.mentions(message)),
                     'random_mention': Lazy(lambda: self.random_mention(message, self.channels[channel_id]['active_users'].keys(), exclude), stick=False),
+                    'any_mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), [bot]), stick=False),
                     'media': 'discord',
                     'text': message.content,
                     'is_mod': is_mod,

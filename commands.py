@@ -269,12 +269,13 @@ See https://jinja.palletsprojects.com/en/3.0.x/templates/ for the general templa
 Variables available:
 - "author" - author of original message
 - "bot" - bot mention
-- "direct_mention" (if there is a direct action)
+- "direct_mention" (if there is a direct mention)
+- "random_mention" (always random)
+- "any_mention" (same as random_mention but includes author)
 - "is_mod" - author is moderator
 - "media" - "discord" or "twitch"
 - "mention" - direct_mention if set, otherwise random_mention
 - "prefix" - command prefix ({prefix})
-- "random_mention" (always random)
 - "text" - full message text
 
 Additional functions:
