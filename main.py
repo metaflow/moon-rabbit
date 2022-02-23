@@ -138,12 +138,16 @@ templates.globals['discord_name'] = discord_literal
 # templates.globals['log'] = lambda x: logging.info(x)
 
 
-
 async def expireVariables():
     while True:
         db().expire_variables()
         db().expire_old_queries()
         await asyncio.sleep(300)
+
+async def cron(discord: DiscordClient):
+    while True:
+        await discord.on_cron()
+        await asyncio.sleep(600)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
@@ -199,6 +203,8 @@ if __name__ == "__main__":
     if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
+        if discordClient:
+            loop.create_task(cron(discordClient))
         loop.run_forever()
 
         sys.exit(0)

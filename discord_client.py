@@ -1,4 +1,4 @@
-from io import StringIO
+from io import StringIO, BytesIO
 from data import *
 import discord  # type: ignore
 import logging
@@ -10,6 +10,7 @@ import traceback
 import commands
 import time
 import logging.handlers
+from PIL import Image, ImageFont, ImageDraw 
 
 def discord_literal(t):
     return t.replace('<@!', '<@')
@@ -17,6 +18,7 @@ def discord_literal(t):
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
     def __init__(self, profile: bool, *args, **kwargs):
+        self.guild_data: Dict[str, Any] = {}
         self.channels: Dict[str, Any] = {}
         self.mods: Dict[str, str] = {}
         self.profile = profile
@@ -162,3 +164,26 @@ class DiscordClient(discord.Client):
     def any_mention(self, msg, users: List[str], exclude: List[str]):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
+
+    async def on_cron(self):
+        logging.info(f'running discord cron')
+        g: discord.Guild
+        for g in self.guilds:
+            if ('BANNER' in g.features) and (g.id == 794648393627598888):
+                id = f'{g.id}'
+                if id not in self.guild_data:
+                    self.guild_data[id] = {'banner_text': ''}
+                txt = f"{g.member_count} rabbits"
+                if self.guild_data[id]['banner_text'] == txt:
+                    continue
+                self.guild_data[id]['banner_text'] = txt
+                image = Image.open('bg.webp')
+                title_font = ImageFont.truetype('arial.ttf', size=20)
+                image_editable = ImageDraw.Draw(image)                
+                logging.info(f'setting text "{txt}" for {g.name}({g.id})')
+                image_editable.text((15,15), txt, (0, 0, 0), font=title_font)
+                image.save("result.png")
+                bb = BytesIO()
+                image.save(bb, format='webp')
+                bb.seek(0)
+                await g.edit(banner=bb.read())
