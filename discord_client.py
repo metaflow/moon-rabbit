@@ -1,4 +1,6 @@
 from io import StringIO, BytesIO
+
+from urllib.parse import urlparse
 from data import *
 import discord  # type: ignore
 import logging
@@ -11,9 +13,27 @@ import commands
 import time
 import logging.handlers
 from PIL import Image, ImageFont, ImageDraw 
+import os
+import hashlib
+import requests
 
 def discord_literal(t):
     return t.replace('<@!', '<@')
+
+def download_file(url: str) -> str:
+    url_parts = urlparse(url)
+    name, ext = os.path.splitext(url_parts.path)
+    h = hashlib.new('SHA1')
+    h.update(url.encode('utf8'))
+    url_hash = h.hexdigest()
+    file_name = f'{h.hexdigest()}{ext}'
+    logging.info(f'parts {url_parts.path} hash {url_hash} name {name} ext {ext}')
+    if os.path.isfile(file_name):
+        logging.info(f'"{file_name}" already exist')
+        return file_name
+    r = requests.get(url, allow_redirects=True)
+    open(file_name, 'wb').write(r.content)
+    return file_name
 
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
@@ -165,25 +185,83 @@ class DiscordClient(discord.Client):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
+    def count_active_voice_channels(self, guild: discord.Guild) -> int:
+        count = 0
+        for v in guild.voice_channels:
+            if len(v.members) > 0:
+                count += 1
+        return count
+
     async def on_cron(self):
         logging.info(f'running discord cron')
         g: discord.Guild
         for g in self.guilds:
-            if ('BANNER' in g.features) and (g.id == 794648393627598888):
+            try:
                 id = f'{g.id}'
+                if 'BANNER' not in g.features:
+                    continue
+                channel_id, prefix = db().discord_channel_info(db().conn.cursor(), id)
+                banner_template = db().get_variable(channel_id, 'banner_template', 'admin', '')
+                log = InvocationLog(f'guild={id} banner update')
+                log.info(f'banner template "{banner_template}"')
+                if not banner_template:
+                    continue
                 if id not in self.guild_data:
                     self.guild_data[id] = {'banner_text': ''}
-                txt = f"{g.member_count} rabbits"
+                variables: Optional[Dict] = None
+                def get_vars():
+                    nonlocal variables
+                    if not variables:
+                        bot = discord_literal(self.user.mention)
+                        variables = {
+                            'media': 'discord',
+                            'text': banner_template,
+                            'is_mod': False,
+                            'prefix': prefix,
+                            'bot': bot,
+                            'channel_id': channel_id,
+                            'member_count': g.member_count,
+                            'description': g.description,
+                            'premium_subscription_count': g.premium_subscription_count,
+                            'premium_tier': g.premium_tier,
+                            'active_voice_channels_count': Lazy(lambda: str(self.count_active_voice_channels(g))),
+                            '_log': log,
+                            '_private': False,
+                        }
+                    return variables
+                msg = Message(
+                    id = 'banner',
+                    log = log,
+                    channel_id=channel_id,
+                    txt=banner_template,
+                    event=EventType.message,
+                    prefix=prefix,
+                    is_discord=True,
+                    is_mod=True,
+                    private=False,
+                    get_variables=get_vars)
+                actions = await commands.process_message(msg)
+                if not actions:
+                    continue
+                txt = actions[0].text
                 if self.guild_data[id]['banner_text'] == txt:
                     continue
                 self.guild_data[id]['banner_text'] = txt
-                image = Image.open('bg.webp')
-                title_font = ImageFont.truetype('arial.ttf', size=20)
-                image_editable = ImageDraw.Draw(image)                
-                logging.info(f'setting text "{txt}" for {g.name}({g.id})')
-                image_editable.text((15,15), txt, (0, 0, 0), font=title_font)
-                image.save("result.png")
+                parts = txt.split(';;')
+                log.info(parts[0])
+                url = parts[0].strip()
+                img = download_file(url)
+                image = Image.open(img)
+                image_editable = ImageDraw.Draw(image)
+                for p in parts[1:]:
+                    x, y, s, cr, cg, cb, text = p.split(',', 6)
+                    title_font = ImageFont.truetype('arial.ttf', size=int(s))
+                    image_editable.text((int(x),int(y)), text, (int(cr), int(cg), int(cb)), font=title_font)
+                image.save('result.webp')
                 bb = BytesIO()
                 image.save(bb, format='webp')
                 bb.seek(0)
                 await g.edit(banner=bb.read())
+            except Exception as e:
+                logging.error(
+                    f"'cron update': {e}\n{traceback.format_exc()}")

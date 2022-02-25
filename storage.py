@@ -190,7 +190,7 @@ DROP TABLE tags;
         return id, prefix
 
     @functools.lru_cache(maxsize=1000)
-    def discord_channel_info(self, cur: psycopg2.extensions.cursor, guild_id):
+    def discord_channel_info(self, cur: psycopg2.extensions.cursor, guild_id: str):
         cur.execute(
             "SELECT channel_id, discord_command_prefix FROM channels WHERE discord_guild_id = %s", [guild_id])
         row = cur.fetchone()
