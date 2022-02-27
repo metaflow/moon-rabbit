@@ -90,7 +90,7 @@ class Twitch3(twitchio.Client):
             hook.start()
             for name, c in self.channels.items():
                 uid = self.api.get_users(logins=[name])
-                c.twitch_user_id = str(uid['data'][0]['id'])
+                c.twitch_user_id = str(uid['data'][0]['id']) # TODO this might fail
                 for e in c.events:
                     if e == EventType.twitch_reward_redemption:
                         logging.info(
