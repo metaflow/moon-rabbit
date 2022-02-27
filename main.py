@@ -22,6 +22,7 @@
 """Bot entry point."""
 
 import asyncio
+import traceback
 from io import StringIO
 from data import *
 from twitchio.ext import commands as twitchCommands  # type: ignore
@@ -188,14 +189,20 @@ if __name__ == "__main__":
         db().recreate_tables()
     loop = asyncio.get_event_loop()
     if args.discord:
-        logging.info('starting Discord Bot')
-        discordClient = DiscordClient(
-            intents=discord.Intents.all(), loop=loop, profile=args.profile)
-        loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
+        try:
+            logging.info('starting Discord Bot')
+            discordClient = DiscordClient(
+                intents=discord.Intents.all(), loop=loop, profile=args.profile)
+            loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
+        except Exception as e:
+            logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch:
         with cursor() as cur:
-            t = twitch_api.Twitch3(channel_name=args.twitch, loop=loop)
-            loop.create_task(t.connect())
+            try:
+                t = twitch_api.Twitch3(channel_name=args.twitch, loop=loop)
+                loop.create_task(t.connect())
+            except Exception as e:
+                logging.error(f'{e}\n{traceback.format_exc()}')
             # cur.execute("SELECT id FROM twitch_bots")
             # for r in cur.fetchall():
             #     t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
