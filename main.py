@@ -188,6 +188,7 @@ if __name__ == "__main__":
             sys.exit(1)
         db().recreate_tables()
     loop = asyncio.get_event_loop()
+    discordClient = None
     if args.discord:
         try:
             logging.info('starting Discord Bot')
