@@ -145,10 +145,10 @@ async def expireVariables():
         db().expire_old_queries()
         await asyncio.sleep(300)
 
-async def cron(discord: DiscordClient):
+async def cron(discord: DiscordClient, cron_interval_s: int):
     while True:
         await discord.on_cron()
-        await asyncio.sleep(600)
+        await asyncio.sleep(cron_interval_s)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='moon rabbit')
@@ -163,6 +163,7 @@ if __name__ == "__main__":
     parser.add_argument('--log', default='bot')
     parser.add_argument('--profile', action='store_true')
     parser.add_argument('--log_level', default='INFO')
+    parser.add_argument('--cron_interval_s', default='600')
     args = parser.parse_args()
     errHandler = logging.FileHandler( 
         f'{args.log}.errors.log', encoding='utf-8',)
@@ -212,7 +213,7 @@ if __name__ == "__main__":
         logging.info('running the async loop')
         loop.create_task(expireVariables())
         if discordClient:
-            loop.create_task(cron(discordClient))
+            loop.create_task(cron(discordClient, int(args.cron_interval_s)))
         loop.run_forever()
 
         sys.exit(0)

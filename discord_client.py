@@ -203,7 +203,7 @@ class DiscordClient(discord.Client):
                 channel_id, prefix = db().discord_channel_info(db().conn.cursor(), id)
                 banner_template = db().get_variable(channel_id, 'banner_template', 'admin', '')
                 log = InvocationLog(f'guild={id} banner update')
-                log.info(f'banner template "{banner_template}"')
+                log.debug(f'banner template "{banner_template}"')
                 if not banner_template:
                     continue
                 if id not in self.guild_data:
@@ -245,10 +245,10 @@ class DiscordClient(discord.Client):
                     continue
                 txt = actions[0].text
                 if self.guild_data[id]['banner_text'] == txt:
+                    log.debug('banner text is the same')
                     continue
-                self.guild_data[id]['banner_text'] = txt
                 parts = txt.split(';;')
-                log.info(parts[0])
+                log.debug(parts[0])
                 url = parts[0].strip()
                 img = download_file(url)
                 image = Image.open(img)
@@ -257,11 +257,18 @@ class DiscordClient(discord.Client):
                     x, y, s, cr, cg, cb, text = p.split(',', 6)
                     title_font = ImageFont.truetype('arial.ttf', size=int(s))
                     image_editable.text((int(x),int(y)), text, (int(cr), int(cg), int(cb)), font=title_font)
-                image.save('result.webp')
+                h = hashlib.new('SHA1')
+                h.update(txt.encode('utf8'))
+                resultFile = f'{h.hexdigest()}.png'
+                log.info(f'result {resultFile}')
+                image.save(resultFile)
                 bb = BytesIO()
-                image.save(bb, format='webp')
+                image.save(bb, format='png')
                 bb.seek(0)
                 await g.edit(banner=bb.read())
+                self.guild_data[id]['banner_text'] = txt
             except Exception as e:
-                logging.error(
-                    f"'cron update': {e}\n{traceback.format_exc()}")
+                logging.error(f"'cron update': {e}\n{traceback.format_exc()}")
+                if id not in self.guild_data:
+                    self.guild_data[id] = {'banner_text': ''}
+                self.guild_data[id].banner_text = ''
