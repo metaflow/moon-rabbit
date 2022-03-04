@@ -84,14 +84,14 @@ class DiscordClient(discord.Client):
                 'allowed_channels': db().get_discord_allowed_channels(channel_id)}
         text = commands.command_prefix(message.content, prefix, ['allow_here'])
         discord_channel = str(message.channel.id)
-        if text:
+        if text and is_mod:
             self.channels[channel_id]['allowed_channels'].add(discord_channel)
             db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
             log.info(f'discord channel {message.channel.id} is allowed')
             await message.reply('this channel is now allowed')
             return
         text = commands.command_prefix(message.content, prefix, ['disallow_here'])
-        if text:
+        if text and is_mod:
             self.channels[channel_id]['allowed_channels'].discard(discord_channel)
             db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
             log.info(f'discord channel {message.channel.id} is allowed')
@@ -100,7 +100,7 @@ class DiscordClient(discord.Client):
         if (message.channel.type != discord.ChannelType.private) and self.channels[channel_id]['allowed_channels'] and (discord_channel not in self.channels[channel_id]['allowed_channels']):
             return
         text = commands.command_prefix(message.content, prefix, ['cron'])
-        if text:
+        if text and is_mod:
             await self.on_cron()
             return
         if not message.author.bot:
