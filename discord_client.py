@@ -99,6 +99,10 @@ class DiscordClient(discord.Client):
             return
         if (message.channel.type != discord.ChannelType.private) and self.channels[channel_id]['allowed_channels'] and (discord_channel not in self.channels[channel_id]['allowed_channels']):
             return
+        text = commands.command_prefix(message.content, prefix, ['cron'])
+        if text:
+            await self.on_cron()
+            return
         if not message.author.bot:
             self.channels[channel_id]['active_users'][discord_literal(
                 message.author.mention)] = '+'
