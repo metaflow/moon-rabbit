@@ -46,11 +46,11 @@ class ChannelInfo:
 
 
 class Twitch3(twitchio.Client):
-    def __init__(self, channel_name: str, loop: asyncio.AbstractEventLoop):
-        logging.info(f'creating twitch bot {channel_name}')
+    def __init__(self, twitch_bot: str, loop: asyncio.AbstractEventLoop):
+        logging.info(f'creating twitch bot {twitch_bot}')
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE channel_name = %s", (channel_name,))
+                "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE channel_name = %s", (twitch_bot,))
             self.channel_name, self.app_id, self.app_secret, self.auth_token, self.api_url, self.api_port = cur.fetchone()
         self.channels: Dict[str, ChannelInfo] = {}
         self.throttler = Throttler(rate_limit=1, period=1)
@@ -90,6 +90,7 @@ class Twitch3(twitchio.Client):
             hook.start()
             for name, c in self.channels.items():
                 uid = self.api.get_users(logins=[name])
+                logging.info(f'uid {uid}')
                 c.twitch_user_id = str(uid['data'][0]['id']) # TODO this might fail
                 for e in c.events:
                     if e == EventType.twitch_reward_redemption:

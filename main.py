@@ -150,7 +150,7 @@ async def cron(discord: DiscordClient, cron_interval_s: int):
         await discord.on_cron()
         await asyncio.sleep(cron_interval_s)
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch')
     parser.add_argument('--discord', action='store_true')
@@ -188,7 +188,8 @@ if __name__ == "__main__":
             print(f'you typed "{confirm}", want "yes"')
             sys.exit(1)
         db().recreate_tables()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    # loop = asyncio.get_running_loop()
     discordClient = None
     if args.discord:
         try:
@@ -201,14 +202,10 @@ if __name__ == "__main__":
     if args.twitch:
         with cursor() as cur:
             try:
-                t = twitch_api.Twitch3(channel_name=args.twitch, loop=loop)
+                t = twitch_api.Twitch3(twitch_bot=args.twitch, loop=loop)
                 loop.create_task(t.connect())
             except Exception as e:
                 logging.error(f'{e}\n{traceback.format_exc()}')
-            # cur.execute("SELECT id FROM twitch_bots")
-            # for r in cur.fetchall():
-            #     t = twitch_api.Twitch3(bot_id=r[0], loop=loop)
-            #     loop.create_task(t.connect())
     if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
@@ -232,3 +229,6 @@ if __name__ == "__main__":
             f'updated channel #{channel_id} {args.twitch_channel_name}')
         sys.exit(0)
     print('add --twitch or --discord argument to run bot')
+
+if __name__ == "__main__":
+    main()
