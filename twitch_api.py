@@ -43,6 +43,7 @@ class ChannelInfo:
     twitch_user_id: str
     events: List[EventType]
     twitch_channel: Optional[twitchio.Channel]
+    last_activity: float
 
 
 class Twitch3(twitchio.Client):
@@ -75,7 +76,8 @@ class Twitch3(twitchio.Client):
                     twitch_user_id='',
                     events=events,
                     twitch_channel=None,
-                    throttled_users=ttldict2.TTLDict(ttl_seconds=float(max(twitch_throttle, 1))))
+                    throttled_users=ttldict2.TTLDict(ttl_seconds=float(max(twitch_throttle, 1))),
+                    last_activity=0.0)
         logging.info(f'channels {self.channels}')
         logging.info(f'joining channels {self.channels.keys()}')
 
@@ -133,6 +135,7 @@ class Twitch3(twitchio.Client):
                 logging.info(f'unknown channel {message.channel.name}')
                 return
             info.twitch_channel = message.channel
+            info.last_activity = time.time()
             channel_id = info.channel_id
             prefix = info.prefix
             log = InvocationLog(
@@ -345,3 +348,48 @@ class Twitch3(twitchio.Client):
         except Exception as e:
             log.error(f"on_redemption: {str(e)}")
             log.error(traceback.format_exc())
+
+    async def on_cron(self):
+        info: ChannelInfo
+        for channel_name, info in self.channels.items():
+            if info.last_activity < time.time() - 1800.0:
+                continue
+            text = info.prefix + '_cron'
+            log = InvocationLog(
+                f"twitch channel {channel_name} ({info.channel_id})")
+            variables: Optional[Dict] = None
+            def get_vars():
+                nonlocal variables
+                if not variables:
+                    variables = {
+                        'mention': Lazy(lambda: self.random_mention(info, '')),
+                        'direct_mention': '',
+                        'random_mention': Lazy(lambda: self.random_mention(info, ''), stick=False),
+                        'any_mention': Lazy(lambda: self.random_mention(info, ''), stick=False),
+                        'media': 'twitch',
+                        'text': text,
+                        'is_mod': True,
+                        'prefix': info.prefix,
+                        'bot': self.nick,
+                        'channel_id': info.channel_id,
+                        '_log': log,
+                        '_private': False,
+                        '_id': 'cron',
+                    }
+                return variables
+            msg = Message(
+                id = 'cron',
+                log = log,
+                channel_id=info.channel_id,
+                txt=text,
+                event=EventType.message,
+                prefix=info.prefix,
+                is_discord=False,
+                is_mod=True,
+                private=False,
+                get_variables=get_vars)
+            actions = await commands.process_message(msg)
+            db().add_log(info.channel_id, log)
+            for a in actions:
+                if a.kind == ActionKind.NEW_MESSAGE:
+                    await self.send_message(info, a.text)

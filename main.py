@@ -145,9 +145,9 @@ async def expireVariables():
         db().expire_old_queries()
         await asyncio.sleep(300)
 
-async def cron(discord: DiscordClient, cron_interval_s: int):
+async def cron(client: Union[DiscordClient, twitch_api.Twitch3], cron_interval_s: int):
     while True:
-        await discord.on_cron()
+        await client.on_cron()
         await asyncio.sleep(cron_interval_s)
 
 def main():
@@ -197,6 +197,7 @@ def main():
             discordClient = DiscordClient(
                 intents=discord.Intents.all(), loop=loop, profile=args.profile)
             loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
+            loop.create_task(cron(discordClient, int(args.cron_interval_s)))
         except Exception as e:
             logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch:
@@ -204,15 +205,13 @@ def main():
             try:
                 t = twitch_api.Twitch3(twitch_bot=args.twitch, loop=loop)
                 loop.create_task(t.connect())
+                loop.create_task(cron(t, int(args.cron_interval_s)))
             except Exception as e:
                 logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())
-        if discordClient:
-            loop.create_task(cron(discordClient, int(args.cron_interval_s)))
         loop.run_forever()
-
         sys.exit(0)
     if args.add_channel:
         if not args.twitch_channel_name:
