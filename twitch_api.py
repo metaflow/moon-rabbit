@@ -46,6 +46,8 @@ class ChannelInfo:
     last_activity: float
 
 
+# Note that two API are used: twitchio for general channel operations and twitchAPI
+# for events like redeems and hype-trains.
 class Twitch3(twitchio.Client):
     def __init__(self, twitch_bot: str, loop: asyncio.AbstractEventLoop):
         logging.info(f'creating twitch bot {twitch_bot}')
