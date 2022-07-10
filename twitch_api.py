@@ -67,12 +67,12 @@ class Twitch3(twitchio.Client):
                 logging.info(f'refresh token response {response.text} {response.json} {response.status_code}')
                 if response.status_code == 200:
                     j = response.json()
-                    self.app_secret = j.get('access_token')
+                    self.auth_token = j.get('access_token')
                     self.refresh_token = j.get('refresh_token')
                     logging.info(f'refresh token secret {self.app_secret}, new token {self.refresh_token}')
                     with cursor() as cur:
-                        cur.execute('UPDATE twitch_bots SET access_token = %s, refresh_token = %s WHERE channel_name = %s',
-                            (self.app_secret, self.refresh_token, self.channel_name))
+                        cur.execute('UPDATE twitch_bots SET auth_token = %s, refresh_token = %s WHERE channel_name = %s',
+                            (self.auth_token, self.refresh_token, self.channel_name))
 
         self.channels: Dict[str, ChannelInfo] = {}
         self.throttler = Throttler(rate_limit=1, period=1)
