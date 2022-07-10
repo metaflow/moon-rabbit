@@ -142,7 +142,8 @@ DROP TABLE tags;
                 api_app_secret TEXT,
                 api_url TEXT,
                 api_port INT,
-                auth_token TEXT);
+                auth_token TEXT,
+                refhesh_token TEXT);
             CREATE TABLE IF NOT EXISTS variables
                 (channel_id INT,
                 name varchar(100),

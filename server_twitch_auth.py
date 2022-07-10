@@ -48,7 +48,7 @@ class UserAuthenticator:
  </html>"""
 
     __twitch: 'Twitch' = None
-    port: int = 17563
+    port: int = 7001
     url: str = 'http://localhost:17563'
     host: str = '0.0.0.0'
     scopes: List[AuthScope] = []
