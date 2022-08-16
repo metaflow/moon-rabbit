@@ -335,7 +335,6 @@ DROP TABLE tags;
     def delete_text(self, channel_id: int, text_id: int) -> int:
         ch = self.channel(channel_id)
         te = ch.all_text_by_id.get(text_id)
-        ch.tag_by_id.pop(text_id, None)
         if te:
             for node in te.queue_nodes.values():
                 node.owner().remove(node)
