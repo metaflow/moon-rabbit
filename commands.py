@@ -124,8 +124,8 @@ class Command(Protocol):
     def hidden_help(self):
         return True
 
-
-commands_cache: Dict[str, List[Command]] = {}
+# str -> List[Command]
+commands_cache = ttldict2.TTLDict(ttl_seconds=600.0) 
 
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
