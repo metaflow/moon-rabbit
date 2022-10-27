@@ -130,18 +130,20 @@ commands_cache = ttldict2.TTLDict(ttl_seconds=600.0)
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
     key = f'commands_{channel_id}_{prefix}'
-    if not key in commands_cache:
-        z: List[Command] = [HelpCommand(),
+    r = commands_cache.get(key)
+    if (not r):
+        commands: List[Command] = [HelpCommand(),
                             Eval(), Debug(), Multiline(),
                             SetCommand(), SetPrefix(),
                             TagList(), TagDelete(),
                             TextSet(), TextUpload(), TextDownload(),
                             TextSearch(), TextRemove(), TextDescribe(), TextNew(), TextSetNew(),
                             ]
-        z.extend([PersistentCommand(x, prefix)
+        commands.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
-        commands_cache[key] = z
-    return commands_cache[key]
+        commands_cache[key] = commands
+        r = commands
+    return r
 
 
 class PersistentCommand(Command):
