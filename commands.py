@@ -912,4 +912,4 @@ class InvalidateCache(Command):
         if not text:
             return [], True
         commands_cache.pop(f'commands_{msg.channel_id}_{msg.prefix}', None)
-        return [], False
+        return [Action(kind=ActionKind.REPLY, text='cleared commands cache')], False
