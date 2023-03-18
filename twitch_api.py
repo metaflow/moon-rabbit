@@ -152,7 +152,7 @@ class Twitch3(twitchio.Client):
                 return
             info: Optional[ChannelInfo] = self.channels.get(
                 message.channel.name)
-            if not info:``
+            if not info:
                 logging.info(f'unknown channel {message.channel.name}')
                 return
             info.twitch_channel = message.channel
