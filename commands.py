@@ -138,6 +138,7 @@ def get_commands(channel_id: int, prefix: str) -> List[Command]:
                             TagList(), TagDelete(),
                             TextSet(), TextUpload(), TextDownload(),
                             TextSearch(), TextRemove(), TextDescribe(), TextNew(), TextSetNew(),
+                            InvalidateCache()
                             ]
         commands.extend([PersistentCommand(x, prefix)
                  for x in db().get_commands(channel_id, prefix)])
@@ -903,3 +904,12 @@ class HelpCommand(Command):
 
     def hidden_help(self):
         return False
+
+
+class InvalidateCache(Command):
+    async def run(self, msg: Message) -> Tuple[List[Action], bool]:
+        text = command_prefix(msg.txt, msg.prefix, ['invalidate_cache'])
+        if not text:
+            return [], True
+        commands_cache.pop(f'commands_{msg.channel_id}_{msg.prefix}', None)
+        return [], False
