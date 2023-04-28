@@ -15,7 +15,7 @@ OUTPUT_FILE=${BACKUP_DIR}/${FILE}
 
 # do the database backup (dump)
 # use this command for a database server on localhost. add other options if need be.
-sudo -u $USER pg_dump ${DATABASE} -F p > ${OUTPUT_FILE}
+sudo -u $USER pg_dump ${DATABASE} --data-only -F p > ${OUTPUT_FILE}
 
 # gzip the mysql database dump file
 gzip $OUTPUT_FILE
