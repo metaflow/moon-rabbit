@@ -102,11 +102,13 @@ class DB:
         logging.warning('dropping and creating tables anew')
         with self.conn.cursor() as c:
             c.execute('''
-DROP TABLE commands;
-DROP TABLE channels;
-DROP TABLE variables;
-DROP TABLE texts;
-DROP TABLE tags;
+DROP TABLE commands CASCADE;
+DROP TABLE channels CASCADE;
+DROP TABLE variables CASCADE;
+DROP TABLE texts CASCADE;
+DROP TABLE tags CASCADE;
+DROP TABLE text_tags CASCADE;
+DROP TABLE twitch_bots CASCADE;
             ''')
         self.conn.commit()
         self.init_db()
