@@ -7,48 +7,51 @@ ssh -i <key> root@<ip>
 apt update
 apt upgrade
 
+# clone repo
+cd /var
+git clone https://github.com/metaflow/moon-rabbit.git
+
 # install postgres
 apt install postgresql postgresql-contrib
 
-# backup on another instance
+# restoring backup
 
-sudo -u postgres pg_dump rabbit --schema-only --no-owner  --no-privilege -F p > scheme.sql
-sudo -u postgres pg_dump rabbit --data-only --no-owner --no-privilege -F c > data.dump
-copy to the new location
+sudo -u postgres pg_dump rabbit --schema-only --no-owner --no-privilege -F p > scheme.sql
+sudo -u postgres pg_dump rabbit --data-only --no-owner --no-privilege -F c > backup.dump
+
 
 # setup database
 
-sudo -u postgres dropdb --if-exists chatbo
+sudo -u postgres dropdb --if-exists chatbot
 sudo -u postgres psql
 CREATE USER bot WITH PASSWORD '*****';
 CREATE DATABASE chatbot OWNER bot;
 GRANT ALL PRIVILEGES ON DATABASE chatbot TO bot;
 \q
 
-sudo -u postgres psql -d chatbot -f /mnt/backup/schema.sq
-sudo -u postgres pg_restore -d chatbot -no-owner --role=bot /mnt/backup/data.dump
+## from a full backup
 
-## setup schema
-cd /var
-git clone https://github.com/metaflow/moon-rabbit.git
-sudo -u postgres psql -d chatbot -f scheme.sql
+create a full backup
 
-copy backup to the machine - I have used winSCP
+sudo -u postgres pg_dump rabbit --no-owner --no-privilege --no-acl --column-inserts | gzip > backup.sql.gz
 
-cd /mnt/backup
-/mnt/backup# ls
-20230428090822_pg_backup.sql.gz
+restore frome full backup on destination server
 
-gzip -dk 20230428090822_pg_backup.sql.gz
+gunzip backup.sql.gz
+sudo -u postgres psql chatbot < backup.sql
 
-> restore schema
+>
 
-sudo -u postgres psql -d chatbot -f 20230428095641_pg_backup.sql
+# otherwise setup schema
 
-pg_restore --no-owner --role=bot -d chatbot 20230428090822_pg_backup.sql
-restore from backup / create an empty schema
+sudo -u postgres psql -d chatbot -f schema_backup.sql
 
-# install git
+# test that bot can connect to db
+
+create file in /var/moon-rabbit/.env
+
+DB_CONNECTION="dbname=chatbot user=bot password=***** host=localhost"
+DISCORD_TOKEN=*****
 
 # add domain for auth
 
@@ -62,3 +65,10 @@ restore from backup / create an empty schema
 - move database again
 - turn down old instance
 - setup access
+
+# how to work with DB
+
+sudo -u postgres psql
+
+/c chatbot
+/dt

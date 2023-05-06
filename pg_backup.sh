@@ -5,24 +5,21 @@
 
 BACKUP_DIR=/mnt/backup
 DAYS_TO_KEEP=14
-FILE_SUFFIX=_pg_backup.sql
+FILE_SUFFIX=.sql.gz
 DATABASE=rabbit
 USER=postgres
 
-FILE=`date +"%Y%m%d%H%M%S"`${FILE_SUFFIX}
+FILE=${DATABASE}`date +"%Y%m%d%H%M%S"`${FILE_SUFFIX}
 
 OUTPUT_FILE=${BACKUP_DIR}/${FILE}
 
 # do the database backup (dump)
 # use this command for a database server on localhost. add other options if need be.
-sudo -u $USER pg_dump ${DATABASE} --data-only -F p > ${OUTPUT_FILE}
-
-# gzip the mysql database dump file
-gzip $OUTPUT_FILE
+sudo -u $USER pg_dump ${DATABASE} --no-owner --no-privilege --no-acl --column-inserts | gzip > ${OUTPUT_FILE}
 
 # show the user the result
-echo "${OUTPUT_FILE}.gz was created:"
-ls -l ${OUTPUT_FILE}.gz
+echo "${OUTPUT_FILE} was created:"
+ls -l ${OUTPUT_FILE}
 
 # prune old backups
-find $BACKUP_DIR -maxdepth 1 -mtime +$DAYS_TO_KEEP -name "*${FILE_SUFFIX}.gz" -exec rm -rf '{}' ';'
+find $BACKUP_DIR -maxdepth 1 -mtime +$DAYS_TO_KEEP -name "*${FILE_SUFFIX}" -exec rm -rf '{}' ';'
