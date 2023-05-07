@@ -5,3 +5,4 @@
 *.log.*
 Pipfile.lock
 Pipfile.lock.bak
+__pycache__/*

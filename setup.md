@@ -12,7 +12,9 @@ cd /var
 git clone https://github.com/metaflow/moon-rabbit.git
 
 # install postgres and pipenv
+apt update
 apt install postgresql postgresql-contrib
+apt install libpq-dev python3-dev # for psycopg2 python package
 pip install --user pipenv
 
 check that pipenv is available e.g. add to .bashrc
@@ -21,7 +23,6 @@ check that pipenv is available e.g. add to .bashrc
 
 sudo -u postgres pg_dump rabbit --schema-only --no-owner --no-privilege -F p > scheme.sql
 sudo -u postgres pg_dump rabbit --data-only --no-owner --no-privilege -F c > backup.dump
-
 
 # setup database
 
@@ -44,10 +45,6 @@ gunzip backup.sql.gz
 sudo -u postgres psql chatbot < backup.sql
 
 
-# otherwise setup schema
-
-sudo -u postgres psql -d chatbot -f schema_backup.sql
-
 # test that bot can connect to db
 
 create file in /var/moon-rabbit/.env
@@ -56,6 +53,8 @@ DB_CONNECTION="dbname=chatbot user=bot password=***** host=localhost"
 DISCORD_TOKEN=*****
 
 Use a token to dev discord first and only run for discord.
+
+> pipenv run python3 main.py --discord --log_level INFO --log discord
 
 # add domain for auth
 

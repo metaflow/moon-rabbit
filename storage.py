@@ -541,6 +541,11 @@ DROP TABLE twitch_bots CASCADE;
                 ch.queries.pop(qid, None)
                 ch.query_to_id.pop(query_text, None)
 
+    def check_database(self):
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT id, discord_guild_id, twitch_channel_name FROM channels")            
+            for row in cur.fetchall():
+                logging.info(row)
 
 _db: Optional[DB]
 

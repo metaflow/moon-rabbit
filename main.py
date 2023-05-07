@@ -154,11 +154,9 @@ def main():
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch')
     parser.add_argument('--discord', action='store_true')
-    parser.add_argument('--add_channel', action='store_true')
     parser.add_argument('--twitch_channel_name')
     parser.add_argument('--twitch_command_prefix', default='+')
     parser.add_argument('--channel_id')
-    parser.add_argument('--drop_database', action='store_true')
     parser.add_argument('--also_log_to_stdout', action='store_true')
     parser.add_argument('--log', default='bot')
     parser.add_argument('--profile', action='store_true')
@@ -174,20 +172,15 @@ def main():
         handlers=[rotatingHandler, errHandler],
         format='%(asctime)s %(levelname)s %(message)s',
         level=args.log_level)
-    print('connecting to', os.getenv('DB_CONNECTION'))
-    set_db(DB(os.getenv('DB_CONNECTION')))
-    print(f'args {args}')
     if args.also_log_to_stdout:
         stdoutHandler = logging.StreamHandler()
         stdoutHandler.setFormatter(logging.Formatter(
             '%(asctime)s %(levelname)s %(message)s'))
         logging.getLogger().addHandler(stdoutHandler)
-    if args.drop_database:
-        confirm = input('type "yes" to drop database and continue: ')
-        if confirm != 'yes':
-            print(f'you typed "{confirm}", want "yes"')
-            sys.exit(1)
-        db().recreate_tables()
+    logging.info(f"connecting to {os.getenv('DB_CONNECTION')}")
+    set_db(DB(os.getenv('DB_CONNECTION')))
+    db().check_database()
+    logging.info(f'args {args}')
     loop = asyncio.new_event_loop()
     # loop = asyncio.get_running_loop()
     discordClient = None
@@ -212,22 +205,9 @@ def main():
         logging.info('running the async loop')
         loop.create_task(expireVariables())
         loop.run_forever()
-        sys.exit(0)
-    if args.add_channel:
-        if not args.twitch_channel_name:
-            print('set --twitch_channel_name')
-            sys.exit(1)
-        channel_id = args.channel_id
-        if not channel_id:
-            channel_id = db().new_channel_id()
-        with db().conn.cursor() as cur:
-            cur.execute('UPDATE channels SET twitch_channel_name = %s, twitch_command_prefix = %s WHERE id = %s',
-                        [args.twitch_channel_name, args.twitch_command_prefix, channel_id])
-            db().conn.commit()
-        logging.info(
-            f'updated channel #{channel_id} {args.twitch_channel_name}')
-        sys.exit(0)
+        sys.exit(0)    
     print('add --twitch or --discord argument to run bot')
+    sys.exit(1)
 
 if __name__ == "__main__":
     main()
