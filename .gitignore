@@ -4,3 +4,4 @@
 *.log
 *.log.*
 Pipfile.lock
+Pipfile.lock.bak
