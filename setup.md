@@ -11,8 +11,11 @@ apt upgrade
 cd /var
 git clone https://github.com/metaflow/moon-rabbit.git
 
-# install postgres
+# install postgres and pipenv
 apt install postgresql postgresql-contrib
+pip install --user pipenv
+
+check that pipenv is available e.g. add to .bashrc
 
 # restoring backup
 
@@ -40,7 +43,6 @@ restore frome full backup on destination server
 gunzip backup.sql.gz
 sudo -u postgres psql chatbot < backup.sql
 
->
 
 # otherwise setup schema
 
@@ -52,6 +54,8 @@ create file in /var/moon-rabbit/.env
 
 DB_CONNECTION="dbname=chatbot user=bot password=***** host=localhost"
 DISCORD_TOKEN=*****
+
+Use a token to dev discord first and only run for discord.
 
 # add domain for auth
 

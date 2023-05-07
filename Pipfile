@@ -1,28 +1,29 @@
+# versions are exact as pipfile.lock is not committed to the VCS as we target
+# different OS / python versions
+
 [[source]]
 url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
 [packages]
-discord = "*"
-psycopg2 = "*"
-cachetools = "*"
-jinja2 = "*"
-twitchio = "*"
-ttldict2 = "*"
-dacite = "*"
-mypy = "*"
-pymorphy2 = "*"
-pymorphy2-dicts-ru = "*"
-lark = "*"
-numpy = "*"
-llist = "*"
-twitchapi = "*"
-asyncio-throttle = "*"
-pillow = "*"
-requests = "*"
+asyncio-throttle = "==1.0.2" # request throttling
+cachetools = "==5.3.0" # caching
+dacite = "==1.8.0" # init class from dict
+discord = "==2.2.3"  # discord api
+jinja2 = "==3.1.2"  #  templating
+lark = "==1.1.5" # language parsing
+llist = "==0.7.1"  # linked list for non-unified diffs
+numpy = "==1.24.3"
+pillow = "==9.5.0"
+psycopg2 = "==2.9.6"  # postges
+pymorphy2 = "==0.9.1" # auto-generation of russian morphems
+pymorphy2-dicts-ru = "==2.4.417127.4579844" # auto-generation of russian morphems
+requests = "==2.30.0"
+ttldict2 = "==0.1.1" #  caching
+twitchapi = "==3.10.0" # twitch API (probably low level?)
+twitchio = "==2.6.0" #  twitch API
 
 [dev-packages]
-autopep8 = "*"
-# [requires]
-# python_version = "3.10"
+mypy = "==1.2.0"
+black = "==23.3.0"
