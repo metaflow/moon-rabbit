@@ -73,7 +73,25 @@ make runtime directory and copy scripts there
 update pg_backup.sh with correct credentials
 run ./pg_backup.sh and check if database backup looks OK
 
-update restart.sh with correct parameters
+update restart.sh if needed
+run restart.sh and check output of ./runtime/*_stdout files
+
+update crontab with new entries:
+
+> crontab -e
+
+*/5 * * * * /var/moon-rabbit/runtime/pg_backup.sh
+*/5 * * * * /var/moon-rabbit/runtime/restart.sh
+
+that wil restart and create backup every 5 minutes - to check if it really works.
+Wait for 10 minutes and then check
+> cat /var/moon-rabbit/runtime/restart_date.txt
+> ls -al /mnt/backup/
+
+then update crontab to make it more rate
+
+2 5 * * * /var/moon-rabbit/runtime/pg_backup.sh
+4 */3 * * * /var/moon-rabbit/runtime/restart.sh
 
 # add domain for auth
 
