@@ -19,6 +19,11 @@ pip install --user pipenv
 
 check that pipenv is available e.g. add to .bashrc
 
+# create a backup volume
+
+mkdir -p /mnt/backup
+# ... instructions from digital ocean to mount a volume to /mnt/backup
+
 # restoring backup
 
 mkdir -p /mnt/backup
@@ -93,22 +98,8 @@ then update crontab to make it more rate
 2 5 * * * /var/moon-rabbit/runtime/pg_backup.sh
 4 */3 * * * /var/moon-rabbit/runtime/restart.sh
 
-# add domain for auth
-
-# periodic restart
-
-# migration
-
-- check discord on personal server first
-- check twitch on personal server first
-- try on jl
-- move database again
-- turn down old instance
-- setup access
-
 # how to work with DB
 
 sudo -u postgres psql
-
 /c chatbot
 /dt
