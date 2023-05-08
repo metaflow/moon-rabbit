@@ -44,6 +44,10 @@ restore frome full backup on destination server
 gunzip backup.sql.gz
 sudo -u postgres psql chatbot < backup.sql
 
+sudo -u postgres psql
+ALTER DATABASE chatbot OWNER TO bot;
+select 'ALTER TABLE ' || table_name || ' OWNER TO bot;' from information_schema.tables where table_schema = 'public';
+\q
 
 # test that bot can connect to db
 
@@ -54,7 +58,19 @@ DISCORD_TOKEN=*****
 
 Use a token to dev discord first and only run for discord.
 
-> pipenv run python3 main.py --discord --log_level INFO --log discord
+> pipenv run python3 main.py --discord --log_level INFO --log discord --also_log_to_stdout
+ pipenv run python3 main.py --twitch moon_robot --log_level INFO --log moon_robot --also_log_to_stdout
+
+now change discord to normal token.
+make runtime directory and copy scripts there
+
+> cd /var/moon-rabbit
+> mkdir -p runtime
+> cp restart.sh ./runtime
+> cp pg_backup.sh ./runtime
+
+update pg_backup.sh with correct credentials
+update restart.sh with correct parameters
 
 # add domain for auth
 
