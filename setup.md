@@ -21,6 +21,7 @@ check that pipenv is available e.g. add to .bashrc
 
 # restoring backup
 
+mkdir -p /mnt/backup
 sudo -u postgres pg_dump rabbit --schema-only --no-owner --no-privilege -F p > scheme.sql
 sudo -u postgres pg_dump rabbit --data-only --no-owner --no-privilege -F c > backup.dump
 
@@ -70,6 +71,8 @@ make runtime directory and copy scripts there
 > cp pg_backup.sh ./runtime
 
 update pg_backup.sh with correct credentials
+run ./pg_backup.sh and check if database backup looks OK
+
 update restart.sh with correct parameters
 
 # add domain for auth
