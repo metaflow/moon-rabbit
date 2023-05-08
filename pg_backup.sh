@@ -6,10 +6,10 @@
 BACKUP_DIR=/mnt/backup
 DAYS_TO_KEEP=14
 FILE_SUFFIX=.sql.gz
-DATABASE=rabbit
+DATABASE=[database]
 USER=postgres
 
-FILE=${DATABASE}`date +"%Y%m%d%H%M%S"`${FILE_SUFFIX}
+FILE=${DATABASE}_`date +"%Y%m%d%H%M%S"`_${FILE_SUFFIX}
 
 OUTPUT_FILE=${BACKUP_DIR}/${FILE}
 

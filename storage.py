@@ -78,7 +78,6 @@ class DB:
         self.channels: Dict[int, ChannelCache] = {}
         self.logs = {}
         self.rng = np.random.default_rng()
-        self.init_db()
 
     def channel(self, channel_id: int) -> ChannelCache:
         if channel_id in self.channels:
@@ -97,27 +96,6 @@ class DB:
         self.reload_tags(ch)
         self.channels[channel_id] = ch
         return ch
-
-    def recreate_tables(self):
-        logging.warning('dropping and creating tables anew')
-        with self.conn.cursor() as c:
-            c.execute('''
-DROP TABLE commands CASCADE;
-DROP TABLE channels CASCADE;
-DROP TABLE variables CASCADE;
-DROP TABLE texts CASCADE;
-DROP TABLE tags CASCADE;
-DROP TABLE text_tags CASCADE;
-DROP TABLE twitch_bots CASCADE;
-            ''')
-        self.conn.commit()
-        self.init_db()
-
-    def init_db(self):
-        with self.conn.cursor() as cur:
-            with open('scheme.sql', 'r') as f:
-                cur.execute(f.read())
-        self.conn.commit()
 
     @functools.lru_cache(maxsize=1000)
     def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name) -> Tuple[int, str]:
