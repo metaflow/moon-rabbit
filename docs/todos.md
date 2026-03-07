@@ -1,0 +1,6 @@
+- Allow commands without prefix in private bot conversations
+- Check sandbox settings for Jinja2
+- Test performance of compiled templates vs `from_string`
+- Add DB indexes
+- "Bingo or anagrams?" (game idea)
+- Remove legacy `morph` tag migration code in `TextDownload`
