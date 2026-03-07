@@ -6,8 +6,8 @@ import discord  # type: ignore
 import logging
 import random
 import ttldict2  # type: ignore
-from storage import DB, db, set_db, cursor
-from typing import Any, Callable, List, Set, Union
+from storage import db
+from typing import Any, List
 import traceback
 import commands
 import time
