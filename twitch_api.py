@@ -50,7 +50,8 @@ class ChannelInfo:
 # Note that two API are used: twitchio for general channel operations and twitchAPI
 # for events like redeems and hype-trains.
 class Twitch3(twitchio.Client):
-    def __init__(self, twitch_bot: str, loop: asyncio.AbstractEventLoop):
+    def __init__(self, twitch_bot: str, loop: asyncio.AbstractEventLoop, dev_message: str = None):
+        self.dev_message = dev_message
         logging.info(f'creating twitch bot {twitch_bot}')
         with cursor() as cur:
             cur.execute(
@@ -137,6 +138,17 @@ class Twitch3(twitchio.Client):
         # We are logged in and ready to chat and use commands...
         logging.info(f'Logged in as {self.nick}')
         # await self.join_channels(self.channels.keys())
+        if self.dev_message:
+            # Delay briefly to let channel joins complete.
+            await asyncio.sleep(3)
+            for name, info in self.channels.items():
+                try:
+                    ch = self.get_channel(name)
+                    if ch:
+                        await ch.send(self.dev_message)
+                        logging.info(f'[dev] sent smoke-test to #{name}')
+                except Exception as e:
+                    logging.warning(f'[dev] failed to send to #{name}: {e}')
 
     async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
         # Set channel just in case if reward redemption will happen before any message.

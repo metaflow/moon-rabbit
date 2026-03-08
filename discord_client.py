@@ -37,15 +37,26 @@ def download_file(url: str) -> str:
 
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
-    def __init__(self, profile: bool, *args, **kwargs):
+    def __init__(self, profile: bool, dev_message: str = None, *args, **kwargs):
         self.guild_data: Dict[str, Any] = {}
         self.channels: Dict[str, Any] = {}
         self.mods: Dict[str, str] = {}
         self.profile = profile
+        self.dev_message = dev_message
         super().__init__(*args, **kwargs)
 
     async def on_ready(self):
         print('We have logged in as {0.user}'.format(self))
+        if self.dev_message:
+            for guild in self.guilds:
+                for channel in guild.text_channels:
+                    try:
+                        await channel.send(self.dev_message)
+                        logging.info(f'[dev] sent smoke-test to #{channel.name} in {guild.name}')
+                        break
+                    except Exception as e:
+                        logging.warning(f'[dev] failed to send to #{channel.name}: {e}')
+                        continue
 
     async def on_message(self, message: discord.Message):
         # Don't react to own messages.

@@ -71,7 +71,6 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 - [ ] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
 - [ ] Upgrade `twitchAPI` from `3.10.0` → `4.x` — EventSub WebSocket transport (no public callback URL needed)
 - [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
-- [ ] Remove `gg_em` from channel list if it's no longer a valid channel
 - [ ] Consider using PM2 (already available) with `--watch` or `--restart-delay` instead of `restart.sh` crontab for automatic restarts
 
 ---
@@ -105,9 +104,37 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 
 ---
 
+## 3. Local Dev Environment
+
+> **PRELIMINARY** — steps documented but not yet tested end-to-end.
+
+Setting up a local dev environment to do all migrations and new functionality locally before deploying.
+
+### Checklist
+
+- [ ] Install PostgreSQL locally
+- [ ] Create local `chatbot` database and `bot` user
+- [ ] Import production DB dump
+- [ ] Patch `channels` table with dev Discord guild ID and Twitch channel name
+- [ ] Patch `twitch_bots` table with dev API keys and OAuth tokens
+- [ ] Obtain Discord API key (dev application + bot token + invite to test server)
+- [ ] Obtain Twitch API keys (client ID/secret + user OAuth token + mod bot in dev channel)
+- [ ] Set up `.env` with `DB_CONNECTION` and `DISCORD_TOKEN`
+- [ ] `pipenv install` — verify all deps install cleanly
+- [ ] Implement `--dev` flag in `main.py` (smoke-test message on connect)
+- [ ] Test Discord bot connects and sends smoke-test message
+- [ ] Test Twitch bot connects and sends smoke-test message
+
+### Dev setup docs
+
+Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "Local Development Setup (PRELIMINARY)".
+
+---
+
 ## Timeline
 
 | Date | What |
 |---|---|
 | 2026-03-08 | Created this log. Starting Twitch auth investigation. |
 | 2026-03-08 | Analyzed error logs (2023–2026). Identified 5 root causes. Added `[lifecycle]` debug hooks to `twitch_api.py`. |
+| 2026-03-08 | Added local dev environment setup documentation to `setup.md` and `migration_log.md`. |

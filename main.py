@@ -36,6 +36,7 @@ import random
 from storage import DB, db, set_db, cursor
 from typing import Any, Callable, List, Set, Union
 import commands
+import datetime
 import time
 import logging.handlers
 import twitch_api
@@ -196,6 +197,8 @@ def main():
     parser.add_argument('--log', default='bot')
     parser.add_argument('--profile', action='store_true')
     parser.add_argument('--cron_interval_s', default='600')
+    parser.add_argument('--dev', action='store_true',
+                        help='Dev mode: send a smoke-test message to all channels on connect')
     args = parser.parse_args()
     setup_logging(args.log, args.also_log_to_stdout)
     logging.info(f"connecting to {os.getenv('DB_CONNECTION')}")
@@ -204,12 +207,18 @@ def main():
     logging.info(f'args {args}')
     loop = asyncio.new_event_loop()
     # loop = asyncio.get_running_loop()
+    dev_msg = None
+    if args.dev:
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        dev_msg = f'\U0001f407 moon-rabbit dev mode — connected at {now}'
+        logging.info(f'dev mode enabled, smoke-test message: {dev_msg}')
     discordClient = None
     if args.discord:
         try:
             logging.info('starting Discord Bot')
             discordClient = DiscordClient(
-                intents=discord.Intents.all(), loop=loop, profile=args.profile)
+                intents=discord.Intents.all(), loop=loop, profile=args.profile,
+                dev_message=dev_msg)
             loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
             loop.create_task(cron(discordClient, int(args.cron_interval_s)))
         except Exception as e:
@@ -217,7 +226,8 @@ def main():
     if args.twitch:
         with cursor() as cur:
             try:
-                t = twitch_api.Twitch3(twitch_bot=args.twitch, loop=loop)
+                t = twitch_api.Twitch3(twitch_bot=args.twitch, loop=loop,
+                                       dev_message=dev_msg)
                 loop.create_task(t.connect())
                 loop.create_task(cron(t, int(args.cron_interval_s)))
             except Exception as e:

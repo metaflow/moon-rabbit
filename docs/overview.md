@@ -80,6 +80,7 @@ Both platforms share the same command processing pipeline (`commands.process_mes
 | `--cron_interval_s` | Interval for periodic cron tasks (default: 600s) |
 | `--log` | Log file prefix (creates `.debug.log`, `.info.log`, `.errors.log`) |
 | `--profile` | Benchmarking mode (loops message processing for 1s) |
+| `--dev` | Dev mode: sends a smoke-test message to all channels on connect |
 
 On startup:
 1. Connects to PostgreSQL via `DB_CONNECTION` env var
