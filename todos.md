@@ -1,6 +1,9 @@
+- add setup.md reference to docs
+- check if pg setup makes sense
 - Allow commands without prefix in private bot conversations
 - Check sandbox settings for Jinja2
 - Test performance of compiled templates vs `from_string`
 - Add DB indexes
 - "Bingo or anagrams?" (game idea)
 - Remove legacy `morph` tag migration code in `TextDownload`
+- Add cleanup for generated images and also store them outside of the main app directory

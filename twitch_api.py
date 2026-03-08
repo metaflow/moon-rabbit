@@ -141,9 +141,30 @@ class Twitch3(twitchio.Client):
     async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
         # Set channel just in case if reward redemption will happen before any message.
         info = self.channels.get(channel.name)
-        # logging.info(f'join {channel.name} {user.name}')
         if info:
             info.twitch_channel = channel
+            if user.name == self.nick:
+                logging.info(f'[lifecycle] successfully joined channel: {channel.name}')
+
+    async def event_error(self, error: Exception, data: str = None):
+        logging.error(f'[lifecycle] twitchio event_error: {error}, data={data}')
+        logging.error(traceback.format_exc())
+
+    async def event_reconnect(self):
+        logging.warning('[lifecycle] received RECONNECT from Twitch, reconnecting...')
+
+    async def event_token_expired(self):
+        logging.error('[lifecycle] TOKEN EXPIRED — twitchio reports token is invalid')
+        # Intentionally returning None to let twitchio handle it (or fail).
+        # This is diagnostic only — we want to see if this fires.
+        return None
+
+    async def event_channel_join_failure(self, channel: str):
+        logging.error(f'[lifecycle] failed to join channel: {channel}')
+
+    async def event_part(self, user):
+        if user.name == self.nick:
+            logging.warning(f'[lifecycle] bot parted from channel (kicked or disconnected)')
 
     async def event_message(self, message):
         try:

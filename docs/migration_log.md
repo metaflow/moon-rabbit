@@ -40,11 +40,39 @@ On startup (`__init__`):
 
 ### Findings
 
-*(To be filled in as investigation progresses)*
+#### Error log analysis (2023-05-08 to 2026-03-08)
+
+From `moon_robot.errors.log`:
+- **115 `Websocket connection was closed: None`** events — twitchio's IRC WebSocket drops
+- **10,589 `channel was unable to be joined`** errors — `gg_em` permanently broken since 2023-05-08, failing every 3h on cron
+- **`jl_in_july`** triggers `KeyError` storms in twitchio's `_join_future_handle()` — a known twitchio 2.x bug where rapid retry join attempts race and double-pop from `_join_pending`
+- Disconnect intervals are irregular (hours to months), ruling out token expiry as the sole cause
+
+#### Root causes identified
+
+1. **No lifecycle hooks** — `event_token_expired`, `event_error`, `event_reconnect` were not implemented. Token expiry killed the connection silently.
+2. **Token only refreshed at startup** — Twitch OAuth tokens expire ~4h. After that, any reconnect attempt uses a stale token.
+3. **Broken channel re-joins after reconnect** — twitchio auto-reconnects but fails to re-join channels (especially `gg_em`, which appears to be a decommissioned/renamed channel).
+4. **twitchAPI EventSub uses deprecated webhook transport** — `twitchAPI 3.x` EventSub webhook class is deprecated; v4 uses WebSocket transport.
+5. **`twitchio 2.6.0` is EOL** — v3 has improved reconnect, token management, and moves to EventSub for chat (away from IRC).
+
+#### Debug hooks added (2026-03-08)
+
+Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
+- `event_error`, `event_reconnect`, `event_token_expired`, `event_channel_join_failure`, `event_part`
+- These log only; they do not fix anything. Purpose is to confirm which failure mode triggers on the next disconnect.
 
 ### Resolution
 
-*(To be filled in)*
+*(To be filled in after debug hooks confirm the failure mode)*
+
+### Next Steps (library upgrades)
+
+- [ ] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
+- [ ] Upgrade `twitchAPI` from `3.10.0` → `4.x` — EventSub WebSocket transport (no public callback URL needed)
+- [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
+- [ ] Remove `gg_em` from channel list if it's no longer a valid channel
+- [ ] Consider using PM2 (already available) with `--watch` or `--restart-delay` instead of `restart.sh` crontab for automatic restarts
 
 ---
 
@@ -82,3 +110,4 @@ On startup (`__init__`):
 | Date | What |
 |---|---|
 | 2026-03-08 | Created this log. Starting Twitch auth investigation. |
+| 2026-03-08 | Analyzed error logs (2023–2026). Identified 5 root causes. Added `[lifecycle]` debug hooks to `twitch_api.py`. |
