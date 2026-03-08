@@ -50,10 +50,12 @@ restore frome full backup on destination server
 gunzip backup.sql.gz
 sudo -u postgres psql chatbot < backup.sql
 
-sudo -u postgres psql
-ALTER DATABASE chatbot OWNER TO bot;
-select 'ALTER TABLE ' || table_name || ' OWNER TO bot;' from information_schema.tables where table_schema = 'public';
-\q
+# Reassign ownership of all user-created tables and sequences to bot:
+sudo -u postgres psql chatbot -t -A -c "
+  SELECT format('ALTER TABLE %I OWNER TO bot;', tablename) FROM pg_tables WHERE schemaname='public'
+  UNION ALL
+  SELECT format('ALTER SEQUENCE %I OWNER TO bot;', sequence_name) FROM information_schema.sequences WHERE sequence_schema='public'
+" | sudo -u postgres psql chatbot
 
 # test that bot can connect to db
 
@@ -129,7 +131,7 @@ sudo -u postgres psql
 ```
 
 ```sql
-CREATE USER bot WITH PASSWORD 'localdev';
+CREATE USER bot WITH PASSWORD 'bot';
 CREATE DATABASE chatbot OWNER bot;
 GRANT ALL PRIVILEGES ON DATABASE chatbot TO bot;
 \q
@@ -148,46 +150,14 @@ gunzip backup.sql.gz
 sudo -u postgres psql chatbot < backup.sql
 ```
 
-Fix ownership:
+# Reassign ownership of all user-created tables and sequences to bot:
+sudo -u postgres psql chatbot -t -A -c "
+  SELECT format('ALTER TABLE %I OWNER TO bot;', tablename) FROM pg_tables WHERE schemaname='public'
+  UNION ALL
+  SELECT format('ALTER SEQUENCE %I OWNER TO bot;', sequence_name) FROM information_schema.sequences WHERE sequence_schema='public'
+" | sudo -u postgres psql chatbot
 
-```bash
-sudo -u postgres psql
-```
-
-```sql
-ALTER DATABASE chatbot OWNER TO bot;
--- Run the generated ALTER TABLE statements:
-SELECT 'ALTER TABLE ' || table_name || ' OWNER TO bot;' FROM information_schema.tables WHERE table_schema = 'public';
-\q
-```
-
-## 4. Patch channel data for dev
-
-Update `channels` and `twitch_bots` to point at your dev Discord server and Twitch channel:
-
-```bash
-sudo -u postgres psql chatbot
-```
-
-```sql
--- Update Discord guild ID to your test server
-UPDATE channels SET discord_guild_id = '<your_test_server_id>' WHERE discord_guild_id = '<prod_guild_id>';
-
--- Update Twitch channel name to your dev channel
-UPDATE channels SET twitch_channel_name = '<your_twitch_channel>' WHERE twitch_channel_name = '<prod_channel>';
-
--- Update Twitch bot credentials (see API keys section below)
-UPDATE twitch_bots SET
-  api_app_id = '<your_client_id>',
-  api_app_secret = '<your_client_secret>',
-  auth_token = '<your_oauth_token>',
-  refresh_token = '<your_refresh_token>'
-WHERE channel_name = 'moon_robot';
-```
-
-## 5. Obtain API keys
-
-### Discord
+## 4. Register a Discord bot
 
 1. Go to [discord.com/developers/applications](https://discord.com/developers/applications)
 2. Click **New Application**, give it a name
@@ -198,7 +168,18 @@ WHERE channel_name = 'moon_robot';
    - Bot Permissions: `Send Messages`, `Read Message History`, `Add Reactions`, `Manage Guild` (for banner), `View Channels`
 6. Open the generated URL to invite the bot to your test server
 
-### Twitch
+## 5. Add a Discord channel
+
+Enable **Developer Mode** in Discord: **Settings → Advanced → Developer Mode**. Then:
+- **Guild (server) ID**: Right-click the server name → **Copy Server ID**
+- **Channel ID**: Right-click a channel → **Copy Channel ID**
+- **User ID**: Right-click a user → **Copy User ID**
+
+The bot uses `discord_guild_id` in the `channels` table to identify which server it's serving. On first message in a new guild, it auto-creates a channel entry — no manual DB insert needed.
+
+> `discord_allowed_channels` controls which Discord channels the bot listens in. If empty (the default), the bot responds in **all** channels. You can restrict it later with the `allow_here` / `disallow_here` commands.
+
+## 6. Register a Twitch bot
 
 1. Go to [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)
 2. Click **Register Your Application**:
@@ -206,26 +187,77 @@ WHERE channel_name = 'moon_robot';
    - OAuth Redirect URL: `http://localhost:3000` (for token generation)
    - Category: Chat Bot
 3. Copy the **Client ID** (`api_app_id`) and generate a **Client Secret** (`api_app_secret`)
-4. Generate a user OAuth token for the bot account. Use the Twitch CLI or the implicit grant flow:
+4. Install the [Twitch CLI](https://github.com/twitchdev/twitch-cli):
 
+   ```bash
+   # macOS / Linux (Homebrew):
+   brew install twitchdev/twitch/twitch-cli
+
+   # Or download the binary from GitHub releases:
+   # https://github.com/twitchdev/twitch-cli/releases
    ```
-   # Using Twitch CLI:
+
+   Configure it with your app credentials:
+
+   ```bash
+   twitch configure -i <CLIENT_ID> -s <CLIENT_SECRET>
+   ```
+
+5. Generate a user OAuth token for the bot account (log into Twitch as the bot account in your browser first):
+
+   ```bash
    twitch token -u -s "chat:read chat:edit channel:read:redemptions"
-
-   # Or open in browser (implicit grant):
-   https://id.twitch.tv/oauth2/authorize?client_id=<CLIENT_ID>&redirect_uri=http://localhost:3000&response_type=token&scope=chat:read+chat:edit+channel:read:redemptions
    ```
 
-5. The resulting `access_token` goes into `twitch_bots.auth_token`
-6. For refresh tokens, use the authorization code flow instead of implicit grant
-7. **Important**: The bot account must have permission to chat in your dev channel. If you own the channel, mod the bot account: `/mod <bot_username>`
+   This opens a browser for OAuth approval and returns an `access_token` and `refresh_token`.
 
-## 6. Set up `.env`
+6. **Important**: The bot account must have permission to chat in your dev channel. If you own the channel, mod the bot account: `/mod <bot_username>`
+
+Store the bot credentials in the `twitch_bots` table:
+
+```sql
+sudo -u postgres psql chatbot
+
+INSERT INTO twitch_bots (channel_name, api_app_id, api_app_secret, auth_token, refresh_token)
+VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<oauth_token>', '<refresh_token>');
+```
+
+## 7. Add a Twitch channel
+
+Your Twitch channel name is your Twitch username (lowercase), visible in the URL: `twitch.tv/<channel_name>`.
+
+The bot looks up channels by the `twitch_bot` column in the `channels` table. On first message, it auto-creates a channel entry — no manual DB insert needed.
+
+## 8. Patch channel data for dev
+
+If you imported production data, update the channel and bot entries to point at your dev accounts:
+
+```sql
+sudo -u postgres psql chatbot
+
+-- Update Discord guild ID to your test server
+UPDATE channels SET discord_guild_id = '<your_guild_id>' WHERE discord_guild_id = '<prod_guild_id>';
+
+-- Update Twitch channel name to your dev channel
+UPDATE channels SET twitch_channel_name = '<your_twitch_channel>' WHERE twitch_channel_name = '<prod_channel>';
+
+-- Update Twitch bot credentials
+UPDATE twitch_bots SET
+  api_app_id = '<your_client_id>',
+  api_app_secret = '<your_client_secret>',
+  auth_token = '<your_oauth_token>',
+  refresh_token = '<your_refresh_token>'
+WHERE channel_name = 'moon_robot';
+```
+
+> If you're starting with a fresh database (no import), skip this step — the bot auto-creates channel entries on the first message it receives.
+
+## 9. Set up `.env`
 
 Create (or update) `.env` in the project root:
 
 ```bash
-DB_CONNECTION="dbname=chatbot user=bot password=localdev host=localhost"
+DB_CONNECTION="dbname=chatbot user=bot password=bot host=localhost"
 DISCORD_TOKEN=<your_discord_bot_token>
 ```
 
@@ -235,13 +267,13 @@ Source it before running:
 source .env
 ```
 
-## 7. Install dependencies
+## 10. Install dependencies
 
 ```bash
 pipenv install
 ```
 
-## 8. Run in dev mode
+## 11. Run in dev mode
 
 ```bash
 pipenv run python3 main.py --dev --discord --log dev --also_log_to_stdout

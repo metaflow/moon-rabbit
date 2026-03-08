@@ -76,7 +76,7 @@ sequenceDiagram
     Client->>Client: resolve channel_id, prefix, is_mod
     Client->>Client: build lazy variables dict (get_vars)
     Client->>Cmd: process_message(Message)
-    
+
     loop for each Command in get_commands()
         Cmd->>Cmd: check: mod_only? platform? event_type?
         alt Built-in command matches
@@ -93,7 +93,7 @@ sequenceDiagram
             end
         end
     end
-    
+
     Cmd-->>Client: List[Action]
     Client->>User: send reply / new message / reaction
 ```
@@ -111,7 +111,6 @@ erDiagram
         varchar discord_command_prefix
         varchar twitch_channel_name
         varchar twitch_command_prefix
-        text twitch_auth_token
         text twitch_events
         text twitch_bot
         text discord_allowed_channels

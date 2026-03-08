@@ -31,7 +31,6 @@ CREATE TABLE public.channels (
     discord_command_prefix character varying(10),
     twitch_channel_name character varying(50),
     twitch_command_prefix character varying(10),
-    twitch_auth_token text,
     twitch_events text,
     twitch_bot text,
     discord_allowed_channels text,
@@ -253,11 +252,35 @@ ALTER TABLE ONLY public.twitch_bots ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: channels channels_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.channels
+    ADD CONSTRAINT channels_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: commands commands_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commands
+    ADD CONSTRAINT commands_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: tags tags_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tags
     ADD CONSTRAINT tags_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: twitch_bots twitch_bots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.twitch_bots
+    ADD CONSTRAINT twitch_bots_pkey PRIMARY KEY (id);
 
 
 --
