@@ -47,7 +47,7 @@ if __name__ == "__main__":
                     tags.append('femn')
                 tags = ["_" + x for x in tags if x != 'nomn']
                 tags.append("morph")
-                logging.info(f'morph parse {p} {p.tag.grammemes} {tags}')
+                logging.debug(f'morph parse {p} {p.tag.grammemes} {tags}')
                 suggested.append(' '.join(tags))
                 inf = []
                 for c in cases:

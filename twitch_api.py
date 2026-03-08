@@ -188,7 +188,7 @@ class Twitch3(twitchio.Client):
             if author in info.throttled_users:
                 return
             info.active_users.drop_old_items()
-            log.info(f'{author} "{message.content}"')
+            log.debug(f'{author} "{message.content}"')
             variables: Optional[Dict] = None
             is_mod = message.author.is_mod
             # postpone variable calculations as much as possible
@@ -260,16 +260,16 @@ class Twitch3(twitchio.Client):
 
     async def on_hype_train_ends(self, data):
         try:
-            logging.info(f'on_hype_train_ends {data}')
+            logging.debug(f'on_hype_train_ends {data}')
             event = data.get('event', {})
-            logging.info(f'event {event}')
+            logging.debug(f'event {event}')
             channel_name = event.get('broadcaster_user_login')
             author = ''
             text = str(event.get('level'))
             contributors = ', '.join(['@' + c.get('user_name')
                                      for c in event.get('top_contributions')])
-            logging.info(f'contributors {contributors}')
-            logging.info(f'text "{text}"')
+            logging.debug(f'contributors {contributors}')
+            logging.debug(f'text "{text}"')
             info: Optional[ChannelInfo] = self.channels.get(channel_name)
             if not info:
                 logging.info(f'unknown channel {channel_name}')
@@ -312,7 +312,7 @@ class Twitch3(twitchio.Client):
                 is_mod=is_mod,
                 private=False,
                 get_variables=get_vars)
-            logging.info('discpathcing hype train event message')
+            logging.debug('dispatching hype train event message')
             actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:

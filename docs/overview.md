@@ -78,7 +78,7 @@ Both platforms share the same command processing pipeline (`commands.process_mes
 | `--discord` | Start the Discord bot |
 | `--twitch <bot_name>` | Start the Twitch bot (reads config from `twitch_bots` DB table) |
 | `--cron_interval_s` | Interval for periodic cron tasks (default: 600s) |
-| `--log` / `--log_level` | Logging configuration |
+| `--log` | Log file prefix (creates `.debug.log`, `.info.log`, `.errors.log`) |
 | `--profile` | Benchmarking mode (loops message processing for 1s) |
 
 On startup:

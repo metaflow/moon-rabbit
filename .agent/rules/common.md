@@ -20,6 +20,7 @@ Whenever you add new features, change the architecture, or modify key files, you
 ## Coding Standards & Guidelines
 1. **Consistency**: Follow the existing code style, naming conventions, and architectural patterns established in the project.
 2. **Modularity**: Keep functions and components small, reusable, and focused on a single responsibility.
-3. **No Assumptions**: If requirements or implementation details are unclear, ask the user for clarification rather than making assumptions.
-4. **Proactiveness**: Try to anticipate edge cases and handle errors gracefully.
-5. **Concise Communication**: Keep your explanations brief and focus on actionable steps or code changes.
+3. **Extract Functions**: Look for opportunities to extract blocks of logic into smaller, well-named functions. This improves readability and makes the codebase easier to understand and maintain.
+4. **No Assumptions**: If requirements or implementation details are unclear, ask the user for clarification rather than making assumptions.
+5. **Proactiveness**: Try to anticipate edge cases and handle errors gracefully.
+6. **Concise Communication**: Keep your explanations brief and focus on actionable steps or code changes.

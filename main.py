@@ -150,6 +150,41 @@ async def cron(client: Union[DiscordClient, twitch_api.Twitch3], cron_interval_s
         await client.on_cron()
         await asyncio.sleep(cron_interval_s)
 
+
+def setup_logging(log_prefix: str, also_log_to_stdout: bool):
+    """Configure multi-level file logging with automatic size-based rotation.
+
+    Creates three log files:
+      {log_prefix}.debug.log  — all levels (50MB, 8 backups)
+      {log_prefix}.info.log   — INFO+ (20MB, 8 backups)
+      {log_prefix}.errors.log — ERROR+ (10MB, 8 backups)
+    """
+    log_fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    debugHandler = logging.handlers.RotatingFileHandler(
+        f'{log_prefix}.debug.log', encoding='utf-8',
+        maxBytes=50_000_000, backupCount=8)
+    debugHandler.setLevel(logging.DEBUG)
+    debugHandler.setFormatter(log_fmt)
+    infoHandler = logging.handlers.RotatingFileHandler(
+        f'{log_prefix}.info.log', encoding='utf-8',
+        maxBytes=20_000_000, backupCount=8)
+    infoHandler.setLevel(logging.INFO)
+    infoHandler.setFormatter(log_fmt)
+    errHandler = logging.handlers.RotatingFileHandler(
+        f'{log_prefix}.errors.log', encoding='utf-8',
+        maxBytes=10_000_000, backupCount=8)
+    errHandler.setLevel(logging.ERROR)
+    errHandler.setFormatter(log_fmt)
+    logging.basicConfig(
+        handlers=[debugHandler, infoHandler, errHandler],
+        format='%(asctime)s %(levelname)s %(message)s',
+        level=logging.DEBUG)
+    if also_log_to_stdout:
+        stdoutHandler = logging.StreamHandler()
+        stdoutHandler.setFormatter(log_fmt)
+        logging.getLogger().addHandler(stdoutHandler)
+
+
 def main():
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch')
@@ -160,23 +195,9 @@ def main():
     parser.add_argument('--also_log_to_stdout', action='store_true')
     parser.add_argument('--log', default='bot')
     parser.add_argument('--profile', action='store_true')
-    parser.add_argument('--log_level', default='INFO')
     parser.add_argument('--cron_interval_s', default='600')
     args = parser.parse_args()
-    errHandler = logging.FileHandler( 
-        f'{args.log}.errors.log', encoding='utf-8',)
-    errHandler.setLevel(logging.ERROR)
-    rotatingHandler = logging.handlers.TimedRotatingFileHandler(
-        f'{args.log}.log', when='D', encoding='utf-8', backupCount=8)
-    logging.basicConfig(
-        handlers=[rotatingHandler, errHandler],
-        format='%(asctime)s %(levelname)s %(message)s',
-        level=args.log_level)
-    if args.also_log_to_stdout:
-        stdoutHandler = logging.StreamHandler()
-        stdoutHandler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s %(message)s'))
-        logging.getLogger().addHandler(stdoutHandler)
+    setup_logging(args.log, args.also_log_to_stdout)
     logging.info(f"connecting to {os.getenv('DB_CONNECTION')}")
     set_db(DB(os.getenv('DB_CONNECTION')))
     db().check_database()
@@ -205,7 +226,7 @@ def main():
         logging.info('running the async loop')
         loop.create_task(expireVariables())
         loop.run_forever()
-        sys.exit(0)    
+        sys.exit(0)
     print('add --twitch or --discord argument to run bot')
     sys.exit(1)
 

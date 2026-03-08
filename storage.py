@@ -105,7 +105,7 @@ class DB:
         if row:
             id = row[0]
             prefix = row[1]
-            logging.info(f"got Twitch channel ID '{name}' #{id} '{prefix}'")
+            logging.debug(f"got Twitch channel ID '{name}' #{id} '{prefix}'")
             return id, prefix
         id = self.new_channel_id()
         prefix = '+'
@@ -122,7 +122,7 @@ class DB:
         if row:
             id = row[0]
             prefix = row[1]
-            logging.info(
+            logging.debug(
                 f"got Discord channel ID '{guild_id}' '{prefix}' #{id}")
             return id, prefix
         id = self.new_channel_id()
@@ -228,7 +228,7 @@ class DB:
         ch = self.channel(channel_id)
         te: Optional[TextEntry] = ch.all_text_by_id.get(text_id)
         if not te:
-            logging.info(f'text {text_id} is not found')
+            logging.warning(f'text {text_id} is not found')
             return (None, False)
         previous_tags = self.get_text_tag_values(channel_id, text_id)
         with self.conn.cursor() as cur:
@@ -458,7 +458,7 @@ class DB:
                         [int(time.time())])
             n = cur.rowcount
             if n:
-                logging.info(f'deleted {n} expired variables')
+                logging.debug(f'deleted {n} expired variables')
 
     def add_log(self, channel_id, entry):
         if channel_id not in self.logs:
@@ -495,7 +495,7 @@ class DB:
             if not row or not row[0]:
                 return set()
             return set(row[0].split(','))
-    
+
     def set_discord_allowed_channels(self, channel_id: int, allowed: Set[str]):
         with self.conn.cursor() as cur:
             cur.execute(
@@ -511,7 +511,7 @@ class DB:
             for query_text in (prev - active):
                 qid = ch.query_to_id[query_text]
                 qq = ch.queries[qid]
-                logging.info(f'query {query_text} {qid} has expired')
+                logging.debug(f'query {query_text} {qid} has expired')
                 t: TextEntry
                 for t in qq.queue:
                     t.queue_nodes.pop(qid, None)
@@ -521,7 +521,7 @@ class DB:
 
     def check_database(self):
         with self.conn.cursor() as cur:
-            cur.execute("SELECT id, discord_guild_id, twitch_channel_name FROM channels")            
+            cur.execute("SELECT id, discord_guild_id, twitch_channel_name FROM channels")
             for row in cur.fetchall():
                 logging.info(row)
 

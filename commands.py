@@ -28,7 +28,7 @@ import words
 import io
 import ttldict2
 
-# id: str -> Message 
+# id: str -> Message
 messages = ttldict2.TTLDict(ttl_seconds=600.0)
 
 def str_to_tags(s: str) -> Tuple[Dict[str, Optional[str]], bool]:
@@ -44,7 +44,7 @@ def str_to_tags(s: str) -> Tuple[Dict[str, Optional[str]], bool]:
         name = parts[0].strip()
         if not query.good_tag_name(name):
             logging.warn(f'tag "{name}" is invalid')
-            return (z, False) 
+            return (z, False)
         if len(parts) > 1:
             value = parts[1].strip()
         z[name] = value
@@ -125,7 +125,7 @@ class Command(Protocol):
         return True
 
 # str -> List[Command]
-commands_cache = ttldict2.TTLDict(ttl_seconds=600.0) 
+commands_cache = ttldict2.TTLDict(ttl_seconds=600.0)
 
 
 def get_commands(channel_id: int, prefix: str) -> List[Command]:
@@ -154,7 +154,7 @@ class PersistentCommand(Command):
     def __init__(self, data, prefix):
         self.data = data
         p = data.pattern.replace('!prefix', re.escape(prefix) + ' ?')
-        logging.info(f'regex {p}')
+        logging.debug(f'regex {p}')
         self.regex = re.compile(p, re.IGNORECASE)
 
     def for_discord(self):
@@ -168,7 +168,7 @@ class PersistentCommand(Command):
             return [], True
         variables = msg.get_variables()
         if self.data.mod and not variables['is_mod']:
-            logging.info('non mod called persistent')
+            logging.debug('non mod called persistent')
             return [], True
         log: InvocationLog = variables['_log']
         log.info(
@@ -451,7 +451,7 @@ def morph_text(text_value: str) -> Dict[str, str]:
     for i in range(len(parses)):
         parses[i] = [p for p in parses[i]
                         if 'nomn' in list(p.tag.grammemes)]
-    logging.info(f'morph parses for parts {parses}')
+    logging.debug(f'morph parses for parts {parses}')
     if any(parses):
         for inf in words.case_tags:
             ss = set(words.morph.cyr2lat(inf).split(','))
@@ -597,7 +597,7 @@ class TextUpload(Command):
             tags, ok = str_to_tags(row[2])
             if ok:
                 all_tags.update(tags.keys())
-        logging.info(f'all tags in file: {all_tags}')
+        logging.debug(f'all tags in file: {all_tags}')
         for t in all_tags:
             db().add_tag(channel_id, t)
         tag_by_name = db().tag_by_value(channel_id)
@@ -778,7 +778,7 @@ class Multiline(Command):
         for line in lines:
             if not line:
                 continue
-            logging.info(f'executing line {line}')
+            logging.debug(f'executing line {line}')
             for cmd in cmds:
                 if cmd.private_mod_only() and not (is_mod and private):
                     continue

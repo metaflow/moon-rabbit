@@ -1,4 +1,5 @@
 - add setup.md reference to docs
+- update setup to store logs in mounted drive. Does it makes sense to keep a separate mounted drive at all?
 - check if pg setup makes sense
 - Allow commands without prefix in private bot conversations
 - Check sandbox settings for Jinja2

@@ -12,7 +12,7 @@ import traceback
 import commands
 import time
 import logging.handlers
-from PIL import Image, ImageFont, ImageDraw 
+from PIL import Image, ImageFont, ImageDraw
 import os
 import hashlib
 import requests
@@ -27,9 +27,9 @@ def download_file(url: str) -> str:
     h.update(url.encode('utf8'))
     url_hash = h.hexdigest()
     file_name = f'{h.hexdigest()}{ext}'
-    logging.info(f'parts {url_parts.path} hash {url_hash} name {name} ext {ext}')
+    logging.debug(f'parts {url_parts.path} hash {url_hash} name {name} ext {ext}')
     if os.path.isfile(file_name):
-        logging.info(f'"{file_name}" already exist')
+        logging.debug(f'"{file_name}" already exist')
         return file_name
     r = requests.get(url, allow_redirects=True)
     open(file_name, 'wb').write(r.content)
