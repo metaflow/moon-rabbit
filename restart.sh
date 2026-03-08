@@ -1,6 +1,4 @@
 #!/bin/bash
-# bin of pipenv
-export PATH="$PATH:/root/.local/bin"
 pkill -f /root/.local/share/virtualenvs/moon-rabbit*
 sleep 5s
 cd /var/moon-rabbit
