@@ -16,10 +16,10 @@
 
 import logging
 from typing import Dict, List, Optional, Type
-import pymorphy2 # type: ignore
+import pymorphy3 # type: ignore
 
 # Docs: https://pymorphy2.readthedocs.io/en/latest/user/index.html
-morph = pymorphy2.MorphAnalyzer(lang='ru')
+morph = pymorphy3.MorphAnalyzer(lang='ru')
 
 morph_tags: Dict[str, str] = {
     '_actv': 'actv',
@@ -68,7 +68,7 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
     mm = morph.parse(s)
     if not mm:
         return s
-    p: Type[pymorphy2.analyzer.Parse] = mm[0]
+    p: Type[pymorphy3.analyzer.Parse] = mm[0]
     if tagFilter:
         matched = False
         for x in mm:

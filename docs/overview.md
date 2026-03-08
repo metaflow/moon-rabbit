@@ -21,7 +21,7 @@ A **multi-platform chatbot** that runs simultaneously on **Discord** and **Twitc
 | **Tag Query** | A boolean expression over tags: `"adj and good"`, `"noun or (adj and not bad)"`. Parsed by a Lark grammar in `query.py`. |
 | **Variable** | A short-lived key-value pair (per-channel, with optional category and TTL). Used within Jinja2 templates for stateful interactions (e.g. mini-games, counters). |
 | **Jinja2 Templating** | All persistent command responses are Jinja2 templates rendered at invocation time. Custom globals like `txt()`, `get()`, `set()`, `randint()`, `dt()` are available. |
-| **Russian Morphology** | The bot supports morphological inflection of Russian words via `pymorphy2`. Texts tagged with `morph` can be inflected to different grammatical cases (рд, дт, вн, тв, пр, etc.). |
+| **Russian Morphology** | The bot supports morphological inflection of Russian words via `pymorphy3`. Texts tagged with `morph` can be inflected to different grammatical cases (рд, дт, вн, тв, пр, etc.). |
 
 ---
 
@@ -104,7 +104,7 @@ On startup:
 
 ## Dependencies
 
-All managed via `Pipfile` (pipenv). Key libraries:
+All managed via `requirements.txt` (uv). Key libraries:
 
 | Library | Purpose |
 |---|---|
@@ -114,7 +114,7 @@ All managed via `Pipfile` (pipenv). Key libraries:
 | `psycopg2` | PostgreSQL adapter |
 | `jinja2` | Template rendering for command responses (sandboxed) |
 | `lark` | PEG parser for tag query grammar |
-| `pymorphy2` | Russian morphological analyzer |
+| `pymorphy3` | Russian morphological analyzer |
 | `llist` | Doubly-linked list for queue-based random text selection |
 | `numpy` | RNG & Pareto distribution for "smart" random selection |
 | `ttldict2` | TTL-expiring dictionaries for caching |

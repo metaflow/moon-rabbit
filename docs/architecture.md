@@ -294,7 +294,7 @@ Tag names are resolved to integer IDs at parse time. The parsed tree is cached a
 
 ## Russian Morphology System
 
-The bot has special support for Russian language morphological inflection via `pymorphy2`:
+The bot has special support for Russian language morphological inflection via `pymorphy3`:
 
 ### How it works
 1. Texts can be tagged with `morph` and morphological feature tags (e.g. `_NOUN`, `_masc`, `_anim`)

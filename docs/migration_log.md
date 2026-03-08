@@ -88,8 +88,7 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 
 ### Migration Plan
 
-- [ ] Provision new droplet
-- [ ] Install dependencies (Python, pipenv, PostgreSQL, etc.)
+- [ ] Install dependencies (Python, uv, PostgreSQL, etc.)
 - [ ] Transfer PostgreSQL data (dump from old → restore on new)
 - [ ] Clone repo to `/var/moon-rabbit`
 - [ ] Configure environment (`DB_CONNECTION`, etc.)
@@ -120,7 +119,7 @@ Setting up a local dev environment to do all migrations and new functionality lo
 - [ ] Obtain Discord API key (dev application + bot token + invite to test server)
 - [ ] Obtain Twitch API keys (client ID/secret + user OAuth token + mod bot in dev channel)
 - [ ] Set up `.env` with `DB_CONNECTION` and `DISCORD_TOKEN`
-- [ ] `pipenv install` — verify all deps install cleanly
+- [ ] `uv pip install -r requirements.txt` — verify all deps install cleanly
 - [ ] Implement `--dev` flag in `main.py` (smoke-test message on connect)
 - [ ] Test Discord bot connects and sends smoke-test message
 - [ ] Test Twitch bot connects and sends smoke-test message
@@ -139,3 +138,4 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-08 | Analyzed error logs (2023–2026). Identified 5 root causes. Added `[lifecycle]` debug hooks to `twitch_api.py`. |
 | 2026-03-08 | Added local dev environment setup documentation to `setup.md` and `migration_log.md`. |
 | 2026-03-08 | Disabled crontab `restart.sh` (every 3h) on production to reveal standing connection issues instead of masking them with periodic restarts. |
+| 2026-03-08 | Added `python-dotenv` to dependencies and `load_dotenv()` to `main.py` and `server_twitch_auth.py` for reading `.env`. |

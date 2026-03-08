@@ -33,6 +33,7 @@ import logging
 import os
 import sys
 import random
+from dotenv import load_dotenv
 from storage import DB, db, set_db, cursor
 from typing import Any, Callable, List, Set, Union
 import commands
@@ -186,6 +187,14 @@ def setup_logging(log_prefix: str, also_log_to_stdout: bool):
         logging.getLogger().addHandler(stdoutHandler)
 
 
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if val is None:
+        logging.error(f'Missing required environment variable: {name}')
+        sys.exit(1)
+    return val
+
+
 def main():
     parser = argparse.ArgumentParser(description='moon rabbit')
     parser.add_argument('--twitch')
@@ -201,8 +210,10 @@ def main():
                         help='Dev mode: send a smoke-test message to all channels on connect')
     args = parser.parse_args()
     setup_logging(args.log, args.also_log_to_stdout)
-    logging.info(f"connecting to {os.getenv('DB_CONNECTION')}")
-    set_db(DB(os.getenv('DB_CONNECTION')))
+    load_dotenv()
+    db_connection = require_env('DB_CONNECTION')
+    logging.info(f"connecting to {db_connection}")
+    set_db(DB(db_connection))
     db().check_database()
     logging.info(f'args {args}')
     loop = asyncio.new_event_loop()
@@ -219,7 +230,8 @@ def main():
             discordClient = DiscordClient(
                 intents=discord.Intents.all(), loop=loop, profile=args.profile,
                 dev_message=dev_msg)
-            loop.create_task(discordClient.start(os.getenv('DISCORD_TOKEN')))
+            discord_token = require_env('DISCORD_TOKEN')
+            loop.create_task(discordClient.start(discord_token))
             loop.create_task(cron(discordClient, int(args.cron_interval_s)))
         except Exception as e:
             logging.error(f'{e}\n{traceback.format_exc()}')

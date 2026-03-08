@@ -2,7 +2,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.types import AuthScope
 import os
 import logging
-import os
+from dotenv import load_dotenv
 import time
 import sys
 import requests
@@ -194,9 +194,18 @@ logging.basicConfig(stream=sys.stdout,
                     format='%(asctime)s %(levelname)s %(message)s',
                     level=logging.INFO)
 
+load_dotenv()
+
 # APP_ID = os.getenv('TWITCH_API_APP_ID')
 # APP_SECRET = os.getenv('TWITCH_API_APP_SECRET')
 AUTH_URL = os.getenv('TWITCH_API_AUTH_URL', 'http://localhost:17563')
+
+def require_env(name: str) -> str:
+    val = os.getenv(name)
+    if val is None:
+        logging.error(f'Missing required environment variable: {name}')
+        sys.exit(1)
+    return val
 
 def auth_callback(*args):
     logging.info(f'auth callback {args}')
@@ -205,7 +214,7 @@ if len(sys.argv) < 2:
     print('specify bot channel name from twitch_bots table')
 bot_channel = sys.argv[1]
 
-storage.set_db(storage.DB(os.getenv('DB_CONNECTION')))
+storage.set_db(storage.DB(require_env('DB_CONNECTION')))
 with storage.cursor() as cur:
     cur.execute("SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port FROM twitch_bots WHERE channel_name = %s", (bot_channel,))
     channel_name, app_id, app_secret, auth_token, api_url, api_port = cur.fetchone()

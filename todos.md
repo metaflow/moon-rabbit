@@ -8,3 +8,4 @@
 - "Bingo or anagrams?" (game idea)
 - Remove legacy `morph` tag migration code in `TextDownload`
 - Add cleanup for generated images and also store them outside of the main app directory
+- pymorph was not updated for a while, is there a better mainaned version?

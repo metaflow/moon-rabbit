@@ -20,7 +20,7 @@ from io import StringIO
 from data import *
 from storage import DB, db, set_db
 from typing import Callable, List, Set, Union
-import pymorphy2  # type: ignore
+import pymorphy3  # type: ignore
 from query import query_parser
 import sys
 from words import morph

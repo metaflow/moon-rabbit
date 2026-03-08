@@ -11,13 +11,13 @@ apt upgrade
 cd /var
 git clone https://github.com/metaflow/moon-rabbit.git
 
-# install postgres and pipenv
+# install postgres and uv
 apt update
 apt install postgresql postgresql-contrib
 apt install libpq-dev python3-dev # for psycopg2 python package
-pip install --user pipenv
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-check that pipenv is available e.g. add to .bashrc
+check that uv is available e.g. add to .bashrc
 
 # create a backup volume
 
@@ -66,8 +66,8 @@ DISCORD_TOKEN=*****
 
 Use a token to dev discord first and only run for discord.
 
-> pipenv run python3 main.py --discord --log_level INFO --log discord --also_log_to_stdout
- pipenv run python3 main.py --twitch moon_robot --log_level INFO --log moon_robot --also_log_to_stdout
+> uv run python3 main.py --discord --log_level INFO --log discord --also_log_to_stdout
+ uv run python3 main.py --twitch moon_robot --log_level INFO --log moon_robot --also_log_to_stdout
 
 now change discord to normal token.
 make runtime directory and copy scripts there
@@ -270,14 +270,21 @@ source .env
 ## 10. Install dependencies
 
 ```bash
-pipenv install
+uv venv
+uv pip install -r requirements.txt
+```
+
+For development (type checking with mypy, formatting with black):
+
+```bash
+uv pip install -r requirements-dev.txt
 ```
 
 ## 11. Run in dev mode
 
 ```bash
-pipenv run python3 main.py --dev --discord --log dev --also_log_to_stdout
-pipenv run python3 main.py --dev --twitch moon_robot --log dev --also_log_to_stdout
+uv run python3 main.py --dev --discord --log dev --also_log_to_stdout
+uv run python3 main.py --dev --twitch moon_robot --log dev --also_log_to_stdout
 ```
 
 The `--dev` flag sends a smoke-test message to all connected channels on startup, confirming the bot is alive and can reach the chat APIs.

@@ -186,12 +186,12 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 ### [words.py](file:///home/gem/src/moon-rabbit/words.py) — Morphological Analysis
 **Role:** Russian word inflection, morph tag definitions
 
-- Creates `pymorphy2.MorphAnalyzer(lang='ru')` as the shared `morph` instance
-- `morph_tags` dict — maps internal tag names (e.g. `_NOUN`, `_masc`) to pymorphy2 grammemes
+- Creates `pymorphy3.MorphAnalyzer(lang='ru')` as the shared `morph` instance
+- `morph_tags` dict — maps internal tag names (e.g. `_NOUN`, `_masc`) to pymorphy3 grammemes
 - `case_tags` list — Russian case abbreviations used for inflection
 - `inflect_word()` — inflects a word to a target case, with optional tag filtering for disambiguation
 
-**Depends on:** `pymorphy2`
+**Depends on:** `pymorphy3`
 
 ---
 
@@ -204,7 +204,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 
 **Usage:** `python word_processing.py input.tsv output.tsv`
 
-**Depends on:** `data`, `storage`, `words`, `query`, `pymorphy2`
+**Depends on:** `data`, `storage`, `words`, `query`, `pymorphy3`
 
 ---
 
@@ -309,10 +309,10 @@ query.py
 └── lark
 
 words.py
-└── pymorphy2
+└── pymorphy3
 
 word_processing.py (standalone)
-├── data, storage, words, query, pymorphy2
+├── data, storage, words, query, pymorphy3
 
 server_twitch_auth.py (standalone)
 ├── twitchAPI, aiohttp, storage
