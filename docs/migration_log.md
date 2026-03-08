@@ -138,3 +138,4 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-08 | Created this log. Starting Twitch auth investigation. |
 | 2026-03-08 | Analyzed error logs (2023–2026). Identified 5 root causes. Added `[lifecycle]` debug hooks to `twitch_api.py`. |
 | 2026-03-08 | Added local dev environment setup documentation to `setup.md` and `migration_log.md`. |
+| 2026-03-08 | Disabled crontab `restart.sh` (every 3h) on production to reveal standing connection issues instead of masking them with periodic restarts. |
