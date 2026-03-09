@@ -17,6 +17,10 @@ Before making any changes, analyzing the project, or proposing solutions, you MU
 
 Whenever you add new features, change the architecture, or modify key files, you must update these documentation files to keep them accurate.
 
+## External Documentation
+
+Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
+
 ## Environment & Secrets
 
 The project uses a `.env` file in the project root containing secrets (`DB_CONNECTION`, `DISCORD_TOKEN`, and Twitch API keys). This file is gitignored. Be aware it exists for context on how env vars are loaded, but **never print, log, or commit its contents**.
