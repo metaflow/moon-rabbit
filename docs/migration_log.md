@@ -68,10 +68,12 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 
 ### Next Steps (library upgrades)
 
+- [x] Setup running instance on a developer machine.
 - [ ] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
 - [ ] Upgrade `twitchAPI` from `3.10.0` → `4.x` — EventSub WebSocket transport (no public callback URL needed)
 - [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
 - [ ] Consider using PM2 (already available) with `--watch` or `--restart-delay` instead of `restart.sh` crontab for automatic restarts
+- [ ] add context7 as mcp
 
 ---
 
