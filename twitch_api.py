@@ -16,16 +16,11 @@
 
 import asyncio
 import traceback
-from asyncio.locks import Event
-from os import curdir
-import requests
-from twitchAPI.twitch import Twitch, AuthScope  # type: ignore
-from twitchAPI import Twitch, EventSub  # type: ignore
 import logging
-from data import *
-import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import twitchio  # type: ignore
+from twitchio import eventsub  # type: ignore
+from data import *
 from storage import cursor, db
 import ttldict2  # type: ignore
 import commands
@@ -38,50 +33,54 @@ from asyncio_throttle import Throttler
 @dataclasses.dataclass
 class ChannelInfo:
     active_users: ttldict2.TTLDict
-    throttled_users: ttldict2.TTLDict # user -> time
+    throttled_users: ttldict2.TTLDict  # user -> time
     prefix: str
     channel_id: int
     twitch_user_id: str
     events: List[EventType]
-    twitch_channel: Optional[twitchio.Channel]
     last_activity: float
 
 
-# Note that two API are used: twitchio for general channel operations and twitchAPI
-# for events like redeems and hype-trains.
 class Twitch3(twitchio.Client):
-    def __init__(self, twitch_bot: str, loop: asyncio.AbstractEventLoop, dev_message: str = None):
+    """Twitch bot client using twitchio 3.x.
+
+    Authentication:
+      - twitchio 3.x runs a built-in OAuth web server on port 4343.
+      - First run: the bot account and each channel owner must visit OAuth URLs
+        (see setup.md for exact URLs and scopes).
+      - Tokens are auto-refreshed and persisted to .tio.tokens.json.
+
+    Chat and events are both handled via EventSub WebSocket — no public URL needed.
+    """
+
+    def __init__(self, twitch_bot: str, dev_message: str = None):
         self.dev_message = dev_message
         logging.info(f'creating twitch bot {twitch_bot}')
+
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_name, api_app_id, api_app_secret, auth_token, api_url, api_port, refresh_token FROM twitch_bots WHERE channel_name = %s", (twitch_bot,))
-            self.channel_name, self.app_id, self.app_secret, self.auth_token, self.api_url, self.api_port, self.refresh_token = cur.fetchone()
-            # Refresh token if available.
-            if self.refresh_token:
-                response = requests.post('https://id.twitch.tv/oauth2/token', data={
-                    'client_id': self.app_id,
-                    'client_secret': self.app_secret,
-                    'grant_type': 'refresh_token',
-                    'refresh_token': self.refresh_token,
-                }, headers={'Content-Type': 'application/x-www-form-urlencoded'})
-                logging.info(f'refresh token response {response.text} {response.json} {response.status_code}')
-                if response.status_code == 200:
-                    j = response.json()
-                    self.auth_token = j.get('access_token')
-                    self.refresh_token = j.get('refresh_token')
-                    logging.info(f'refresh token secret {self.app_secret}, new token {self.refresh_token}')
-                    with cursor() as cur:
-                        cur.execute('UPDATE twitch_bots SET auth_token = %s, refresh_token = %s WHERE channel_name = %s',
-                            (self.auth_token, self.refresh_token, self.channel_name))
+                "SELECT channel_name, api_app_id, api_app_secret, bot_user_id "
+                "FROM twitch_bots WHERE channel_name = %s",
+                (twitch_bot,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f'No twitch_bots row found for channel_name={twitch_bot!r}')
+            self.channel_name, self.app_id, self.app_secret, self.bot_user_id = row
 
+        if not self.bot_user_id:
+            raise ValueError(
+                f'bot_user_id is NULL for twitch_bot={twitch_bot!r}. '
+                'Populate twitch_bots.bot_user_id with the numeric Twitch user ID of the bot account. '
+                'See setup.md for instructions.')
+
+        # Map Twitch channel login name -> ChannelInfo
         self.channels: Dict[str, ChannelInfo] = {}
-        self.throttler = Throttler(rate_limit=1, period=1)
-
-        has_events = False
         with cursor() as cur:
             cur.execute(
-                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, twitch_events, twitch_throttle FROM channels WHERE twitch_bot = %s", (self.channel_name,))
+                "SELECT channel_id, twitch_channel_name, twitch_command_prefix, "
+                "twitch_events, twitch_throttle "
+                "FROM channels WHERE twitch_bot = %s",
+                (self.channel_name,))
             for row in cur.fetchall():
                 channel_id, twitch_channel_name, twitch_command_prefix, twitch_events, twitch_throttle = row
                 if not twitch_throttle:
@@ -90,153 +89,198 @@ class Twitch3(twitchio.Client):
                 if twitch_events:
                     for x in twitch_events.split(','):
                         events.append(EventType[x.strip()])
-                        has_events = True
                 self.channels[twitch_channel_name] = ChannelInfo(
                     active_users=ttldict2.TTLDict(ttl_seconds=3600.0),
                     prefix=twitch_command_prefix,
                     channel_id=channel_id,
                     twitch_user_id='',
                     events=events,
-                    twitch_channel=None,
                     throttled_users=ttldict2.TTLDict(ttl_seconds=float(max(twitch_throttle, 1))),
                     last_activity=0.0)
-        logging.info(f'channels {self.channels}')
-        logging.info(f'joining channels {self.channels.keys()}')
 
-        if self.app_id and self.app_secret and self.api_url and self.api_port and has_events:
-            logging.info(f'starting EventSub for {self.channel_name} {self}')
-            self.api = Twitch(app_id=self.app_id, app_secret=self.app_secret,
-                              target_app_auth_scope=[AuthScope.CHANNEL_MODERATE])
-            self.api.authenticate_app([AuthScope.CHANNEL_MODERATE])
-            hook = EventSub(callback_url=self.api_url,
-                            api_client_id=self.app_id, port=self.api_port, twitch=self.api)
-            hook.unsubscribe_all()
-            hook.start()
-            for name, c in self.channels.items():
-                uid = self.api.get_users(logins=[name])
-                logging.info(f'uid {uid}')
-                c.twitch_user_id = str(uid['data'][0]['id']) # TODO this might fail
-                for e in c.events:
-                    if e == EventType.twitch_reward_redemption:
-                        logging.info(
-                            f'subscribing {name} {c.twitch_user_id} to channel_points_custom_reward_redemption')
-                        hook.listen_channel_points_custom_reward_redemption_add(
-                            c.twitch_user_id, self.on_redemption)
-                    if e == EventType.twitch_hype_train:
-                        logging.info(
-                            f'subscribing {name} {c.twitch_user_id} to hype train events')
-                        hook.listen_hype_train_begin(
-                            c.twitch_user_id, self.on_hype_train_begins)
-                        hook.listen_hype_train_progress(
-                            c.twitch_user_id, self.on_hype_train_progress)
-                        hook.listen_hype_train_end(
-                            c.twitch_user_id, self.on_hype_train_ends)
-        super().__init__(self.auth_token, loop=loop,
-                         initial_channels=list(self.channels.keys()))
+        logging.info(f'channels: {list(self.channels.keys())}')
+        self.throttler = Throttler(rate_limit=1, period=1)
 
-    async def event_ready(self):
-        # We are logged in and ready to chat and use commands...
-        logging.info(f'Logged in as {self.nick}')
-        # await self.join_channels(self.channels.keys())
+        # twitchio 3.x: Client(client_id, client_secret, bot_id=...)
+        super().__init__(
+            client_id=self.app_id,
+            client_secret=self.app_secret,
+            bot_id=self.bot_user_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Lifecycle hooks
+    # ------------------------------------------------------------------
+
+    async def setup_hook(self) -> None:
+        """Called after login() but before the client is ready.
+
+        Resolves broadcaster user IDs and creates EventSub subscriptions.
+        Requires that broadcaster accounts have already authorized via the
+        built-in OAuth server (port 4343) so their tokens exist.
+        """
+        logging.info('[setup_hook] resolving broadcaster IDs and subscribing to EventSub')
+
+        broadcaster_logins = list(self.channels.keys())
+        if not broadcaster_logins:
+            logging.warning('[setup_hook] no channels configured, nothing to subscribe to')
+            return
+
+        # Fetch broadcaster user IDs in one batch call
+        try:
+            users = await self.fetch_users(logins=broadcaster_logins)
+        except Exception as e:
+            logging.error(f'[setup_hook] fetch_users failed: {e}\n{traceback.format_exc()}')
+            return
+
+        user_map: Dict[str, str] = {u.name.lower(): str(u.id) for u in users}
+        # Create EventSub subscriptions. subscribe_websocket() is per-payload on plain Client.
+        # - Chat message: as_bot=True uses the bot's user token (requires user:read:chat + user:bot)
+        # - Redemptions/hype train: token_for=uid uses the channel owner's token
+        for channel_name, info in self.channels.items():
+            uid = user_map.get(channel_name.lower())
+            if not uid:
+                logging.warning(f'[setup_hook] could not resolve user ID for channel {channel_name!r}')
+                continue
+            info.twitch_user_id = uid
+
+            # Chat messages — always subscribed for every managed channel
+            try:
+                await self.subscribe_websocket(
+                    eventsub.ChatMessageSubscription(
+                        broadcaster_user_id=uid,
+                        user_id=self.bot_user_id,
+                    ),
+                    as_bot=True,
+                )
+                logging.info(f'[setup_hook] subscribed to chat in #{channel_name}')
+            except Exception as e:
+                logging.warning(f'[setup_hook] chat sub failed for #{channel_name}: {e}')
+
+            for event_type in info.events:
+                if event_type == EventType.twitch_reward_redemption:
+                    try:
+                        await self.subscribe_websocket(
+                            eventsub.ChannelPointsCustomRewardRedemptionAddSubscription(
+                                broadcaster_user_id=uid,
+                            ),
+                            token_for=uid,
+                        )
+                        logging.info(f'[setup_hook] subscribed to redemptions in #{channel_name}')
+                    except Exception as e:
+                        logging.warning(f'[setup_hook] redemption sub failed for #{channel_name}: {e}')
+
+                elif event_type == EventType.twitch_hype_train:
+                    try:
+                        await self.subscribe_websocket(
+                            eventsub.HypeTrainEndSubscription(
+                                broadcaster_user_id=uid,
+                            ),
+                            token_for=uid,
+                        )
+                        logging.info(f'[setup_hook] subscribed to hype train in #{channel_name}')
+                    except Exception as e:
+                        logging.warning(f'[setup_hook] hype train sub failed for #{channel_name}: {e}')
+
+    async def event_ready(self) -> None:
+        logging.info(f'[lifecycle] logged in as {self.user}')
         if self.dev_message:
-            # Delay briefly to let channel joins complete.
             await asyncio.sleep(3)
-            for name, info in self.channels.items():
+            for channel_name in self.channels:
                 try:
-                    ch = self.get_channel(name)
-                    if ch:
-                        await ch.send(self.dev_message)
-                        logging.info(f'[dev] sent smoke-test to #{name}')
+                    broadcaster = self.create_partialuser(
+                        user_id=self.channels[channel_name].twitch_user_id,
+                        user_login=channel_name,
+                    )
+                    await broadcaster.send_message(
+                        sender=self.user,
+                        message=self.dev_message,
+                    )
+                    logging.info(f'[dev] sent smoke-test to #{channel_name}')
                 except Exception as e:
-                    logging.warning(f'[dev] failed to send to #{name}: {e}')
+                    logging.warning(f'[dev] failed to send to #{channel_name}: {e}')
 
-    async def event_join(self, channel: twitchio.Channel, user: twitchio.User):
-        # Set channel just in case if reward redemption will happen before any message.
-        info = self.channels.get(channel.name)
-        if info:
-            info.twitch_channel = channel
-            if user.name == self.nick:
-                logging.info(f'[lifecycle] successfully joined channel: {channel.name}')
-
-    async def event_error(self, error: Exception, data: str = None):
-        logging.error(f'[lifecycle] twitchio event_error: {error}, data={data}')
+    async def event_error(self, error: Exception, *args, **kwargs) -> None:
+        logging.error(f'[lifecycle] twitchio event_error: {error}')
         logging.error(traceback.format_exc())
 
-    async def event_reconnect(self):
-        logging.warning('[lifecycle] received RECONNECT from Twitch, reconnecting...')
+    async def event_token_refreshed(self, payload) -> None:
+        logging.info(f'[auth] token refreshed for user_id={getattr(payload, "user_id", "?")}')
 
-    async def event_token_expired(self):
-        logging.error('[lifecycle] TOKEN EXPIRED — twitchio reports token is invalid')
-        # Intentionally returning None to let twitchio handle it (or fail).
-        # This is diagnostic only — we want to see if this fires.
-        return None
+    async def event_oauth_authorized(self, payload) -> None:
+        logging.info(f'[auth] OAuth authorized for user_id={getattr(payload, "user_id", "?")}')
 
-    async def event_channel_join_failure(self, channel: str):
-        logging.error(f'[lifecycle] failed to join channel: {channel}')
+    # ------------------------------------------------------------------
+    # Chat messages
+    # ------------------------------------------------------------------
 
-    async def event_part(self, user):
-        if user.name == self.nick:
-            logging.warning(f'[lifecycle] bot parted from channel (kicked or disconnected)')
-
-    async def event_message(self, message):
+    async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
-            # Ignore own messages.
-            if message.echo:
+            # Ignore the bot's own messages
+            chatter_id = str(payload.chatter.id)
+            if chatter_id == str(self.bot_user_id):
                 return
-            info: Optional[ChannelInfo] = self.channels.get(
-                message.channel.name)
+
+            channel_name: str = payload.broadcaster.name.lower()
+            info: Optional[ChannelInfo] = self.channels.get(channel_name)
             if not info:
-                logging.info(f'unknown channel {message.channel.name}')
+                logging.debug(f'[event_message] unknown channel {channel_name!r}')
                 return
-            info.twitch_channel = message.channel
+
             info.last_activity = time.time()
             channel_id = info.channel_id
             prefix = info.prefix
-            log = InvocationLog(
-                f"twitch channel {message.channel.name} ({channel_id})")
-            author = message.author.name
+            log = InvocationLog(f"twitch channel {channel_name} ({channel_id})")
+
+            author: str = payload.chatter.name
+            text: str = payload.text
+
             info.active_users[author] = 1
             info.throttled_users.drop_old_items()
             if author in info.throttled_users:
                 return
             info.active_users.drop_old_items()
-            log.debug(f'{author} "{message.content}"')
+
+            log.debug(f'{author} "{text}"')
+
+            is_mod: bool = _is_mod(payload)
+            message_id: str = str(time.time_ns())
             variables: Optional[Dict] = None
-            is_mod = message.author.is_mod
-            # postpone variable calculations as much as possible
-            message_id = str(time.time_ns())
+
             def get_vars():
                 nonlocal variables
                 if not variables:
                     variables = {
-                        'author': str(author),
-                        'author_name': str(author),
-                        'mention': Lazy(lambda: self.any_mention(message.content, info, author)),
-                        'direct_mention': Lazy(lambda: self.mentions(message.content)),
+                        'author': author,
+                        'author_name': author,
+                        'mention': Lazy(lambda: self.any_mention(text, info, author)),
+                        'direct_mention': Lazy(lambda: self.mentions(text)),
                         'random_mention': Lazy(lambda: self.random_mention(info, author), stick=False),
                         'any_mention': Lazy(lambda: self.random_mention(info, ''), stick=False),
                         'media': 'twitch',
-                        'text': message.content,
+                        'text': text,
                         'is_mod': is_mod,
                         'prefix': prefix,
-                        'bot': self.nick,
+                        'bot': self.channel_name,
                         'channel_id': channel_id,
                         '_log': log,
                         '_private': False,
                         '_id': message_id,
                     }
                 return variables
+
             msg = Message(
-                id = message_id,
-                log = log,
+                id=message_id,
+                log=log,
                 channel_id=channel_id,
-                txt=message.content,
+                txt=text,
                 event=EventType.message,
-                prefix=info.prefix,
+                prefix=prefix,
                 is_discord=False,
                 is_mod=is_mod,
                 private=False,
                 get_variables=get_vars)
+
             actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:
@@ -244,130 +288,40 @@ class Twitch3(twitchio.Client):
                     await self.send_message(info, a.text)
             if actions and not is_mod:
                 info.throttled_users[author] = '+'
+
         except Exception as e:
-            log.error(f"event_message: {str(e)}")
-            log.error(traceback.format_exc())
+            logging.error(f'[event_message] {e}\n{traceback.format_exc()}')
 
-    def any_mention(self, txt: str, info: ChannelInfo, author):
-        direct = self.mentions(txt)
-        return direct if direct else self.random_mention(info, author)
+    # ------------------------------------------------------------------
+    # Channel points redemption
+    # ------------------------------------------------------------------
 
-    def mentions(self, txt):
-        result = re.findall(r'@\S+', txt)
-        if result:
-            return ' '.join(result)
-        return ''
-
-    def random_mention(self, info: ChannelInfo, author):
-        users = [x for x in info.active_users.keys() if x != author]
-        if users:
-            return "@" + random.choice(users)
-        return "@" + author
-
-    async def on_hype_train_begins(self, *args):
-        logging.info(f'on hype train beings {args}')
-
-    async def on_hype_train_progress(self, *args):
-        logging.info(f'on hype train progress {args}')
-
-    async def on_hype_train_ends(self, data):
+    async def event_channel_points_redemption_add(self, payload) -> None:
         try:
-            logging.debug(f'on_hype_train_ends {data}')
-            event = data.get('event', {})
-            logging.debug(f'event {event}')
-            channel_name = event.get('broadcaster_user_login')
-            author = ''
-            text = str(event.get('level'))
-            contributors = ', '.join(['@' + c.get('user_name')
-                                     for c in event.get('top_contributions')])
-            logging.debug(f'contributors {contributors}')
-            logging.debug(f'text "{text}"')
+            logging.info(f'[redemption] {payload}')
+            channel_name: str = payload.broadcaster.name.lower()
             info: Optional[ChannelInfo] = self.channels.get(channel_name)
             if not info:
-                logging.info(f'unknown channel {channel_name}')
+                logging.info(f'[redemption] unknown channel {channel_name!r}')
                 return
+
+            author: str = payload.user.name
+            text: str = payload.user_input or ''
+            reward_title: str = payload.reward.title
             channel_id = info.channel_id
-            log = InvocationLog(
-                f"twitch channel {channel_name} ({info.channel_id})")
-            variables: Optional[Dict] = None
+            log = InvocationLog(f"twitch channel {channel_name} ({channel_id})")
+            log.info(f'reward "{reward_title}" for user {author}')
+
             is_mod = False
             message_id = str(time.time_ns())
+            variables: Optional[Dict] = None
+
             def get_vars():
                 nonlocal variables
                 if not variables:
                     variables = {
-                        'author': str(author),
-                        'author_name': str(author),
-                        'mention': Lazy(lambda: contributors),
-                        'direct_mention': Lazy(lambda: contributors),
-                        'random_mention': Lazy(lambda: contributors),
-                        'any_mention':  Lazy(lambda: contributors),
-                        'media': 'twitch',
-                        'text': text,
-                        'is_mod': is_mod,
-                        'prefix': info.prefix,
-                        'bot': self.nick,
-                        'channel_id': info.channel_id,
-                        '_log': log,
-                        '_private': False,
-                        '_id': message_id,
-                    }
-                return variables
-            msg = Message(
-                id = message_id,
-                log = log,
-                channel_id=channel_id,
-                txt=text,
-                event=EventType.twitch_hype_train,
-                prefix=info.prefix,
-                is_discord=False,
-                is_mod=is_mod,
-                private=False,
-                get_variables=get_vars)
-            logging.debug('dispatching hype train event message')
-            actions = await commands.process_message(msg)
-            db().add_log(channel_id, log)
-            for a in actions:
-                if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
-                    await self.send_message(info, a.text)
-        except Exception as e:
-            log.error(f"on_hype_train_ends: {str(e)}")
-            log.error(traceback.format_exc())
-
-    async def send_message(self, info: ChannelInfo, txt: str):
-        if not info.twitch_channel:
-            return
-        if len(txt) > 500:
-            txt = txt[:497] + "..."
-        async with self.throttler:
-            logging.info(f'sending {txt}')
-            await info.twitch_channel.send(txt)
-
-    async def on_redemption(self, data):
-        try:
-            logging.info(f'on_redemption {data}')
-            event = data.get('event', {})
-            channel_name = event.get('broadcaster_user_login')
-            author = event.get('user_name')
-            text = event.get('user_input')
-            reward_title = event.get('reward', {}).get('title')
-            info: Optional[ChannelInfo] = self.channels.get(channel_name)
-            if not info:
-                logging.info(f'unknown channel {channel_name}')
-                return
-            channel_id = info.channel_id
-            log = InvocationLog(
-                f"twitch channel {channel_name} ({info.channel_id})")
-            log.info(f'reward {reward_title} for user {author}')
-            variables: Optional[Dict] = None
-            is_mod = False
-            message_id = str(time.time_ns())
-            def get_vars():
-                nonlocal variables
-                if not variables:
-                    variables = {
-                        'author': str(author),
-                        'author_name': str(author),
+                        'author': author,
+                        'author_name': author,
                         'mention': Lazy(lambda: self.any_mention(text, info, author)),
                         'direct_mention': Lazy(lambda: self.mentions(text)),
                         'random_mention': Lazy(lambda: self.random_mention(info, author), stick=False),
@@ -376,16 +330,17 @@ class Twitch3(twitchio.Client):
                         'text': text,
                         'is_mod': is_mod,
                         'prefix': info.prefix,
-                        'bot': self.nick,
-                        'channel_id': info.channel_id,
+                        'bot': self.channel_name,
+                        'channel_id': channel_id,
                         '_log': log,
                         '_private': False,
                         '_id': message_id,
                     }
                 return variables
+
             msg = Message(
-                id = message_id,
-                log = log,
+                id=message_id,
+                log=log,
                 channel_id=channel_id,
                 txt=reward_title,
                 event=EventType.twitch_reward_redemption,
@@ -394,24 +349,136 @@ class Twitch3(twitchio.Client):
                 is_mod=is_mod,
                 private=False,
                 get_variables=get_vars)
+
             actions = await commands.process_message(msg)
             db().add_log(channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
-        except Exception as e:
-            log.error(f"on_redemption: {str(e)}")
-            log.error(traceback.format_exc())
 
-    async def on_cron(self):
-        info: ChannelInfo
+        except Exception as e:
+            logging.error(f'[redemption] {e}\n{traceback.format_exc()}')
+
+    # ------------------------------------------------------------------
+    # Hype Train
+    # ------------------------------------------------------------------
+
+    async def event_channel_hype_train_end(self, payload) -> None:
+        try:
+            logging.debug(f'[hype_train_end] {payload}')
+            channel_name: str = payload.broadcaster.name.lower()
+            info: Optional[ChannelInfo] = self.channels.get(channel_name)
+            if not info:
+                logging.info(f'[hype_train_end] unknown channel {channel_name!r}')
+                return
+
+            level: str = str(payload.level)
+            contributors: str = ', '.join(
+                '@' + c.user.name
+                for c in (payload.top_contributions or [])
+            )
+            channel_id = info.channel_id
+            log = InvocationLog(f"twitch channel {channel_name} ({channel_id})")
+
+            is_mod = False
+            message_id = str(time.time_ns())
+            variables: Optional[Dict] = None
+
+            def get_vars():
+                nonlocal variables
+                if not variables:
+                    variables = {
+                        'author': '',
+                        'author_name': '',
+                        'mention': Lazy(lambda: contributors),
+                        'direct_mention': Lazy(lambda: contributors),
+                        'random_mention': Lazy(lambda: contributors),
+                        'any_mention': Lazy(lambda: contributors),
+                        'media': 'twitch',
+                        'text': level,
+                        'is_mod': is_mod,
+                        'prefix': info.prefix,
+                        'bot': self.channel_name,
+                        'channel_id': channel_id,
+                        '_log': log,
+                        '_private': False,
+                        '_id': message_id,
+                    }
+                return variables
+
+            msg = Message(
+                id=message_id,
+                log=log,
+                channel_id=channel_id,
+                txt=level,
+                event=EventType.twitch_hype_train,
+                prefix=info.prefix,
+                is_discord=False,
+                is_mod=is_mod,
+                private=False,
+                get_variables=get_vars)
+
+            actions = await commands.process_message(msg)
+            db().add_log(channel_id, log)
+            for a in actions:
+                if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
+                    await self.send_message(info, a.text)
+
+        except Exception as e:
+            logging.error(f'[hype_train_end] {e}\n{traceback.format_exc()}')
+
+    # ------------------------------------------------------------------
+    # Sending
+    # ------------------------------------------------------------------
+
+    async def send_message(self, info: ChannelInfo, txt: str) -> None:
+        if not info.twitch_user_id:
+            logging.warning(f'[send_message] no broadcaster user ID for channel {info.channel_id}')
+            return
+        if len(txt) > 500:
+            txt = txt[:497] + '...'
+        async with self.throttler:
+            logging.info(f'[send] {txt!r}')
+            try:
+                broadcaster = self.create_partialuser(
+                    user_id=info.twitch_user_id,
+                    user_login='',
+                )
+                await broadcaster.send_message(
+                    sender=self.user,
+                    message=txt,
+                )
+            except Exception as e:
+                logging.error(f'[send_message] failed: {e}')
+
+    # ------------------------------------------------------------------
+    # Mention helpers (unchanged logic)
+    # ------------------------------------------------------------------
+
+    def any_mention(self, txt: str, info: ChannelInfo, author: str) -> str:
+        direct = self.mentions(txt)
+        return direct if direct else self.random_mention(info, author)
+
+    def mentions(self, txt: str) -> str:
+        result = re.findall(r'@\S+', txt)
+        return ' '.join(result) if result else ''
+
+    def random_mention(self, info: ChannelInfo, author: str) -> str:
+        users = [x for x in info.active_users.keys() if x != author]
+        return '@' + (random.choice(users) if users else author)
+
+    # ------------------------------------------------------------------
+    # Cron (unchanged logic)
+    # ------------------------------------------------------------------
+
+    async def on_cron(self) -> None:
         for channel_name, info in self.channels.items():
             if info.last_activity < time.time() - 1800.0:
                 continue
             text = info.prefix + '_cron'
-            log = InvocationLog(
-                f"twitch channel {channel_name} ({info.channel_id})")
+            log = InvocationLog(f"twitch channel {channel_name} ({info.channel_id})")
             variables: Optional[Dict] = None
+
             def get_vars():
                 nonlocal variables
                 if not variables:
@@ -424,16 +491,17 @@ class Twitch3(twitchio.Client):
                         'text': text,
                         'is_mod': True,
                         'prefix': info.prefix,
-                        'bot': self.nick,
+                        'bot': self.channel_name,
                         'channel_id': info.channel_id,
                         '_log': log,
                         '_private': False,
                         '_id': 'cron',
                     }
                 return variables
+
             msg = Message(
-                id = 'cron',
-                log = log,
+                id='cron',
+                log=log,
                 channel_id=info.channel_id,
                 txt=text,
                 event=EventType.message,
@@ -442,8 +510,23 @@ class Twitch3(twitchio.Client):
                 is_mod=True,
                 private=False,
                 get_variables=get_vars)
+
             actions = await commands.process_message(msg)
             db().add_log(info.channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE:
                     await self.send_message(info, a.text)
+
+
+# ------------------------------------------------------------------
+# Module-level helpers
+# ------------------------------------------------------------------
+
+def _is_mod(payload: twitchio.ChatMessage) -> bool:
+    """Return True if the chatter is a moderator or broadcaster."""
+    try:
+        badges = payload.badges or []
+        badge_ids = [b.id if hasattr(b, 'id') else str(b) for b in badges]
+        return 'moderator' in badge_ids or 'broadcaster' in badge_ids
+    except Exception:
+        return False

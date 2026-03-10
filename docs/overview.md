@@ -109,8 +109,7 @@ All managed via `requirements.txt` (uv). Key libraries:
 | Library | Purpose |
 |---|---|
 | `discord` | Discord API client |
-| `twitchio` Twitch IRC/chat client |
-| `twitchapi` | Twitch EventSub API (redemptions, hype trains) |
+| `twitchio` | Twitch chat + EventSub (messages, channel point redemptions, hype trains) via WebSocket |
 | `psycopg2` | PostgreSQL adapter |
 | `jinja2` | Template rendering for command responses (sandboxed) |
 | `lark` | PEG parser for tag query grammar |

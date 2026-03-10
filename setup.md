@@ -184,43 +184,55 @@ The bot uses `discord_guild_id` in the `channels` table to identify which server
 1. Go to [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)
 2. Click **Register Your Application**:
    - Name: anything unique
-   - OAuth Redirect URL: `http://localhost:3000` (for token generation)
+   - OAuth Redirect URL: `http://localhost:4343` ← must be exactly this (twitchio's built-in OAuth server)
    - Category: Chat Bot
 3. Copy the **Client ID** (`api_app_id`) and generate a **Client Secret** (`api_app_secret`)
-4. Install the [Twitch CLI](https://github.com/twitchdev/twitch-cli):
+4. **Important**: The bot account must be modded in your dev channel: `/mod <bot_username>`
 
-   ```bash
-   # macOS / Linux (Homebrew):
-   brew install twitchdev/twitch/twitch-cli
+### Get the bot's numeric user ID (`bot_user_id`)
 
-   # Or download the binary from GitHub releases:
-   # https://github.com/twitchdev/twitch-cli/releases
-   ```
+You need the numeric Twitch user ID of the bot account — not its username. Get an app access token first:
 
-   Configure it with your app credentials:
+```bash
+curl -X POST "https://id.twitch.tv/oauth2/token" \
+  -d "client_id=<api_app_id>&client_secret=<api_app_secret>&grant_type=client_credentials" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])"
+```
 
-   ```bash
-   twitch configure -i <CLIENT_ID> -s <CLIENT_SECRET>
-   ```
+Then look up the bot account by its Twitch login name:
 
-5. Generate a user OAuth token for the bot account (log into Twitch as the bot account in your browser first):
+```bash
+curl -H "Authorization: Bearer <access_token_from_above>" \
+     -H "Client-Id: <api_app_id>" \
+     "https://api.twitch.tv/helix/users?login=<bot_username>" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])"
+```
 
-   ```bash
-   twitch token -u -s "chat:read chat:edit channel:read:redemptions"
-   ```
+This prints the numeric ID (e.g. `123456789`) — that's `bot_user_id`.
 
-   This opens a browser for OAuth approval and returns an `access_token` and `refresh_token`.
-
-6. **Important**: The bot account must have permission to chat in your dev channel. If you own the channel, mod the bot account: `/mod <bot_username>`
-
-Store the bot credentials in the `twitch_bots` table:
+### Insert bot credentials into DB
 
 ```sql
 sudo -u postgres psql chatbot
 
-INSERT INTO twitch_bots (channel_name, api_app_id, api_app_secret, auth_token, refresh_token)
-VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<oauth_token>', '<refresh_token>');
+INSERT INTO twitch_bots (channel_name, api_app_id, api_app_secret, bot_user_id)
+VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<numeric_bot_user_id>');
 ```
+
+### First-time OAuth (one-time, after bot starts)
+
+twitchio 3.x manages tokens itself via a built-in OAuth server on port 4343. After starting the bot:
+
+1. **Bot account** — open this URL in a browser **while logged in as the bot Twitch account**:
+   ```
+   http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true
+   ```
+2. **Channel owner** — open this URL **while logged in as the channel owner**:
+   ```
+   http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
+   ```
+
+Tokens are saved automatically to `.tio.tokens.json` in the project root. Subsequent restarts reuse them — no repeat auth needed unless tokens are deleted.
 
 ## 7. Add a Twitch channel
 
@@ -241,12 +253,11 @@ UPDATE channels SET discord_guild_id = '<your_guild_id>' WHERE discord_guild_id 
 -- Update Twitch channel name to your dev channel
 UPDATE channels SET twitch_channel_name = '<your_twitch_channel>' WHERE twitch_channel_name = '<prod_channel>';
 
--- Update Twitch bot credentials
+-- Update Twitch bot credentials (get bot_user_id via the curl commands in section 6)
 UPDATE twitch_bots SET
   api_app_id = '<your_client_id>',
   api_app_secret = '<your_client_secret>',
-  auth_token = '<your_oauth_token>',
-  refresh_token = '<your_refresh_token>'
+  bot_user_id = '<numeric_bot_user_id>'
 WHERE channel_name = 'moon_robot';
 ```
 

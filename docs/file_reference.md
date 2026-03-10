@@ -120,24 +120,31 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 ---
 
 ### [twitch_api.py](file:///home/gem/src/moon-rabbit/twitch_api.py) — Twitch Integration
-**Role:** Twitch chat, EventSub (redemptions, hype trains)
+**Role:** Twitch chat + EventSub (redemptions, hype trains) via twitchio 3.x
 
 **`Twitch3(twitchio.Client)`:**
-- Constructor reads bot config + channel list from DB (`twitch_bots` and `channels` tables)
-- Refreshes OAuth token on startup via Twitch API
-- Optionally starts EventSub webhook server for:
-  - **Channel point redemptions** → `on_redemption()` creates Message with `event=twitch_reward_redemption`
-  - **Hype train events** → `on_hype_train_ends()` creates Message with `event=twitch_hype_train`
-- `event_message()` — Main message handler. Similar flow to Discord but with per-user throttling via `throttled_users` TTLDict
-- `on_cron()` — Sends synthetic `<prefix>_cron` message to active channels (activity within 30 min)
-- `send_message()` — Rate-limited (1 msg/sec via `asyncio-throttle`), truncates to 500 chars
+- Constructor reads `api_app_id`, `api_app_secret`, `bot_user_id` from `twitch_bots` table; loads per-channel config from `channels` table
+- `setup_hook()` — called by twitchio after login. Resolves broadcaster user IDs via `fetch_users()`, then calls `multi_subscribe()` to create EventSub WebSocket subscriptions:
+  - `ChatMessageSubscription` — for all channels (chat messages)
+  - `ChannelPointsCustomRewardRedemptionAddSubscription` — if `twitch_reward_redemption` in `twitch_events`
+  - `HypeTrainEndSubscription` — if `twitch_hype_train` in `twitch_events`
+- `event_ready()` — logs login; on `--dev`, sends smoke-test message to all channels
+- `event_message(payload: ChatMessage)` — main message handler. Resolves channel via `payload.broadcaster.name`, skips bot's own messages, applies per-user throttle, builds lazy variables, calls `commands.process_message()`
+- `event_channel_points_redemption_add(payload)` — handles channel point redemptions; builds Message with `event=twitch_reward_redemption`
+- `event_channel_hype_train_end(payload)` — handles hype train end; builds Message with `event=twitch_hype_train`
+- `event_token_refreshed` / `event_oauth_authorized` — diagnostic logging for auth lifecycle
+- `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
+- `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
+
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to `.tio.tokens.json`. See `setup.md` for details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters
 - `throttled_users` — TTLDict to rate-limit non-mod users
 - `last_activity` — timestamp of last message (used by cron)
+- `twitch_user_id` — resolved at `setup_hook()` time
 
-**Depends on:** `data`, `storage`, `commands`, `twitchio`, `twitchAPI`, `ttldict2`, `asyncio-throttle`
+**Depends on:** `data`, `storage`, `commands`, `twitchio 3.x`, `ttldict2`, `asyncio-throttle`
 
 ---
 
@@ -207,20 +214,6 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 **Depends on:** `data`, `storage`, `words`, `query`, `pymorphy3`
 
 ---
-
-## Auth & Ops
-
-### [server_twitch_auth.py](file:///home/gem/src/moon-rabbit/server_twitch_auth.py) — Twitch OAuth Tool
-**Role:** Standalone utility to obtain Twitch OAuth tokens
-
-- Implements `UserAuthenticator` — runs a local web server, generates OAuth URL
-- User opens URL in browser, authorizes, server captures the auth code
-- Exchanges code for access + refresh tokens via Twitch API
-- **Not part of the bot runtime** — run manually once to set up Twitch auth
-
-**Usage:** `python server_twitch_auth.py <bot_channel_name>`
-
-**Depends on:** `twitchAPI`, `aiohttp`, `storage`
 
 ---
 
@@ -294,8 +287,7 @@ twitch_api.py
 ├── data (*)
 ├── storage (cursor, db)
 ├── commands
-├── twitchio
-└── twitchAPI
+└── twitchio (3.x — chat + EventSub)
 
 storage.py
 ├── data (*)
@@ -314,6 +306,4 @@ words.py
 word_processing.py (standalone)
 ├── data, storage, words, query, pymorphy3
 
-server_twitch_auth.py (standalone)
-├── twitchAPI, aiohttp, storage
 ```

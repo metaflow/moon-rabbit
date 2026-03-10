@@ -10,10 +10,8 @@ pillow==9.5.0  # image manipulations
 psycopg2==2.9.6  # postgres
 pymorphy3==1.3.1  # auto-generation of russian morphems (maintained fork of pymorphy2)
 pymorphy3-dicts-ru==2.4.417150.4580142  # russian dictionary for pymorphy3
-requests==2.30.0
 ttldict2==0.1.1  # caching
-twitchapi==3.10.0  # twitch API (probably low level?)
-twitchio==2.6.0  # twitch API
+twitchio==3.2.1  # twitch chat + EventSub (replaces twitchio 2.x + twitchapi)
 python-dotenv==1.2.2
 setuptools==75.8.2  # required by pymorphy3 (pkg_resources)
 

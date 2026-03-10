@@ -10,7 +10,7 @@
 graph TD
     subgraph "Chat Platforms"
         D["Discord<br/>(discord.py)"]
-        T["Twitch<br/>(twitchio + twitchAPI)"]
+        T["Twitch<br/>(twitchio 3.x)"]
     end
 
     subgraph "Client Layer"
@@ -156,10 +156,11 @@ erDiagram
         text channel_name
         text api_app_id
         text api_app_secret
-        text auth_token
-        text api_url
-        int api_port
-        text refresh_token
+        text bot_user_id
+        text auth_token "obsolete"
+        text api_url "obsolete"
+        int api_port "obsolete"
+        text refresh_token "obsolete"
     }
 
     channels ||--o{ commands : "has"

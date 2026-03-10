@@ -25,7 +25,6 @@ import asyncio
 import traceback
 from io import StringIO
 from data import *
-from twitchio.ext import commands as twitchCommands  # type: ignore
 import argparse
 import discord  # type: ignore
 import jinja2
@@ -236,14 +235,12 @@ def main():
         except Exception as e:
             logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch:
-        with cursor() as cur:
-            try:
-                t = twitch_api.Twitch3(twitch_bot=args.twitch, loop=loop,
-                                       dev_message=dev_msg)
-                loop.create_task(t.connect())
-                loop.create_task(cron(t, int(args.cron_interval_s)))
-            except Exception as e:
-                logging.error(f'{e}\n{traceback.format_exc()}')
+        try:
+            t = twitch_api.Twitch3(twitch_bot=args.twitch, dev_message=dev_msg)
+            loop.create_task(t.start())
+            loop.create_task(cron(t, int(args.cron_interval_s)))
+        except Exception as e:
+            logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch or args.discord:
         logging.info('running the async loop')
         loop.create_task(expireVariables())

@@ -141,3 +141,61 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-08 | Added local dev environment setup documentation to `setup.md` and `migration_log.md`. |
 | 2026-03-08 | Disabled crontab `restart.sh` (every 3h) on production to reveal standing connection issues instead of masking them with periodic restarts. |
 | 2026-03-08 | Added `python-dotenv` to dependencies and `load_dotenv()` to `main.py` and `server_twitch_auth.py` for reading `.env`. |
+| 2026-03-10 | Completed TwitchIO 3.x migration (see section 4 below). |
+
+---
+
+## 4. TwitchIO 3.x Migration
+
+**Goal:** Replace `twitchio 2.6.0` + `twitchAPI 3.10.0` with `twitchio 3.2.1` only. Eliminates the need for a public webhook URL; EventSub runs over WebSocket.
+
+### Changes Made
+
+| File | Change |
+|---|---|
+| `requirements.txt` | `twitchio==3.2.1`, removed `twitchapi`, removed `requests` |
+| `schema_backup.sql` | Added `bot_user_id TEXT` to `twitch_bots`; old columns kept, marked obsolete |
+| `twitch_api.py` | **Complete rewrite** — see below |
+| `main.py` | Removed unused `twitchCommands` import; `Twitch3` no longer takes `loop` param; use `t.start()` |
+| `server_twitch_auth.py` | **Deleted** — replaced by twitchio's built-in OAuth server (port 4343) |
+| `tests/test_data.py` | **New** — unit tests for `data.py` pure logic |
+| `tests/test_twitch_message_building.py` | **New** — unit tests for `twitch_api.py` logic (no live connection) |
+| `tests/conftest.py` | **New** — adds project root to `sys.path` for test imports |
+| `docs/overview.md` | Updated dependencies table |
+| `docs/architecture.md` | Updated component diagram + DB schema |
+| `docs/file_reference.md` | Updated `twitch_api.py` section, removed `server_twitch_auth.py` |
+
+### twitch_api.py Rewrite Summary
+
+- `Twitch3.__init__` now takes `client_id`, `client_secret`, `bot_id` (from `bot_user_id` column); no `loop` param
+- `setup_hook()` resolves broadcaster IDs via `fetch_users()` and calls `multi_subscribe()` for:
+  - `ChatMessageSubscription` (all channels)
+  - `ChannelPointsCustomRewardRedemptionAddSubscription` (if `twitch_reward_redemption` in events)
+  - `HypeTrainEndSubscription` (if `twitch_hype_train` in events)
+- Event handlers renamed/reshaped: `event_message(payload: ChatMessage)`, `event_channel_points_redemption_add(payload)`, `event_channel_hype_train_end(payload)`
+- Sending: `PartialUser.send_message(sender=bot_user_id, message=text)` instead of `channel.send()`
+- Auth: twitchio-managed; tokens persisted to `.tio.tokens.json`; no manual refresh
+
+### New Auth Flow (one-time setup)
+
+1. Populate `twitch_bots.bot_user_id` with the numeric Twitch user ID of the bot account
+2. Start the bot — twitchio's OAuth server starts on `http://localhost:4343`
+3. **Bot account** visits: `http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true`
+4. **Channel owner** visits: `http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true`
+5. Tokens saved to `.tio.tokens.json` — subsequent restarts reuse them automatically
+
+### DB Migration
+
+Run on live DB before deploying:
+```sql
+ALTER TABLE twitch_bots ADD COLUMN IF NOT EXISTS bot_user_id TEXT;
+-- Then populate:
+UPDATE twitch_bots SET bot_user_id = '<numeric_id>' WHERE channel_name = 'moon_robot';
+```
+
+### Test Results
+
+```
+26 passed in 0.27s
+```
+

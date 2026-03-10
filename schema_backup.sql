@@ -176,10 +176,11 @@ CREATE TABLE public.twitch_bots (
     channel_name text,
     api_app_id text,
     api_app_secret text,
-    auth_token text,
-    api_url text,
-    api_port integer,
-    refresh_token text
+    auth_token text,     -- obsolete: twitchio 3.x manages tokens in .tio.tokens.json
+    api_url text,        -- obsolete: twitchio 3.x uses built-in EventSub WebSocket
+    api_port integer,    -- obsolete: twitchio 3.x uses built-in EventSub WebSocket
+    refresh_token text,  -- obsolete: twitchio 3.x manages tokens in .tio.tokens.json
+    bot_user_id text     -- NEW: required by twitchio 3.x (numeric Twitch user ID of the bot account)
 );
 
 
