@@ -1,9 +1,9 @@
---
--- PostgreSQL database dump
---
+-- sudo -u postgres pg_dump chatbot --schema-only --no-owner --no-privileges --no-acl > schema_backup.sql
 
--- Dumped from database version 12.14 (Ubuntu 12.14-0ubuntu0.20.04.1)
--- Dumped by pg_dump version 12.14 (Ubuntu 12.14-0ubuntu0.20.04.1)
+\restrict nYcQcSAAH9SWq5pB9AqWQohsz1aKv5VLOKpgzNFbzvhIv9RYDJVkkaxYRKCWM8i
+
+-- Dumped from database version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -176,22 +176,7 @@ CREATE TABLE public.twitch_bots (
     channel_name text,
     api_app_id text,
     api_app_secret text,
-    auth_token text,     -- obsolete: twitchio 3.x manages tokens in .tio.tokens.json
-    api_url text,        -- obsolete: twitchio 3.x uses built-in EventSub WebSocket
-    api_port integer,    -- obsolete: twitchio 3.x uses built-in EventSub WebSocket
-    refresh_token text,  -- obsolete: twitchio 3.x manages tokens in .tio.tokens.json
-    bot_user_id text     -- NEW: required by twitchio 3.x (numeric Twitch user ID of the bot account)
-);
-
-
---
--- Name: twitch_tokens; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.twitch_tokens (
-    user_id text PRIMARY KEY,
-    token text NOT NULL,
-    refresh text NOT NULL
+    bot_user_id text
 );
 
 
@@ -213,6 +198,17 @@ CREATE SEQUENCE public.twitch_bots_id_seq
 --
 
 ALTER SEQUENCE public.twitch_bots_id_seq OWNED BY public.twitch_bots.id;
+
+
+--
+-- Name: twitch_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.twitch_tokens (
+    user_id text NOT NULL,
+    token text NOT NULL,
+    refresh text NOT NULL
+);
 
 
 --
@@ -288,6 +284,14 @@ ALTER TABLE ONLY public.tags
 
 
 --
+-- Name: texts texts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.texts
+    ADD CONSTRAINT texts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: twitch_bots twitch_bots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -296,11 +300,11 @@ ALTER TABLE ONLY public.twitch_bots
 
 
 --
--- Name: texts texts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: twitch_tokens twitch_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.texts
-    ADD CONSTRAINT texts_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.twitch_tokens
+    ADD CONSTRAINT twitch_tokens_pkey PRIMARY KEY (user_id);
 
 
 --
@@ -362,4 +366,6 @@ ALTER TABLE ONLY public.text_tags
 --
 -- PostgreSQL database dump complete
 --
+
+\unrestrict nYcQcSAAH9SWq5pB9AqWQohsz1aKv5VLOKpgzNFbzvhIv9RYDJVkkaxYRKCWM8i
 

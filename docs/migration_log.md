@@ -74,8 +74,7 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 - [x] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
 - [x] delete twitchapi
 - [x] how to turn the bot "off" properly?
-- [ ] reexport schema_backup
-- [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
+- [x] reexport schema_backup
 
 2026-03-09 18:14:52,052 WARNING [lifecycle] received RECONNECT from Twitch, reconnecting...
 2026-03-09 18:15:03,962 ERROR [lifecycle] failed to join channel: jl_in_july
