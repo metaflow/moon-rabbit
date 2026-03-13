@@ -30,14 +30,6 @@ On startup (`__init__`):
 4. Passes the (refreshed) `auth_token` to `twitchio.Client`.
 5. Separately calls `Twitch(app_id, app_secret)` + `authenticate_app()` for EventSub.
 
-### Known Issues / Questions
-
-- [ ] What is the specific auth error? (need to check logs on current droplet)
-- [ ] Are the tokens expired and not refreshing correctly?
-- [ ] Is the `twitchAPI` / `twitchio` library version outdated relative to Twitch API changes?
-- [ ] Has Twitch deprecated or changed any OAuth endpoints or scopes?
-- [ ] The EventSub setup uses the old `EventSub` class — Twitch may have migrated to EventSub v2 (WebSocket-based instead of webhook).
-
 ### Findings
 
 #### Error log analysis (2023-05-08 to 2026-03-08)
@@ -64,17 +56,7 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 
 ### Resolution
 
-*(To be filled in after debug hooks confirm the failure mode)*
-
-### Next Steps (library upgrades)
-
-- [x] Setup running instance on a developer machine.
-- [x] add context7 as mcp
-- [x] review claude changes
-- [x] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
-- [x] delete twitchapi
-- [x] how to turn the bot "off" properly?
-- [x] reexport schema_backup
+error trace captured by server
 
 2026-03-09 18:14:52,052 WARNING [lifecycle] received RECONNECT from Twitch, reconnecting...
 2026-03-09 18:15:03,962 ERROR [lifecycle] failed to join channel: jl_in_july
@@ -102,7 +84,34 @@ Traceback (most recent call last):
     self._join_pending.pop(channel)
 │KeyError: 'jl_in_july'
 
-- [ ] Consider using PM2 (already available) with `--watch` or `--restart-delay` instead of `restart.sh` crontab for automatic restarts
+Viewed migration_log.md:1-253
+
+```ai(gemini)
+The exception trace is a symptom of a well-known race condition bug in `twitchio` 2.x's IRC websocket client, specifically inside `WSConnection._join_future_handle()`.
+
+**What is happening:**
+1. Twitch sends a standard `RECONNECT` command, forcing the bot's IRC websocket to disconnect.
+2. `twitchio` attempts to auto-reconnect and simultaneously re-join the active channels.
+3. The join attempt for the channel `jl_in_july` times out (as seen by the `asyncio.exceptions.TimeoutError`).
+4. The exception handler catches the timeout and attempts to clean up the pending join by running `self._join_pending.pop(channel)`. However, multiple retry tasks are racing, and the key has already been popped. This triggers the unhandled `KeyError: 'jl_in_july'` and permanently breaks the bot's connection state.
+
+**Has migrating to TwitchIO 3 addressed this?**
+Yes, migrating to version 3 definitively fixes this issue for several reasons:
+
+1. **Abandoning IRC for Chat:** TwitchIO 3.x completely drops the old IRC chat protocol in favor of Twitch's new EventSub WebSockets. The bot now subscribes to chat messages via `ChatMessageSubscription` rather than explicitly "joining" IRC channels. The entire `_join_pending` queue and the code that caused the race condition no longer exist in the stack you are using.
+2. **Proper Token Management:** In your previous setup, tokens were only refreshed at startup. When the 4-hour Twitch OAuth token expired, Twitch would forcibly disconnect you, which heavily contributed to the `RECONNECT` loops that triggered the crashing bug. TwitchIO 3 now handles token refreshing automatically in the background, minimizing required reconnects.
+3. **Resilient Reconnects:** EventSub WebSocket reconnects are robustly handled by the new library in the event of dropped connections without fatal unhandled exceptions.
+```
+
+### Next Steps (library upgrades)
+
+- [x] Setup running instance on a developer machine.
+- [x] add context7 as mcp
+- [x] review claude changes
+- [x] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
+- [x] delete twitchapi
+- [x] how to turn the bot "off" properly?
+- [x] reexport schema_backup
 
 ---
 
@@ -119,21 +128,25 @@ Traceback (most recent call last):
 
 ### Migration Plan
 
-- [ ] Install dependencies (Python, uv, PostgreSQL, etc.)
 - [ ] Install remote editor
-- [ ] Transfer PostgreSQL data from dev machine (dump from old → restore on new)
+- [ ] Install dependencies (Python, uv, PostgreSQL, etc.)
+- [ ] do I need a separate mount disk for backups
+- [ ] Transfer PostgreSQL data from dev machine
 - [ ] confirm that no changes from old db are missing
 - [ ] setup auth nginx redirect and test it
 - [ ] Clone repo to `/var/moon-rabbit`
 - [ ] Configure environment (`DB_CONNECTION`, etc.)
-- [ ] Set up pm2 for backup and bot itself
 - [ ] Update DNS / IP references if any
-- [ ] Verify bot connects to both platforms
+- [ ] drop auth entities
+- [ ] check that bot cannot connect to my twitch, authenticate and check that now it does
+- [ ] update twitch channel to july_in_july
 - [ ] shut down old bot
-- [ ] check if any commands are missing
-- [ ] Decommission old droplet
+- [ ] start a new one and ask to authenticate
+- [ ] dump old database and compare with the new - are there any mismatches?
 - [ ] review documentation, most of setup.md should go to readme
-- [ ] regular backups from the server, do I need a separate mount disk?
+- [ ] Set up pm2 for backup and bot itself
+- [ ] after a week - drop old droplet
+
 
 ### Notes
 
@@ -243,10 +256,3 @@ ALTER TABLE twitch_bots
     DROP COLUMN api_port,
     DROP COLUMN refresh_token;
 ```
-
-### Test Results
-
-```
-26 passed in 0.27s
-```
-
