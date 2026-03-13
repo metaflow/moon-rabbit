@@ -69,11 +69,43 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 ### Next Steps (library upgrades)
 
 - [x] Setup running instance on a developer machine.
-- [ ] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
-- [ ] Upgrade `twitchAPI` from `3.10.0` → `4.x` — EventSub WebSocket transport (no public callback URL needed)
+- [x] add context7 as mcp
+- [ ] review claude changes
+- [x] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
+- [x] delete twitchapi
+- [ ] remove twitch_bots_table and use .env
+- [ ] how to turn the bot "off" properly?
+- [ ] remove parallel run for discord / twitch?
+- [ ] reexport schema_backup
 - [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
+
+2026-03-09 18:14:52,052 WARNING [lifecycle] received RECONNECT from Twitch, reconnecting...
+2026-03-09 18:15:03,962 ERROR [lifecycle] failed to join channel: jl_in_july
+2026-03-09 18:15:14,867 ERROR [lifecycle] failed to join channel: jl_in_july
+2026-03-09 18:15:33,071 ERROR Task exception was never retrieved
+future: <Task finished name='Task-6741' coro=<WSConnection._join_future_handle() done, defined at /r
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/asyncio/tasks.py", line 456, in wait_for
+    return fut.result()
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/root/.local/share/virtualenvs/moon-rabbit-T0OZLLxu/lib/python3.10/site-packages/twitchio/we
+    await asyncio.wait_for(fut, timeout=timeout)
+  File "/usr/lib/python3.10/asyncio/tasks.py", line 458, in wait_for
+    raise exceptions.TimeoutError() from exc
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/.local/share/virtualenvs/moon-rabbit-T0OZLLxu/lib/python3.10/site-packages/twitchio/we
+    self._join_pending.pop(channel)
+│KeyError: 'jl_in_july'
+
 - [ ] Consider using PM2 (already available) with `--watch` or `--restart-delay` instead of `restart.sh` crontab for automatic restarts
-- [ ] add context7 as mcp
 
 ---
 
@@ -91,13 +123,20 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 ### Migration Plan
 
 - [ ] Install dependencies (Python, uv, PostgreSQL, etc.)
-- [ ] Transfer PostgreSQL data (dump from old → restore on new)
+- [ ] Install remote editor
+- [ ] Transfer PostgreSQL data from dev machine (dump from old → restore on new)
+- [ ] confirm that no changes from old db are missing
+- [ ] setup auth nginx redirect and test it
 - [ ] Clone repo to `/var/moon-rabbit`
 - [ ] Configure environment (`DB_CONNECTION`, etc.)
-- [ ] Set up crontab (restart.sh, pg_backup.sh)
+- [ ] Set up pm2 for backup and bot itself
 - [ ] Update DNS / IP references if any
-- [ ] Verify bot connects on both platforms
+- [ ] Verify bot connects to both platforms
+- [ ] shut down old bot
+- [ ] check if any commands are missing
 - [ ] Decommission old droplet
+- [ ] review documentation, most of setup.md should go to readme
+- [ ] regular backups from the server, do I need a separate mount disk?
 
 ### Notes
 
@@ -142,6 +181,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-08 | Disabled crontab `restart.sh` (every 3h) on production to reveal standing connection issues instead of masking them with periodic restarts. |
 | 2026-03-08 | Added `python-dotenv` to dependencies and `load_dotenv()` to `main.py` and `server_twitch_auth.py` for reading `.env`. |
 | 2026-03-10 | Completed TwitchIO 3.x migration (see section 4 below). |
+| 2026-03-12 | Implemented `twitch_tokens` database storage for TwitchIO tokens to replace local `.tio.tokens.json`. |
 
 ---
 
@@ -191,6 +231,13 @@ Run on live DB before deploying:
 ALTER TABLE twitch_bots ADD COLUMN IF NOT EXISTS bot_user_id TEXT;
 -- Then populate:
 UPDATE twitch_bots SET bot_user_id = '<numeric_id>' WHERE channel_name = 'moon_robot';
+
+-- Create table for storing TwitchIO OAuth tokens per user
+CREATE TABLE IF NOT EXISTS public.twitch_tokens (
+    user_id text PRIMARY KEY,
+    token text NOT NULL,
+    refresh text NOT NULL
+);
 ```
 
 ### Test Results

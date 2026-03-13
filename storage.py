@@ -525,6 +525,21 @@ class DB:
             for row in cur.fetchall():
                 logging.info(row)
 
+    def save_twitch_token(self, user_id: str, token: str, refresh: str):
+        with self.conn.cursor() as cur:
+            cur.execute('''
+                INSERT INTO twitch_tokens (user_id, token, refresh)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    token = EXCLUDED.token,
+                    refresh = EXCLUDED.refresh;
+            ''', (user_id, token, refresh))
+
+    def load_twitch_tokens(self) -> List[Tuple[str, str]]:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT token, refresh FROM twitch_tokens")
+            return cur.fetchall()
+
 _db: Optional[DB]
 
 

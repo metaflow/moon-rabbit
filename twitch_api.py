@@ -109,6 +109,30 @@ class Twitch3(twitchio.Client):
         )
 
     # ------------------------------------------------------------------
+    # Token Management
+    # ------------------------------------------------------------------
+
+    async def add_token(self, token: str, refresh: str):
+        resp = await super().add_token(token, refresh)
+        db().save_twitch_token(resp.user_id, token, refresh)
+        logging.info(f'[auth] Added token to the database for user: {resp.user_id}')
+        return resp
+
+    async def load_tokens(self, path: Optional[str] = None) -> None:
+        tokens = db().load_twitch_tokens()
+        logging.info(f'loaded {len(tokens)} auth tokens')
+        for token, refresh in tokens:
+            try:
+                await super().add_token(token, refresh)
+            except Exception as e:
+                logging.warning(f'[auth] Failed to load token: {e}')
+
+    def save_tokens(self, path: Optional[str] = None) -> None:
+        # We save tokens dynamically in add_token, so we do nothing here
+        # to prevent creating the default .tio.tokens.json file.
+        pass
+
+    # ------------------------------------------------------------------
     # Lifecycle hooks
     # ------------------------------------------------------------------
 
@@ -208,7 +232,8 @@ class Twitch3(twitchio.Client):
         logging.info(f'[auth] token refreshed for user_id={getattr(payload, "user_id", "?")}')
 
     async def event_oauth_authorized(self, payload) -> None:
-        logging.info(f'[auth] OAuth authorized for user_id={getattr(payload, "user_id", "?")}')
+        logging.info(f'[auth] OAuth authorized. Playload: {payload}')
+        await self.add_token(payload.access_token, payload.refresh_token)
 
     # ------------------------------------------------------------------
     # Chat messages

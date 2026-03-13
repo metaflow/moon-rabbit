@@ -232,7 +232,7 @@ twitchio 3.x manages tokens itself via a built-in OAuth server on port 4343. Aft
    http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
    ```
 
-Tokens are saved automatically to `.tio.tokens.json` in the project root. Subsequent restarts reuse them — no repeat auth needed unless tokens are deleted.
+Tokens are saved automatically to the `twitch_tokens` database table. Subsequent restarts reuse them — no repeat auth needed unless tokens are deleted from the database.
 
 ## 7. Add a Twitch channel
 

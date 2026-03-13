@@ -163,6 +163,12 @@ erDiagram
         text refresh_token "obsolete"
     }
 
+    twitch_tokens {
+        text user_id PK
+        text token
+        text refresh
+    }
+
     channels ||--o{ commands : "has"
     channels ||--o{ texts : "has"
     channels ||--o{ tags : "has"

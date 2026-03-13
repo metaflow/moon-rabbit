@@ -136,7 +136,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 - `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
 - `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
 
-**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to `.tio.tokens.json`. See `setup.md` for details.
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3`. See `setup.md` for details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters
@@ -168,6 +168,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 | **Prefix** | `set_twitch_prefix()`, `set_discord_prefix()` | Update command prefixes |
 | **Allowed channels** | `get_discord_allowed_channels()`, `set_discord_allowed_channels()` | Channel allowlisting |
 | **Cache expiry** | `expire_old_queries()` | Remove stale query queues |
+| **Twitch Tokens** | `save_twitch_token()`, `load_twitch_tokens()` | Persist and recover TwitchIO OAuth credentials |
 | **Health check** | `check_database()` | Log all channels on startup |
 
 **Module-level helpers:** `set_db()`, `db()`, `cursor()`

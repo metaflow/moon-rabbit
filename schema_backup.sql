@@ -185,6 +185,17 @@ CREATE TABLE public.twitch_bots (
 
 
 --
+-- Name: twitch_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.twitch_tokens (
+    user_id text PRIMARY KEY,
+    token text NOT NULL,
+    refresh text NOT NULL
+);
+
+
+--
 -- Name: twitch_bots_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
