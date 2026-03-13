@@ -219,26 +219,17 @@ INSERT INTO twitch_bots (channel_name, api_app_id, api_app_secret, bot_user_id)
 VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<numeric_bot_user_id>');
 ```
 
-### First-time OAuth (one-time, after bot starts)
+#### Authenticate bot
 
-twitchio 3.x manages tokens itself via a built-in OAuth server on port 4343. After starting the bot:
-
-1. **Bot account** — open this URL in a browser **while logged in as the bot Twitch account**:
-   ```
-   http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true
-   ```
-2. **Channel owner** — open this URL **while logged in as the channel owner**:
-   ```
-   http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
-   ```
-
-Tokens are saved automatically to the `twitch_tokens` database table. Subsequent restarts reuse them — no repeat auth needed unless tokens are deleted from the database.
+Open this http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true in a browser **while logged in as the bot Twitch account**.
 
 ## 7. Add a Twitch channel
 
 Your Twitch channel name is your Twitch username (lowercase), visible in the URL: `twitch.tv/<channel_name>`.
 
 The bot looks up channels by the `twitch_bot` column in the `channels` table. On first message, it auto-creates a channel entry — no manual DB insert needed.
+
+**Channel owner** — open this URL **while logged in as the channel owner**: http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
 
 ## 8. Patch channel data for dev
 

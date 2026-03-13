@@ -41,16 +41,20 @@ class ChannelInfo:
     last_activity: float
 
 
+def is_moderator(payload: twitchio.ChatMessage) -> bool:
+    """Return True if the chatter is a moderator or broadcaster."""
+    try:
+        badges = payload.badges or []
+        badge_ids = [b.id if hasattr(b, 'id') else str(b) for b in badges]
+        return 'moderator' in badge_ids or 'broadcaster' in badge_ids
+    except Exception:
+        return False
+
+
 class Twitch3(twitchio.Client):
-    """Twitch bot client using twitchio 3.x.
+    """Twitch bot client based on twitchio.
 
-    Authentication:
-      - twitchio 3.x runs a built-in OAuth web server on port 4343.
-      - First run: the bot account and each channel owner must visit OAuth URLs
-        (see setup.md for exact URLs and scopes).
-      - Tokens are auto-refreshed and persisted to .tio.tokens.json.
-
-    Chat and events are both handled via EventSub WebSocket — no public URL needed.
+    Stores auth tokens in database and executes custom commands defined in the database.
     """
 
     def __init__(self, twitch_bot: str, dev_message: str = None):
@@ -207,9 +211,9 @@ class Twitch3(twitchio.Client):
                         logging.warning(f'[setup_hook] hype train sub failed for #{channel_name}: {e}')
 
     async def event_ready(self) -> None:
-        logging.info(f'[lifecycle] logged in as {self.user}')
+        logging.info(f'event_ready {self.user}')
         if self.dev_message:
-            await asyncio.sleep(3)
+            await asyncio.sleep(3) # wait for cannel join
             for channel_name in self.channels:
                 try:
                     broadcaster = self.create_partialuser(
@@ -225,14 +229,14 @@ class Twitch3(twitchio.Client):
                     logging.warning(f'[dev] failed to send to #{channel_name}: {e}')
 
     async def event_error(self, error: Exception, *args, **kwargs) -> None:
-        logging.error(f'[lifecycle] twitchio event_error: {error}')
+        logging.error(f'event_error: {error}')
         logging.error(traceback.format_exc())
 
     async def event_token_refreshed(self, payload) -> None:
-        logging.info(f'[auth] token refreshed for user_id={getattr(payload, "user_id", "?")}')
+        logging.debug(f'event_token_refreshed: user_id={getattr(payload, "user_id", "?")}')
 
     async def event_oauth_authorized(self, payload) -> None:
-        logging.info(f'[auth] OAuth authorized. Playload: {payload}')
+        logging.info(f'event_oauth_authorized: access_token={payload.access_token}, refresh_token={payload.refresh_token}')
         await self.add_token(payload.access_token, payload.refresh_token)
 
     # ------------------------------------------------------------------
@@ -268,7 +272,7 @@ class Twitch3(twitchio.Client):
 
             log.debug(f'{author} "{text}"')
 
-            is_mod: bool = _is_mod(payload)
+            is_mod: bool = is_moderator(payload)
             message_id: str = str(time.time_ns())
             variables: Optional[Dict] = None
 
@@ -316,10 +320,6 @@ class Twitch3(twitchio.Client):
 
         except Exception as e:
             logging.error(f'[event_message] {e}\n{traceback.format_exc()}')
-
-    # ------------------------------------------------------------------
-    # Channel points redemption
-    # ------------------------------------------------------------------
 
     async def event_channel_points_redemption_add(self, payload) -> None:
         try:
@@ -383,10 +383,6 @@ class Twitch3(twitchio.Client):
 
         except Exception as e:
             logging.error(f'[redemption] {e}\n{traceback.format_exc()}')
-
-    # ------------------------------------------------------------------
-    # Hype Train
-    # ------------------------------------------------------------------
 
     async def event_channel_hype_train_end(self, payload) -> None:
         try:
@@ -452,13 +448,9 @@ class Twitch3(twitchio.Client):
         except Exception as e:
             logging.error(f'[hype_train_end] {e}\n{traceback.format_exc()}')
 
-    # ------------------------------------------------------------------
-    # Sending
-    # ------------------------------------------------------------------
-
     async def send_message(self, info: ChannelInfo, txt: str) -> None:
         if not info.twitch_user_id:
-            logging.warning(f'[send_message] no broadcaster user ID for channel {info.channel_id}')
+            logging.warning(f'send_message: no broadcaster user ID for channel {info.channel_id}')
             return
         if len(txt) > 500:
             txt = txt[:497] + '...'
@@ -476,10 +468,6 @@ class Twitch3(twitchio.Client):
             except Exception as e:
                 logging.error(f'[send_message] failed: {e}')
 
-    # ------------------------------------------------------------------
-    # Mention helpers (unchanged logic)
-    # ------------------------------------------------------------------
-
     def any_mention(self, txt: str, info: ChannelInfo, author: str) -> str:
         direct = self.mentions(txt)
         return direct if direct else self.random_mention(info, author)
@@ -491,10 +479,6 @@ class Twitch3(twitchio.Client):
     def random_mention(self, info: ChannelInfo, author: str) -> str:
         users = [x for x in info.active_users.keys() if x != author]
         return '@' + (random.choice(users) if users else author)
-
-    # ------------------------------------------------------------------
-    # Cron (unchanged logic)
-    # ------------------------------------------------------------------
 
     async def on_cron(self) -> None:
         for channel_name, info in self.channels.items():
@@ -542,16 +526,3 @@ class Twitch3(twitchio.Client):
                 if a.kind == ActionKind.NEW_MESSAGE:
                     await self.send_message(info, a.text)
 
-
-# ------------------------------------------------------------------
-# Module-level helpers
-# ------------------------------------------------------------------
-
-def _is_mod(payload: twitchio.ChatMessage) -> bool:
-    """Return True if the chatter is a moderator or broadcaster."""
-    try:
-        badges = payload.badges or []
-        badge_ids = [b.id if hasattr(b, 'id') else str(b) for b in badges]
-        return 'moderator' in badge_ids or 'broadcaster' in badge_ids
-    except Exception:
-        return False

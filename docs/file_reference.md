@@ -168,7 +168,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 | **Prefix** | `set_twitch_prefix()`, `set_discord_prefix()` | Update command prefixes |
 | **Allowed channels** | `get_discord_allowed_channels()`, `set_discord_allowed_channels()` | Channel allowlisting |
 | **Cache expiry** | `expire_old_queries()` | Remove stale query queues |
-| **Twitch Tokens** | `save_twitch_token()`, `load_twitch_tokens()` | Persist and recover TwitchIO OAuth credentials |
+| **Twitch Tokens** | `add_token()`, `load_twitch_tokens()` | Persist and recover TwitchIO OAuth credentials |
 | **Health check** | `check_database()` | Log all channels on startup |
 
 **Module-level helpers:** `set_db()`, `db()`, `cursor()`

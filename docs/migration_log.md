@@ -70,12 +70,10 @@ Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
 
 - [x] Setup running instance on a developer machine.
 - [x] add context7 as mcp
-- [ ] review claude changes
+- [x] review claude changes
 - [x] Upgrade `twitchio` from `2.6.0` → latest stable (3.x) — better token management, auto-reconnect, EventSub-based chat
 - [x] delete twitchapi
-- [ ] remove twitch_bots_table and use .env
-- [ ] how to turn the bot "off" properly?
-- [ ] remove parallel run for discord / twitch?
+- [x] how to turn the bot "off" properly?
 - [ ] reexport schema_backup
 - [ ] Implement proper `event_token_expired` with refresh logic once failure mode is confirmed
 
@@ -238,6 +236,13 @@ CREATE TABLE IF NOT EXISTS public.twitch_tokens (
     token text NOT NULL,
     refresh text NOT NULL
 );
+
+-- Drop obsolete columns
+ALTER TABLE twitch_bots
+    DROP COLUMN auth_token,
+    DROP COLUMN api_url,
+    DROP COLUMN api_port,
+    DROP COLUMN refresh_token;
 ```
 
 ### Test Results
