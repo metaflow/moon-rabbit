@@ -112,6 +112,9 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] delete twitchapi
 - [x] how to turn the bot "off" properly?
 - [x] reexport schema_backup
+- [ ] check if any other lib updates are necessary
+- [ ] overall code review and health
+- [ ] any burning todo items?
 
 ---
 
