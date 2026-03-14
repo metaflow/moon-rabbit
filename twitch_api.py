@@ -131,7 +131,7 @@ class Twitch3(twitchio.Client):
             except Exception as e:
                 logging.warning(f'[auth] Failed to load token: {e}')
 
-    def save_tokens(self, path: Optional[str] = None) -> None:
+    async def save_tokens(self, path: Optional[str] = None) -> None:
         # We save tokens dynamically in add_token, so we do nothing here
         # to prevent creating the default .tio.tokens.json file.
         pass

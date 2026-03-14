@@ -112,7 +112,9 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] delete twitchapi
 - [x] how to turn the bot "off" properly?
 - [x] reexport schema_backup
+- [x] setup linter checks
 - [ ] check if any other lib updates are necessary
+- [ ] setup review prompt
 - [ ] overall code review and health
 - [ ] any burning todo items?
 
@@ -195,6 +197,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-08 | Added `python-dotenv` to dependencies and `load_dotenv()` to `main.py` and `server_twitch_auth.py` for reading `.env`. |
 | 2026-03-10 | Completed TwitchIO 3.x migration (see section 4 below). |
 | 2026-03-12 | Implemented `twitch_tokens` database storage for TwitchIO tokens to replace local `.tio.tokens.json`. |
+| 2026-03-14 | Fixed "Unclosed client session" errors by implementing graceful shutdown in `run_loop()` with a 10s timeout. |
 
 ---
 

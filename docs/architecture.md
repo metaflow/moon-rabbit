@@ -237,6 +237,26 @@ Both Discord and Twitch clients support periodic cron tasks:
 
 ---
 
+## Graceful Shutdown & Loop Lifecycle
+
+The bot implements a clean shutdown sequence to ensure all network sessions are closed and background tasks are terminated without errors (e.g., "Unclosed client session").
+
+### Main Loop Runner (`run_loop`)
+The `run_loop()` function in `main.py` wraps the event loop execution:
+- Calls `loop.run_forever()` within a `try...finally` block.
+- Catches `KeyboardInterrupt` (Ctrl+C) and `GracefulExit` (from aiohttp).
+- Ensures the `shutdown()` sequence is called even if an unexpected error occurs.
+
+### Shutdown Sequence (`shutdown`)
+When the bot stops, the following happens:
+1. **Closing Clients**: Calls `.close()` on both `DiscordClient` and `Twitch3`.
+   - `Twitch3.save_tokens()` is an asynchronous method awaited by `close()` to ensure auth state is preserved.
+2. **Timeout Protection**: The client closing tasks are wrapped in `asyncio.wait_for` with a 10-second timeout.
+3. **Task Cancellation**: All remaining background tasks (like `cron` and `expireVariables`) are explicitly canceled and awaited to prevent "Task was destroyed but it is pending!" warnings.
+4. **Loop Termination**: After all tasks are settled, the event loop is explicitly closed via `loop.close()`.
+
+---
+
 ## Template Variables & Globals
 
 Available in all Jinja2 templates (persistent commands & `+eval`):

@@ -88,6 +88,7 @@ On startup:
 3. Creates async event loop
 4. Starts Discord and/or Twitch clients
 5. Launches background tasks: `expireVariables()` (every 5min) and `cron()` (configurable interval)
+6. Implements **Graceful Shutdown**: Catches termination signals to cleanly close all sessions and cancel background tasks within 10s.
 
 ---
 

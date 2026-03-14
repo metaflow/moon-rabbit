@@ -30,6 +30,8 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 | `new_message()` | Jinja2 global `message()` — queues additional actions |
 | `expireVariables()` | Background: expire variables + stale queries every 5 min |
 | `cron()` | Background: calls `client.on_cron()` periodically |
+| `run_loop()` | Logic runner: executes `run_forever()` and manages graceful shutdown |
+| `shutdown()` | Asynchronous helper: closes clients and cancels remaining tasks on exit |
 | `main()` | CLI entry point |
 
 **Depends on:** `data`, `storage`, `commands`, `discord_client`, `twitch_api`
@@ -136,7 +138,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 - `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
 - `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
 
-**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3`. See `setup.md` for details.
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters

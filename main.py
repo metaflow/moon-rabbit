@@ -34,7 +34,7 @@ import sys
 import random
 from dotenv import load_dotenv
 from storage import DB, db, set_db, cursor
-from typing import Any, Callable, List, Set, Union
+from typing import Any, Callable, List, Optional, Set, Tuple, Union
 import commands
 import datetime
 import time
@@ -146,6 +146,50 @@ async def expireVariables():
         db().expire_old_queries()
         await asyncio.sleep(300)
 
+async def shutdown(discord_client: Optional[DiscordClient], twitch_client: Optional[twitch_api.Twitch3]):
+    """Gracefully close all client sessions and cancel background tasks."""
+    shutdown_tasks = []
+    if discord_client:
+        logging.info('Closing Discord client...')
+        shutdown_tasks.append(discord_client.close())
+    if twitch_client:
+        logging.info('Closing Twitch client...')
+        shutdown_tasks.append(twitch_client.close())
+
+    if shutdown_tasks:
+        try:
+            # Wait for up to 10 seconds for clients to close
+            await asyncio.wait_for(asyncio.gather(*shutdown_tasks), timeout=10.0)
+        except asyncio.TimeoutError:
+            logging.warning('Shutdown timed out after 10 seconds.')
+        except Exception as e:
+            logging.error(f'Error during shutdown: {e}\n{traceback.format_exc()}')
+
+    # Cancel all other tasks (like cron and expireVariables)
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if tasks:
+        logging.info(f"Canceling {len(tasks)} remaining background tasks...")
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+def run_loop(loop: asyncio.AbstractEventLoop, discord_client: Optional[DiscordClient], twitch_client: Optional[twitch_api.Twitch3], cron_interval_s: int):
+    """Run the main event loop and handle graceful shutdown."""
+    try:
+        logging.info('running the async loop')
+        loop.create_task(expireVariables())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        logging.info('Caught KeyboardInterrupt, shutting down...')
+    except Exception as e:
+        logging.error(f'Caught unexpected exception: {e}\n{traceback.format_exc()}')
+    finally:
+        logging.info('Commencing shutdown...')
+        # Run the shutdown tasks until complete
+        loop.run_until_complete(shutdown(discord_client, twitch_client))
+        loop.close()
+        logging.info('Shutdown complete.')
+
 async def cron(client: Union[DiscordClient, twitch_api.Twitch3], cron_interval_s: int):
     while True:
         await client.on_cron()
@@ -223,6 +267,7 @@ def main():
         dev_msg = f'\U0001f407 moon-rabbit dev mode — connected at {now}'
         logging.info(f'dev mode enabled, smoke-test message: {dev_msg}')
     discordClient = None
+    twitch_client = None
     if args.discord:
         try:
             logging.info('starting Discord Bot')
@@ -236,15 +281,13 @@ def main():
             logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch:
         try:
-            t = twitch_api.Twitch3(twitch_bot=args.twitch, dev_message=dev_msg)
-            loop.create_task(t.start())
-            loop.create_task(cron(t, int(args.cron_interval_s)))
+            twitch_client = twitch_api.Twitch3(twitch_bot=args.twitch, dev_message=dev_msg)
+            loop.create_task(twitch_client.start())
+            loop.create_task(cron(twitch_client, int(args.cron_interval_s)))
         except Exception as e:
             logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch or args.discord:
-        logging.info('running the async loop')
-        loop.create_task(expireVariables())
-        loop.run_forever()
+        run_loop(loop, discordClient, twitch_client, int(args.cron_interval_s))
         sys.exit(0)
     print('add --twitch or --discord argument to run bot')
     sys.exit(1)
