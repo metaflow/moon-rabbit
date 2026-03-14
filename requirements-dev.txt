@@ -1,3 +1,0 @@
-# dev dependencies
-mypy==1.2.0
-black==23.3.0
