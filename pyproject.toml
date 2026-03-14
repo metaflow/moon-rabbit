@@ -46,5 +46,8 @@ python-dotenv = "dotenv"
 line-length = 100
 
 [tool.ruff.lint]
-ignore = ["F403", "F405", "E402"]
+# F403: 'from module import *' used; unable to detect undefined names
+# F405: Name may be undefined, or defined from star imports
+# E402: Module level import not at top of file
+# ignore = ["F403", "F405", "E402"]
 
