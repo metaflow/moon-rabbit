@@ -5,34 +5,34 @@ description = ""
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "asyncio-throttle>=1.0.2",  # request throttling
-    "cachetools>=5.3.0",  # caching
-    "dacite>=1.8.0",  # init class from dict
-    "discord>=2.2.3",  # discord api
-    "dawg-python>=0.7.2", # dependency for pymorphy3
-    "jinja2>=3.1.2",  # templating
-    "lark>=1.1.5",  # language parsing
-    "llist>=0.7.1",  # linked list for non-unified diffs
-    "numpy>=1.24.3",
-    "pillow>=9.5.0",  # image manipulations
-    "psycopg2-binary>=2.9.11",  # postgres
-    "pymorphy3>=1.3.1",  # auto-generation of russian morphems (maintained fork of pymorphy2)
-    "pymorphy3-dicts-ru>=2.4.417150.4580142",  # russian dictionary for pymorphy3
-    "python-dotenv>=1.2.2",
-    "requests>=2.31.0",
-    "setuptools>=75.8.2",  # required by pymorphy3 (pkg_resources)
-    "ttldict2>=0.1.1",  # caching
-    "twitchio>=3.2.1",  # twitch chat + EventSub (replaces twitchio 2.x + twitchapi)
+    "asyncio-throttle",  # request throttling
+    "cachetools",  # caching
+    "dacite",  # init class from dict
+    "discord",  # discord api
+    "dawg-python", # dependency for pymorphy3
+    "jinja2",  # templating
+    "lark",  # language parsing
+    "llist",  # linked list for non-unified diffs
+    "numpy",
+    "pillow",  # image manipulations
+    "psycopg2-binary",  # postgres
+    "pymorphy3",  # auto-generation of russian morphems (maintained fork of pymorphy2)
+    "pymorphy3-dicts-ru",  # russian dictionary for pymorphy3
+    "python-dotenv",
+    "requests",
+    "setuptools",  # required by pymorphy3 (pkg_resources)
+    "ttldict2",  # caching
+    "twitchio",  # twitch chat + EventSub (replaces twitchio 2.x + twitchapi)
 ]
 
 [dependency-groups]
 dev = [
-    "black>=23.3.0",
-    "pytest>=9.0.2",
-    "ruff>=0.3.0",
-    "deptry>=0.14.0",
-    "types-requests>=2.31.0",
-    "ty>=0.0.1",
+    "black",
+    "pytest",
+    "ruff",
+    "deptry",
+    "types-requests",
+    "ty",
 ]
 
 [tool.deptry.per_rule_ignores]

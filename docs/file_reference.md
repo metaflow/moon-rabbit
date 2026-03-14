@@ -243,8 +243,8 @@ Contains `DB_CONNECTION`, `DISCORD_TOKEN`, `TWITCH_ACCESS_TOKEN`, `TWITCH_API_AP
 ### [schema_backup.sql](file:///home/gem/src/moon-rabbit/schema_backup.sql) — Database Schema
 Full PostgreSQL schema dump. See [architecture.md#database-schema](architecture.md#database-schema) for diagram.
 
-### [Pipfile](file:///home/gem/src/moon-rabbit/Pipfile) — Python Dependencies
-Exact version pins for all dependencies. See [overview.md#dependencies](overview.md#dependencies) for table.
+### [uv.lock](file:///home/gem/src/moon-rabbit/uv.lock) — Python Dependencies
+Versions for all dependencies are managed via the lock file. See [overview.md#dependencies](overview.md#dependencies) for table.
 
 ### [setup.md](file:///home/gem/src/moon-rabbit/setup.md) — Server Setup Guide
 Step-by-step instructions for deploying to a new DigitalOcean droplet.
