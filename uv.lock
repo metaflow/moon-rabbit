@@ -282,6 +282,15 @@ wheels = [
 ]
 
 [[package]]
+name = "dawg-python"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/33/fd52c8ec329641a7730fad662ba3f29f98c45e4bea552cceee569b00c915/DAWG-Python-0.7.2.tar.gz", hash = "sha256:4a5e3286e6261cca02f205cfd5516a7ab10190fa30c51c28d345808f595e3421", size = 9007 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/84/ff1ce2071d4c650ec85745766c0047ccc3b5036f1d03559fd46bb38b5eeb/DAWG_Python-0.7.2-py2.py3-none-any.whl", hash = "sha256:4941d5df081b8d6fcb4597e073a9f60d5c1ccc9d17cd733e8744d7ecfec94ef3", size = 11711 },
+]
+
+[[package]]
 name = "dawg2-python"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -515,6 +524,7 @@ dependencies = [
     { name = "asyncio-throttle" },
     { name = "cachetools" },
     { name = "dacite" },
+    { name = "dawg-python" },
     { name = "discord" },
     { name = "jinja2" },
     { name = "lark" },
@@ -546,6 +556,7 @@ requires-dist = [
     { name = "asyncio-throttle", specifier = ">=1.0.2" },
     { name = "cachetools", specifier = ">=5.3.0" },
     { name = "dacite", specifier = ">=1.8.0" },
+    { name = "dawg-python", specifier = ">=0.7.2" },
     { name = "discord", specifier = ">=2.2.3" },
     { name = "jinja2", specifier = ">=3.1.2" },
     { name = "lark", specifier = ">=1.1.5" },
