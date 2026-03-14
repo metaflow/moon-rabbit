@@ -23,25 +23,18 @@
 
 import asyncio
 import traceback
-from io import StringIO
-from data import *
 import argparse
 import discord  # type: ignore
-import jinja2
 import logging
 import os
 import sys
-import random
 from dotenv import load_dotenv
-from storage import DB, db, set_db, cursor
-from typing import Any, Callable, List, Optional, Set, Tuple, Union
-import commands
+from storage import DB, db, set_db
+from typing import Optional, Union
 import datetime
-import time
 import logging.handlers
 import twitch_api
-import numpy as np
-from discord_client import DiscordClient, discord_literal
+from discord_client import DiscordClient
 
 import templates
 

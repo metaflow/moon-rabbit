@@ -14,8 +14,9 @@
  limitations under the License.
  """
 
+import dataclasses
 from typing import Any, Dict, List, Optional, Set, Tuple, Type
-from data import *
+from data import CommandData, dictToCommandData
 import psycopg2  # type: ignore
 import psycopg2.extensions  # type: ignore
 import psycopg2.extras  # type: ignore
@@ -98,7 +99,7 @@ class DB:
         return ch
 
     @functools.lru_cache(maxsize=1000)
-    def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name) -> Tuple[int, str]:
+    def twitch_channel_info(self, cur: psycopg2.extensions.cursor, name: str) -> Tuple[int, str]:
         cur.execute(
             "SELECT channel_id, twitch_command_prefix FROM channels WHERE twitch_channel_name = %s", [name])
         row = cur.fetchone()
@@ -115,7 +116,7 @@ class DB:
         return id, prefix
 
     @functools.lru_cache(maxsize=1000)
-    def discord_channel_info(self, cur: psycopg2.extensions.cursor, guild_id: str):
+    def discord_channel_info(self, cur: psycopg2.extensions.cursor, guild_id: str) -> Tuple[int, str]:
         cur.execute(
             "SELECT channel_id, discord_command_prefix FROM channels WHERE discord_guild_id = %s", [guild_id])
         row = cur.fetchone()
@@ -540,7 +541,7 @@ class DB:
             cur.execute("SELECT token, refresh FROM twitch_tokens")
             return cur.fetchall()
 
-_db: Optional[DB]
+_db: Optional[DB] = None
 
 
 def set_db(d: DB):

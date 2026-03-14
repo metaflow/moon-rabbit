@@ -5,10 +5,14 @@ They import Twitch3 pieces by monkey-patching dependencies.
 """
 
 import time
-import pytest
 import sys
 import types
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
+import ttldict2
+from data import (
+    EventType,
+    InvocationLog, Message
+)
 
 
 # ---------------------------------------------------------------------------
@@ -65,18 +69,13 @@ sys.modules['twitchio.eventsub'] = _eventsub
 # ---------------------------------------------------------------------------
 # Now we can safely import project modules
 # ---------------------------------------------------------------------------
-import ttldict2
-from data import (
-    Action, ActionKind, EventType,
-    InvocationLog, Lazy, Message
-)
+
 
 
 # ---------------------------------------------------------------------------
 # Helper: build a ChannelInfo-like object without importing Twitch3 directly
 # ---------------------------------------------------------------------------
 def make_channel_info(throttle_seconds: float = 1.0):
-    import dataclasses
     from twitch_api import ChannelInfo
     return ChannelInfo(
         active_users=ttldict2.TTLDict(ttl_seconds=3600.0),

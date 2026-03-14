@@ -22,7 +22,7 @@ dependencies = [
     "requests",
     "setuptools",  # required by pymorphy3 (pkg_resources)
     "ttldict2",  # caching
-    "twitchio",  # twitch chat + EventSub (replaces twitchio 2.x + twitchapi)
+    "twitchio",  # twitch chat + events
 ]
 
 [dependency-groups]
@@ -36,7 +36,7 @@ dev = [
 ]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["cachetools", "pymorphy3-dicts-ru", "setuptools"]
+DEP002 = ["cachetools", "pymorphy3-dicts-ru", "setuptools", "dawg-python"]
 
 [tool.deptry.package_module_name_map]
 pillow = "PIL"

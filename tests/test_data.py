@@ -1,9 +1,8 @@
 """Tests for data.py pure logic — no DB or network required."""
 
-import pytest
 from data import (
     fold_actions, Action, ActionKind,
-    Lazy, dictToCommandData, EventType, CommandData, Message, InvocationLog
+    Lazy, dictToCommandData, EventType
 )
 
 

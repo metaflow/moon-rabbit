@@ -20,7 +20,8 @@ import logging
 from typing import Dict, List, Optional
 import twitchio  # type: ignore
 from twitchio import eventsub  # type: ignore
-from data import *
+import dataclasses
+from data import ActionKind, EventType, Message, InvocationLog, Lazy
 from storage import cursor, db
 import ttldict2  # type: ignore
 import commands
@@ -57,7 +58,7 @@ class Twitch3(twitchio.Client):
     Stores auth tokens in database and executes custom commands defined in the database.
     """
 
-    def __init__(self, twitch_bot: str, dev_message: str = None):
+    def __init__(self, twitch_bot: str, dev_message: Optional[str] = None):
         self.dev_message = dev_message
         logging.info(f'creating twitch bot {twitch_bot}')
 
@@ -161,7 +162,9 @@ class Twitch3(twitchio.Client):
             logging.error(f'[setup_hook] fetch_users failed: {e}\n{traceback.format_exc()}')
             return
 
-        user_map: Dict[str, str] = {u.name.lower(): str(u.id) for u in users}
+        user_map: Dict[str, str] = {
+            u.name.lower(): str(u.id) for u in users if u.name
+        }
         # Create EventSub subscriptions. subscribe_websocket() is per-payload on plain Client.
         # - Chat message: as_bot=True uses the bot's user token (requires user:read:chat + user:bot)
         # - Redemptions/hype train: token_for=uid uses the channel owner's token
@@ -454,8 +457,11 @@ class Twitch3(twitchio.Client):
             return
         if len(txt) > 500:
             txt = txt[:497] + '...'
+        if self.user is None:
+            logging.warning('send_message: bot not logged in')
+            return
         async with self.throttler:
-            logging.info(f'[send] {txt!r}')
+            logging.info(f'> {txt!r}')
             try:
                 broadcaster = self.create_partialuser(
                     user_id=info.twitch_user_id,

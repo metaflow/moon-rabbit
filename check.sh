@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
-set -e
 
-echo "Running ruff linter..."
-uv run ruff check .
+FAILED=0
+SUMMARY=()
 
-echo "Running ty typechecker..."
-uv run ty check .
+run_check() {
+    local name=$1
+    local cmd=$2
+    local repro=$3
 
-echo "Running deptry dependency verification..."
-uv run deptry .
+    echo "Running $name..."
+    if eval "$cmd"; then
+        SUMMARY+=("$name - PASS")
+    else
+        SUMMARY+=("$name - FAIL - run \`$repro\` to reproduce")
+        FAILED=1
+    fi
+    echo ""
+}
 
-echo "Running tests..."
-uv run pytest tests/
+run_check "ruff linter" "uv run ruff check ." "uv run ruff check ."
+run_check "ty" "uv run ty check ." "uv run ty check ."
+run_check "deptry" "uv run deptry ." "uv run deptry ."
+run_check "tests" "uv run pytest tests/" "uv run pytest tests/"
 
-echo "All checks passed!"
+echo "Summary:"
+for item in "${SUMMARY[@]}"; do
+    echo "$item"
+done
+
+if [ $FAILED -ne 0 ]; then
+    exit 1
+fi

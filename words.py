@@ -68,7 +68,7 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
     mm = morph.parse(s)
     if not mm:
         return s
-    p: Type[pymorphy3.analyzer.Parse] = mm[0]
+    p = mm[0]
     if tagFilter:
         matched = False
         for x in mm:
@@ -107,4 +107,4 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
             x = p.inflect(ss)
             if x:
                 p = x
-    return p.word
+    return str(p.word)

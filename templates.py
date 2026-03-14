@@ -32,7 +32,7 @@ def render_text_item(ctx, q: Union[str, int, List[Union[str, float]]], inf: str 
             query_text = f'({query_text}) and {inf}'
         text_id = db().get_random_text_id(channel_id, query_text)
     if not text_id:
-        v['_log'].info(f'no matching text is found')
+        v['_log'].info('no matching text is found')
         return ''
     if inf:
         tag_id = db().tag_by_value(channel_id)[inf]

@@ -14,12 +14,9 @@
  limitations under the License.
  """
 
-from typing import Dict, List, Set
+from typing import Dict, Set
 import lark
 import re
-import logging
-from lark.lexer import TerminalDef
-from lark.tree import Tree
 from lark.visitors import Transformer
 
 query_grammar = """
@@ -69,7 +66,7 @@ class Matcher(Transformer):
         if data == 'start':
             return children[0]
         raise Exception('unexpected tree node "{data}", {children}, {meta}')
-    
+
     def TAG(self, tk: lark.Token):
         return tk.value in self.tags
 

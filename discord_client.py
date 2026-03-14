@@ -1,13 +1,13 @@
-from io import StringIO, BytesIO
+from io import BytesIO
 
 from urllib.parse import urlparse
-from data import *
+from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message
 import discord  # type: ignore
 import logging
 import random
 import ttldict2  # type: ignore
 from storage import db
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 import traceback
 import commands
 import time
@@ -37,9 +37,9 @@ def download_file(url: str) -> str:
 
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
-    def __init__(self, profile: bool, dev_message: str = None, *args, **kwargs):
+    def __init__(self, profile: bool, dev_message: Optional[str] = None, *args, **kwargs):
         self.guild_data: Dict[str, Any] = {}
-        self.channels: Dict[str, Any] = {}
+        self.channels: Dict[int, Any] = {}
         self.mods: Dict[str, str] = {}
         self.profile = profile
         self.dev_message = dev_message
@@ -75,6 +75,8 @@ class DiscordClient(discord.Client):
             is_mod = True
             private = True
         else:
+            if not message.guild or not isinstance(message.author, discord.Member):
+                return
             permissions = message.author.guild_permissions
             guild_id = str(message.guild.id)
             is_mod = permissions.ban_members or permissions.administrator
@@ -125,6 +127,9 @@ class DiscordClient(discord.Client):
         def get_vars():
             nonlocal variables
             if not variables:
+                if not self.user:
+                    logging.warning('self.user is unset')
+                    return {}
                 bot = discord_literal(self.user.mention)
                 author = discord_literal(message.author.mention)
                 exclude = [bot, author]
@@ -177,7 +182,7 @@ class DiscordClient(discord.Client):
                 await message.channel.send(a.text)
             if a.kind == ActionKind.REPLY:
                 if a.attachment:
-                    await message.reply(a.text, file=discord.File(StringIO(a.attachment), filename=a.attachment_name))
+                    await message.reply(a.text, file=discord.File(BytesIO(a.attachment.encode('utf-8')), filename=a.attachment_name))
                 else:
                     await message.reply(a.text)
             if a.kind == ActionKind.PRIVATE_MESSAGE:
@@ -208,7 +213,7 @@ class DiscordClient(discord.Client):
         return count
 
     async def on_cron(self):
-        logging.info(f'running discord cron')
+        logging.info('running discord cron')
         g: discord.Guild
         for g in self.guilds:
             try:
@@ -223,10 +228,12 @@ class DiscordClient(discord.Client):
                     continue
                 if id not in self.guild_data:
                     self.guild_data[id] = {'banner_text': ''}
-                variables: Optional[Dict] = None
+                variables: Optional[Dict[str, Any]] = None
                 def get_vars():
                     nonlocal variables
                     if not variables:
+                        if not self.user:
+                            return {}
                         bot = discord_literal(self.user.mention)
                         variables = {
                             'media': 'discord',

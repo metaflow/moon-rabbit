@@ -16,7 +16,7 @@
 
 import dataclasses
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Protocol, Tuple
+from typing import Callable, Dict, List, Optional
 import logging
 import dacite
 from dacite.config import Config

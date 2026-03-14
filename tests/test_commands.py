@@ -1,7 +1,4 @@
-import pytest
-import json
 import re
-from unittest.mock import MagicMock
 
 from commands import (
     PersistentCommand,
@@ -10,13 +7,13 @@ from commands import (
     Eval,
     morph_text
 )
-from data import dictToCommandData, ActionKind, EventType
+from data import dictToCommandData
 
 def test_morph_text_inflection():
     # Test pymorph via txt() inflection-related `morph_text` util.
     # When text is processed for adding to DB, it gets inflected into cases.
     res = morph_text("синий кот")
-    assert res is not {}
+    assert res != {}
     assert 'рд' in res  # Genitive
     assert 'дт' in res  # Dative
     assert 'тв' in res  # Instrumental
@@ -61,7 +58,7 @@ def test_persistent_command_formats():
     assert cmd.for_twitch() is True
     assert not cmd.mod_only()
     assert not cmd.hidden_help()
-    
+
     # Assert regex compiles correctly with prefix replacement
     # "!prefixlaud\b" -> "! ?laud\b" (with re.IGNORECASE)
     assert cmd.regex.pattern == "! ?laud\\b"
@@ -86,7 +83,7 @@ def test_persistent_command_custom_help():
     }
     cmd_data = dictToCommandData(cmd_json)
     cmd = PersistentCommand(cmd_data, "!")
-    
+
     assert cmd.help("!") == "!hug"
     assert cmd.help_full("!") == "!hug <имя человека>"
 

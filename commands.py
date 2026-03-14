@@ -15,11 +15,15 @@
     """
 
 import discord  # type: ignore
-from data import *
+from data import (
+    Action, ActionKind, CommandData, InvocationLog, Message,
+    dictToCommandData, render, str_to_int
+)
 import json
 import logging
 import re
-from typing import Dict, List, Set
+import dataclasses
+from typing import Dict, List, Optional, Protocol, Set, Tuple
 from storage import cursor, db
 import traceback
 import query
@@ -43,7 +47,7 @@ def str_to_tags(s: str) -> Tuple[Dict[str, Optional[str]], bool]:
         value: Optional[str] = None
         name = parts[0].strip()
         if not query.good_tag_name(name):
-            logging.warn(f'tag "{name}" is invalid')
+            logging.warning(f'tag "{name}" is invalid')
             return (z, False)
         if len(parts) > 1:
             value = parts[1].strip()
@@ -249,7 +253,7 @@ class SetCommand(Command):
         cmd = CommandData(pattern="!prefix" + re.escape(name) + "\\b")
         try:
             cmd = dictToCommandData(json.loads(command_text))
-        except Exception as e:
+        except Exception:
             log.info('failed to parse command as JSON, assuming literal text')
             cmd.actions.append(
                 Action(text=command_text, kind=ActionKind.NEW_MESSAGE))
@@ -332,7 +336,6 @@ class TagDelete(Command):
         if not text:
             return [], True
         text = text.strip()
-        v = msg.get_variables()
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
         channel_id = msg.channel_id
@@ -431,7 +434,7 @@ class TextDescribe(Command):
             return [Action(kind=ActionKind.REPLY, text=self.help_full(msg.prefix))], False
         channel_id = msg.channel_id
         if not text.isdigit():
-            return [Action(kind=ActionKind.REPLY, text=f'Please provide a text id')], False
+            return [Action(kind=ActionKind.REPLY, text='Please provide a text id')], False
         s = text_to_row(channel_id, str_to_int(text))
         if not s:
             return [Action(kind=ActionKind.REPLY, text=f'Text #{text} is not found')], False
@@ -443,8 +446,8 @@ class TextDescribe(Command):
     def help_full(self, prefix: str):
         return f'{prefix}describe <text id>\nPrint full info about text.'
 
-def morph_text(text_value: str) -> Dict[str, str]:
-    name_value: Dict[str, str] = {}
+def morph_text(text_value: str) -> Dict[str, Optional[str]]:
+    name_value: Dict[str, Optional[str]] = {}
     parts = re.split(r'(\s+)', text_value.strip())
     ww = [parts[i] for i in range(0, len(parts), 2)]
     parses = [words.morph.parse(w) for w in ww]
@@ -540,13 +543,13 @@ def import_text_row(channel_id: int, row: List[str], tag_by_name: Dict[str, int]
         if s:
             text_id = str_to_int(s)
             if not text_id:
-                logging.warn('failed to convert "{s}" to number')
+                logging.warning('failed to convert "{s}" to number')
                 return (0, 0, 0)
     tags_info: Optional[Dict[str, Optional[str]]] = None
     if len(row) >= 3:
         tags_info, ok = str_to_tags(row[2])
         if not ok:
-            logging.warn(f'failed to get tags from "{row[2]}"')
+            logging.warning(f'failed to get tags from "{row[2]}"')
             return (0, 0, 0)
     if text_id:
         if db().set_text(channel_id, txt, text_id):
@@ -674,7 +677,7 @@ class TextDownload(Command):
         return [Action(kind=ActionKind.REPLY,
                        text='texts',
                        attachment=output.getvalue(),
-                       attachment_name=f'texts.csv')], False
+                       attachment_name='texts.csv')], False
 
     def for_twitch(self):
         return False
@@ -692,7 +695,6 @@ class TextSearch(Command):
         if not text:
             return [], True
         text = text.strip()
-        v = msg.get_variables()
         channel_id = msg.channel_id
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
@@ -710,7 +712,7 @@ class TextSearch(Command):
         sbuf = io.StringIO()
         for ii in items:
             tag_names = [tag_by_id[x] for x in ii[2]]
-            tag_names = [x for x in tag_names if not x in words.case_tags]
+            tag_names = [x for x in tag_names if x not in words.case_tags]
             csv.writer(sbuf, delimiter=';').writerow(
                 [ii[1], ii[0], " ".join(tag_names)])
         return [Action(kind=ActionKind.REPLY, text=sbuf.getvalue())], False
@@ -728,7 +730,6 @@ class TextRemove(Command):
         if not text:
             return [], True
         text = text.strip()
-        v = msg.get_variables()
         channel_id = msg.channel_id
         if not text:
             return [Action(kind=ActionKind.REPLY, text=self.help(msg.prefix))], False
@@ -743,13 +744,13 @@ class TextRemove(Command):
                 tag_query = query_parts[1]
             items = db().text_search(channel_id, substring, tag_query)
             if not items:
-                return [Action(kind=ActionKind.REPLY, text=f'No matches found')], False
+                return [Action(kind=ActionKind.REPLY, text='No matches found')], False
             if len(items) == 1:
                 text_id, text, _ = items[0]
             else:
-                return [Action(kind=ActionKind.REPLY, text=f'Multiple matches for that query')], False
+                return [Action(kind=ActionKind.REPLY, text='Multiple matches for that query')], False
         if not text_id:
-            return [Action(kind=ActionKind.REPLY, text=f'No text is found')], False
+            return [Action(kind=ActionKind.REPLY, text='No text is found')], False
         s = text_to_row(channel_id, text_id)
         t = db().delete_text(channel_id, text_id)
         if t:
@@ -810,7 +811,7 @@ class Debug(Command):
             return [], True
         text = text.strip()
         results: List[Action] = []
-        v = msg.get_variables()
+        msg.get_variables()  # TODO: drop? I don't think we need this side effect.
         channel_id = msg.channel_id
         if not text:
             for e in db().get_logs(channel_id):
