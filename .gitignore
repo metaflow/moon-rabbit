@@ -8,3 +8,4 @@ Pipfile.lock.bak
 __pycache__/*
 runtime/
 moon-rabbit.code-workspace
+**/__pycache__
