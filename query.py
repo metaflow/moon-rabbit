@@ -31,7 +31,7 @@ NAME: /(\w|[-.,])+/
 
 query_parser = lark.Lark(query_grammar)
 # tag_re = re.compile('[a-z0-9-_а-я]+', re.IGNORECASE)
-_tag = re.compile('^(\w|[-.,])+$', re.IGNORECASE)
+_tag = re.compile(r'^(\w|[-.,])+$', re.IGNORECASE)
 
 def good_tag_name(s: str) -> bool:
     s = s.strip().lower()

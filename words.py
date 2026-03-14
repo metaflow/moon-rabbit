@@ -15,8 +15,8 @@
  """
 
 import logging
-from typing import Dict, List, Optional, Type
-import pymorphy3 # type: ignore
+from typing import Dict, List, Optional
+import pymorphy3
 
 # Docs: https://pymorphy2.readthedocs.io/en/latest/user/index.html
 morph = pymorphy3.MorphAnalyzer(lang='ru')
@@ -87,7 +87,7 @@ def inflect_word(s: str, inf: str, tagFilter: List[str] = [], n: Optional[int] =
                 if logging.getLogger().isEnabledFor(logging.DEBUG):
                     logging.debug(f'unmatched parse {x}')
         if not matched:
-            logging.warn(f'no matches found for {s} and filter {tagFilter}')
+            logging.warning(f'no matches found for {s} and filter {tagFilter}')
             return s
     if 'NOUN' in p.tag:
         if ss:

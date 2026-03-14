@@ -18,12 +18,12 @@ import asyncio
 import traceback
 import logging
 from typing import Dict, List, Optional
-import twitchio  # type: ignore
-from twitchio import eventsub  # type: ignore
+import twitchio
+from twitchio import eventsub
 import dataclasses
 from data import ActionKind, EventType, Message, InvocationLog, Lazy
 from storage import cursor, db
-import ttldict2  # type: ignore
+import ttldict2
 import commands
 import random
 import re
@@ -119,8 +119,11 @@ class Twitch3(twitchio.Client):
 
     async def add_token(self, token: str, refresh: str):
         resp = await super().add_token(token, refresh)
-        db().save_twitch_token(resp.user_id, token, refresh)
-        logging.info(f'[auth] Added token to the database for user: {resp.user_id}')
+        if resp.user_id:
+            db().save_twitch_token(resp.user_id, token, refresh)
+            logging.info(f'[auth] Added token to the database for user: {resp.user_id}')
+        else:
+            logging.warning('no user_id in response')
         return resp
 
     async def load_tokens(self, path: Optional[str] = None) -> None:
@@ -223,10 +226,11 @@ class Twitch3(twitchio.Client):
                         user_id=self.channels[channel_name].twitch_user_id,
                         user_login=channel_name,
                     )
-                    await broadcaster.send_message(
-                        sender=self.user,
-                        message=self.dev_message,
-                    )
+                    if self.user:
+                        await broadcaster.send_message(
+                            sender=self.user,
+                            message=self.dev_message,
+                        )
                     logging.info(f'[dev] sent smoke-test to #{channel_name}')
                 except Exception as e:
                     logging.warning(f'[dev] failed to send to #{channel_name}: {e}')
@@ -264,7 +268,10 @@ class Twitch3(twitchio.Client):
             prefix = info.prefix
             log = InvocationLog(f"twitch channel {channel_name} ({channel_id})")
 
-            author: str = payload.chatter.name
+            author_raw = payload.chatter.name
+            if not author_raw:
+                return
+            author: str = author_raw
             text: str = payload.text
 
             info.active_users[author] = 1
@@ -333,7 +340,10 @@ class Twitch3(twitchio.Client):
                 logging.info(f'[redemption] unknown channel {channel_name!r}')
                 return
 
-            author: str = payload.user.name
+            author_raw = payload.user.name
+            if not author_raw:
+                return
+            author: str = author_raw
             text: str = payload.user_input or ''
             reward_title: str = payload.reward.title
             channel_id = info.channel_id
