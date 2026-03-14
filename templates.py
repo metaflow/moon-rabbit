@@ -3,6 +3,7 @@ import random
 import time
 import numpy as np
 import commands
+import typing
 from typing import Union, List, Optional, Tuple
 from storage import db
 from data import templates, render, Action, ActionKind, Message
@@ -85,18 +86,17 @@ def new_message(ctx, s: str):
 
 def register_template_globals():
     """Register all globally available functions to the Jinja SandboxedEnvironment."""
-    # templates.globals['list'] = render_list_item
-    templates.globals['txt'] = render_text_item
-    templates.globals['randint'] = randint
-    templates.globals['discord_literal'] = discord_literal
-    templates.globals['get'] = get_variable
-    templates.globals['set'] = set_variable
-    templates.globals['category_size'] = get_variables_category_size
-    templates.globals['list_category'] = list_category
-    templates.globals['delete_category'] = delete_category
-    templates.globals['message'] = new_message
-    templates.globals['timestamp'] = lambda: int(time.time())
-    templates.globals['dt'] = discord_or_twitch
-    templates.globals['discord_name'] = discord_literal
-    # templates.globals['echo'] = lambda x: x
-    # templates.globals['log'] = lambda x: logging.info(x)
+    typing.cast(dict, templates.globals).update({
+        'txt': render_text_item,
+        'randint': randint,
+        'discord_literal': discord_literal,
+        'get': get_variable,
+        'set': set_variable,
+        'category_size': get_variables_category_size,
+        'list_category': list_category,
+        'delete_category': delete_category,
+        'message': new_message,
+        'timestamp': lambda: int(time.time()),
+        'dt': discord_or_twitch,
+        'discord_name': discord_literal,
+    })

@@ -17,16 +17,16 @@
 import dataclasses
 from typing import Any, Dict, List, Optional, Set, Tuple, Type
 from data import CommandData, dictToCommandData
-import psycopg2  # type: ignore
-import psycopg2.extensions  # type: ignore
-import psycopg2.extras  # type: ignore
+import psycopg2
+import psycopg2.extensions
+import psycopg2.extras
 import functools
 import logging
 import collections
 import time
 import query
 import lark
-import ttldict2  # type: ignore
+import ttldict2
 from llist import dllist  # type: ignore
 import numpy as np
 

@@ -154,8 +154,8 @@ def test_template_message_queue():
     msg_id = 'test_msg_1'
 
     # temporarily patch commands.messages
-    original_messages = commands.messages
-    commands.messages = {msg_id: dummy_msg}
+    commands.messages.clear()
+    commands.messages[msg_id] = dummy_msg
 
     try:
         ctx = {'_id': msg_id}
@@ -166,7 +166,7 @@ def test_template_message_queue():
         assert dummy_msg.additionalActions[0].text == 'hello'
         assert dummy_msg.additionalActions[1].text == 'world'
     finally:
-        commands.messages = original_messages
+        commands.messages.clear()
 
 def test_template_complex_interaction_state(mock_db):
     ctx = {'channel_id': 77}

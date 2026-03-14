@@ -2,10 +2,10 @@ from io import BytesIO
 
 from urllib.parse import urlparse
 from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message
-import discord  # type: ignore
+import discord
 import logging
 import random
-import ttldict2  # type: ignore
+import ttldict2
 from storage import db
 from typing import Any, Dict, List, Optional
 import traceback
@@ -217,17 +217,17 @@ class DiscordClient(discord.Client):
         g: discord.Guild
         for g in self.guilds:
             try:
-                id = f'{g.id}'
+                guild_id_str = f'{g.id}'
                 if 'BANNER' not in g.features:
                     continue
-                channel_id, prefix = db().discord_channel_info(db().conn.cursor(), id)
+                channel_id, prefix = db().discord_channel_info(db().conn.cursor(), guild_id_str)
                 banner_template = db().get_variable(channel_id, 'banner_template', 'admin', '')
-                log = InvocationLog(f'guild={id} banner update')
+                log = InvocationLog(f'guild={guild_id_str} banner update')
                 log.debug(f'banner template "{banner_template}"')
                 if not banner_template:
                     continue
-                if id not in self.guild_data:
-                    self.guild_data[id] = {'banner_text': ''}
+                if guild_id_str not in self.guild_data:
+                    self.guild_data[guild_id_str] = {'banner_text': ''}
                 variables: Optional[Dict[str, Any]] = None
                 def get_vars():
                     nonlocal variables
@@ -266,7 +266,7 @@ class DiscordClient(discord.Client):
                 if not actions:
                     continue
                 txt = actions[0].text
-                if self.guild_data[id]['banner_text'] == txt:
+                if self.guild_data[guild_id_str]['banner_text'] == txt:
                     log.debug('banner text is the same')
                     continue
                 parts = txt.split(';;')
@@ -288,9 +288,10 @@ class DiscordClient(discord.Client):
                 image.save(bb, format='png')
                 bb.seek(0)
                 await g.edit(banner=bb.read())
-                self.guild_data[id]['banner_text'] = txt
+                self.guild_data[guild_id_str]['banner_text'] = txt
             except Exception as e:
                 logging.error(f"'cron update': {e}\n{traceback.format_exc()}")
-                if id not in self.guild_data:
-                    self.guild_data[id] = {'banner_text': ''}
-                self.guild_data[id].banner_text = ''
+                if 'guild_id_str' in locals():
+                    if guild_id_str not in self.guild_data:
+                        self.guild_data[guild_id_str] = {'banner_text': ''}
+                    self.guild_data[guild_id_str]['banner_text'] = ''

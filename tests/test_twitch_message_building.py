@@ -40,22 +40,27 @@ def _make_twitchio_stub():
     class ChatMessage:
         pass
 
-    twitchio.Client = Client
-    twitchio.PartialUser = PartialUser
-    twitchio.ChatMessage = ChatMessage
+    class EventErrorPayload:
+        def __init__(self, exception):
+            self.exception = exception
+
+    twitchio.Client = Client  # type: ignore
+    twitchio.PartialUser = PartialUser  # type: ignore
+    twitchio.ChatMessage = ChatMessage  # type: ignore
+    twitchio.EventErrorPayload = EventErrorPayload  # type: ignore
 
     eventsub = types.ModuleType('twitchio.eventsub')
     class ChatMessageSubscription:
         def __init__(self, **kwargs): pass
-    class ChannelPointsCustomRewardRedemptionAddSubscription:
+    class ChannelPointsRedeemAddSubscription:
         def __init__(self, **kwargs): pass
     class HypeTrainEndSubscription:
         def __init__(self, **kwargs): pass
 
-    eventsub.ChatMessageSubscription = ChatMessageSubscription
-    eventsub.ChannelPointsCustomRewardRedemptionAddSubscription = ChannelPointsCustomRewardRedemptionAddSubscription
-    eventsub.HypeTrainEndSubscription = HypeTrainEndSubscription
-    twitchio.eventsub = eventsub
+    eventsub.ChatMessageSubscription = ChatMessageSubscription  # type: ignore
+    eventsub.ChannelPointsRedeemAddSubscription = ChannelPointsRedeemAddSubscription  # type: ignore
+    eventsub.HypeTrainEndSubscription = HypeTrainEndSubscription  # type: ignore
+    twitchio.eventsub = eventsub  # type: ignore
 
     return twitchio, eventsub
 

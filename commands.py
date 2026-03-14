@@ -14,7 +14,7 @@
     limitations under the License.
     """
 
-import discord  # type: ignore
+import discord
 from data import (
     Action, ActionKind, CommandData, InvocationLog, Message,
     dictToCommandData, render, str_to_int

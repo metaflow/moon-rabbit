@@ -195,7 +195,7 @@ class Twitch3(twitchio.Client):
                 if event_type == EventType.twitch_reward_redemption:
                     try:
                         await self.subscribe_websocket(
-                            eventsub.ChannelPointsCustomRewardRedemptionAddSubscription(
+                            eventsub.ChannelPointsRedeemAddSubscription(
                                 broadcaster_user_id=uid,
                             ),
                             token_for=uid,
@@ -235,8 +235,8 @@ class Twitch3(twitchio.Client):
                 except Exception as e:
                     logging.warning(f'[dev] failed to send to #{channel_name}: {e}')
 
-    async def event_error(self, error: Exception, *args, **kwargs) -> None:
-        logging.error(f'event_error: {error}')
+    async def event_error(self, payload: twitchio.EventErrorPayload) -> None:
+        logging.error(f'event_error: {payload.error}')
         logging.error(traceback.format_exc())
 
     async def event_token_refreshed(self, payload) -> None:
@@ -257,6 +257,9 @@ class Twitch3(twitchio.Client):
             if chatter_id == str(self.bot_user_id):
                 return
 
+            if not payload.broadcaster.name:
+                logging.warning('event_message: no broadcaster.name')
+                return
             channel_name: str = payload.broadcaster.name.lower()
             info: Optional[ChannelInfo] = self.channels.get(channel_name)
             if not info:

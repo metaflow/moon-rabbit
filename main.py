@@ -24,7 +24,7 @@
 import asyncio
 import traceback
 import argparse
-import discord  # type: ignore
+import discord
 import logging
 import os
 import sys
