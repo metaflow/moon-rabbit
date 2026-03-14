@@ -133,12 +133,13 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 
 ### Migration Plan
 
-- [ ] Install remote editor
-- [ ] Install dependencies (Python, uv, PostgreSQL, etc.)
-- [ ] do I need a separate mount disk for backups
+- [x] Install remote editor
+- [x] Install dependencies (Python, uv, PostgreSQL, etc.)
+- [x] do I need a separate mount disk for backups - no it's better to backup / snaphot the whole thing
+- [ ] drop old rabbit databas for clarity and create a new one
 - [ ] Transfer PostgreSQL data from dev machine
-- [ ] confirm that no changes from old db are missing
 - [ ] setup auth nginx redirect and test it
+- [ ] confirm that no changes from old db are missing
 - [ ] Clone repo to `/var/moon-rabbit`
 - [ ] Configure environment (`DB_CONNECTION`, etc.)
 - [ ] Update DNS / IP references if any

@@ -32,6 +32,7 @@ from dotenv import load_dotenv
 from storage import DB, db, set_db
 from typing import Optional, Union
 import datetime
+from data import set_is_dev
 import logging.handlers
 import twitch_api
 from discord_client import DiscordClient
@@ -164,6 +165,7 @@ def main():
     # loop = asyncio.get_running_loop()
     dev_msg = None
     if args.dev:
+        set_is_dev(True)
         now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         dev_msg = f'\U0001f407 moon-rabbit dev mode — connected at {now}'
         logging.info(f'dev mode enabled, smoke-test message: {dev_msg}')

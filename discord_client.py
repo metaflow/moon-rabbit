@@ -1,13 +1,14 @@
 from io import BytesIO
 
 from urllib.parse import urlparse
-from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message
+from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message, is_dev
 import discord
 import logging
 import random
 import ttldict2
 from storage import db
 from typing import Any, Dict, List, Optional
+import dataclasses
 import traceback
 import commands
 import time
@@ -34,6 +35,37 @@ def download_file(url: str) -> str:
     r = requests.get(url, allow_redirects=True)
     open(file_name, 'wb').write(r.content)
     return file_name
+
+@dataclasses.dataclass
+class BannerOverlay:
+    x: int
+    y: int
+    size: int
+    r: int
+    g: int
+    b: int
+    text: str
+
+def create_banner_image(url: str, overlays: List[BannerOverlay], full_text_for_hash: str) -> BytesIO:
+    img_path = download_file(url)
+    image = Image.open(img_path)
+    image_editable = ImageDraw.Draw(image)
+
+    for o in overlays:
+        title_font = ImageFont.truetype('arial.ttf', size=o.size)
+        image_editable.text((o.x, o.y), o.text, (o.r, o.g, o.b), font=title_font)
+
+    if is_dev():
+        h = hashlib.new('SHA1')
+        h.update(full_text_for_hash.encode('utf8'))
+        result_file = f'{h.hexdigest()}.png'
+        logging.info(f'saving dev result {result_file}')
+        image.save(result_file)
+
+    bb = BytesIO()
+    image.save(bb, format='png')
+    bb.seek(0)
+    return bb
 
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
@@ -272,21 +304,15 @@ class DiscordClient(discord.Client):
                 parts = txt.split(';;')
                 log.debug(parts[0])
                 url = parts[0].strip()
-                img = download_file(url)
-                image = Image.open(img)
-                image_editable = ImageDraw.Draw(image)
+                overlays = []
                 for p in parts[1:]:
-                    x, y, s, cr, cg, cb, text = p.split(',', 6)
-                    title_font = ImageFont.truetype('arial.ttf', size=int(s))
-                    image_editable.text((int(x),int(y)), text, (int(cr), int(cg), int(cb)), font=title_font)
-                h = hashlib.new('SHA1')
-                h.update(txt.encode('utf8'))
-                resultFile = f'{h.hexdigest()}.png'
-                log.info(f'result {resultFile}')
-                image.save(resultFile)
-                bb = BytesIO()
-                image.save(bb, format='png')
-                bb.seek(0)
+                    ox, oy, os, orr, og, ob, ot = p.split(',', 6)
+                    overlays.append(BannerOverlay(
+                        x=int(ox), y=int(oy), size=int(os),
+                        r=int(orr), g=int(og), b=int(ob),
+                        text=ot
+                    ))
+                bb = create_banner_image(url, overlays, txt)
                 await g.edit(banner=bb.read())
                 self.guild_data[guild_id_str]['banner_text'] = txt
             except Exception as e:

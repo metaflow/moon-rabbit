@@ -23,6 +23,14 @@ from dacite.config import Config
 from jinja2.sandbox import SandboxedEnvironment
 
 templates = SandboxedEnvironment()
+_is_dev = False
+
+def set_is_dev(val: bool):
+    global _is_dev
+    _is_dev = val
+
+def is_dev() -> bool:
+    return _is_dev
 
 def render(text: str, vars: Dict):
     return templates.from_string(text).render(vars).strip()
