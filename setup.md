@@ -271,15 +271,22 @@ source .env
 
 ## 10. Install dependencies
 
+This installs all project dependencies AND development dependencies (like formatting/linting tools).
+
 ```bash
-uv venv
-uv pip install -r requirements.txt
+uv sync
 ```
 
-For development (type checking with mypy, formatting with black):
+When deploying to production, you might only want project dependencies:
 
 ```bash
-uv pip install -r requirements-dev.txt
+uv sync --no-dev
+```
+
+To run code quality checks (linters, typecheckers, etc):
+
+```bash
+./check.sh
 ```
 
 ## 11. Run in dev mode
