@@ -149,6 +149,7 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [ ] drop auth entities
 - [ ] check that bot cannot connect to my twitch, authenticate and check that now it does
 - [ ] update twitch channel to july_in_july
+- [ ] format files in project to ruff - is there a way to add this to check?
 - [ ] shut down old bot
 - [ ] start a new one and ask to authenticate
 - [ ] dump old database and compare with the new - are there any mismatches?
@@ -202,7 +203,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-10 | Completed TwitchIO 3.x migration (see section 4 below). |
 | 2026-03-12 | Implemented `twitch_tokens` database storage for TwitchIO tokens to replace local `.tio.tokens.json`. |
 | 2026-03-14 | Fixed "Unclosed client session" errors by implementing graceful shutdown in `run_loop()` with a 10s timeout. |
-| 2026-03-15 | Fixed OAuth `redirect_mismatch` by allowing custom `TWITCH_REDIRECT_URI` in `.env`. |
+| 2026-03-15 | Fixed OAuth `redirect_mismatch` by allowing custom `TWITCH_OAUTH_DOMAIN` in `.env`. |
 
 ---
 

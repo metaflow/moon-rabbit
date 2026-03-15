@@ -138,7 +138,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 - `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
 - `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
 
-**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343 (no public URL needed). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343. The `TWITCH_OAUTH_DOMAIN` environment variable is used to configure the domain for redirect URIs (e.g., when running behind a proxy). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters

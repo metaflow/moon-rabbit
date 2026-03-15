@@ -194,11 +194,10 @@ def main():
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch:
         try:
-            redirect_uri = require_env("TWITCH_REDIRECT_URI")
             twitch_client = twitch_api.Twitch3(
                 twitch_bot=args.twitch,
                 dev_message=dev_msg,
-                redirect_uri=redirect_uri,
+                domain=require_env("TWITCH_OAUTH_DOMAIN").removesuffix('/'),
             )
             logging.info(
                 f"Channel Owner Authorization URL {twitch_client.adapter.get_authorization_url(scopes=twitchio.Scopes(channel_bot=True, channel_read_redemptions=True, channel_read_hype_train=True), force_verify=True)}"  # type: ignore[attr-defined]

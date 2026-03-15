@@ -62,13 +62,20 @@ def _make_twitchio_stub():
     eventsub.HypeTrainEndSubscription = HypeTrainEndSubscription  # type: ignore
     twitchio.eventsub = eventsub  # type: ignore
 
-    return twitchio, eventsub
+    web = types.ModuleType('twitchio.web')
+    class AiohttpAdapter:
+        def __init__(self, **kwargs): pass
+    web.AiohttpAdapter = AiohttpAdapter  # type: ignore
+    twitchio.web = web  # type: ignore
+
+    return twitchio, eventsub, web
 
 
 # Patch modules before importing twitch_api
-_twitchio, _eventsub = _make_twitchio_stub()
+_twitchio, _eventsub, _web = _make_twitchio_stub()
 sys.modules['twitchio'] = _twitchio
 sys.modules['twitchio.eventsub'] = _eventsub
+sys.modules['twitchio.web'] = _web
 
 
 # ---------------------------------------------------------------------------

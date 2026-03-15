@@ -218,9 +218,11 @@ INSERT INTO twitch_bots (channel_name, api_app_id, api_app_secret, bot_user_id)
 VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<numeric_bot_user_id>');
 ```
 
-#### Authenticate bot
+### Authenticate bot
 
 Open this http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true in a browser **while logged in as the bot Twitch account**.
+
+If the bot is running on a remote server, replace `localhost:4343` with your `TWITCH_OAUTH_DOMAIN`.
 
 ## 7. Add a Twitch channel
 
@@ -229,6 +231,8 @@ Your Twitch channel name is your Twitch username (lowercase), visible in the URL
 The bot looks up channels by the `twitch_bot` column in the `channels` table. On first message, it auto-creates a channel entry — no manual DB insert needed.
 
 **Channel owner** — open this URL **while logged in as the channel owner**: http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
+
+Again, replace `localhost:4343` with your `TWITCH_OAUTH_DOMAIN` if remote.
 
 Add mod rights to the bot: `/mod <bot_username>`
 
@@ -262,7 +266,7 @@ Create (or update) `.env` in the project root:
 ```bash
 DB_CONNECTION="dbname=chatbot user=bot password=bot host=localhost"
 DISCORD_TOKEN=<your_discord_bot_token>
-TWITCH_REDIRECT_URI="https://your-domain.com/oauth/callback"
+TWITCH_OAUTH_DOMAIN="http://localhost:4343"
 ```
 
 Source it before running:

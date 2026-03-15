@@ -20,6 +20,7 @@ import logging
 from typing import Dict, List, Optional
 import twitchio
 from twitchio import eventsub
+from twitchio.web import AiohttpAdapter
 import dataclasses
 from data import ActionKind, EventType, Message, InvocationLog, Lazy
 from storage import cursor, db
@@ -58,7 +59,7 @@ class Twitch3(twitchio.Client):
     Stores auth tokens in database and executes custom commands defined in the database.
     """
 
-    def __init__(self, twitch_bot: str, dev_message: Optional[str] = None, redirect_uri: Optional[str] = None):
+    def __init__(self, twitch_bot: str, dev_message: Optional[str] = None, domain: Optional[str] = None):
         self.dev_message = dev_message
         logging.info(f'creating twitch bot {twitch_bot}')
 
@@ -106,12 +107,18 @@ class Twitch3(twitchio.Client):
         logging.info(f'channels: {list(self.channels.keys())}')
         self.throttler = Throttler(rate_limit=1, period=1)
 
+        adapter = AiohttpAdapter(
+            host="0.0.0.0",
+            port=4343,
+            domain=domain,
+        )
+
         # twitchio 3.x: Client(client_id, client_secret, bot_id=...)
         super().__init__(
             client_id=self.app_id,
             client_secret=self.app_secret,
             bot_id=self.bot_user_id,
-            redirect_uri=redirect_uri,
+            adapter=adapter,
         )
 
     # ------------------------------------------------------------------
