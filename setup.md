@@ -69,38 +69,54 @@ Use psql postgres://bot:<password>@localhost/chatbot to inspect the database.
 Use a token to dev discord first and only run for discord.
 
 > uv run python3 main.py --discord --log_level INFO --log discord --also_log_to_stdout
- uv run python3 main.py --twitch moon_robot --log_level INFO --log moon_robot --also_log_to_stdout
+> uv run python3 main.py --twitch moon_robot --log_level INFO --log moon_robot --also_log_to_stdout
 
 now change discord to normal token.
 make runtime directory and copy scripts there
 
 > cd /var/moon-rabbit
 > mkdir -p runtime
-> cp restart.sh ./runtime
 > cp pg_backup.sh ./runtime
 
 update pg_backup.sh with correct credentials
-run ./pg_backup.sh and check if database backup looks OK
+run `./runtime/pg_backup.sh` and check if database backup looks OK
 
-update restart.sh if needed
-run restart.sh and check output of ./runtime/*_stdout files
+install node and pm2:
+```bash
+sudo apt install npm
+sudo npm install -g pm2
+```
 
-update crontab with new entries:
+start pm2 apps:
+```bash
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup
+```
 
-> crontab -e
+check pm2 status:
+```bash
+pm2 list
+pm2 logs
+```
 
-*/5 * * * * /var/moon-rabbit/runtime/pg_backup.sh
-*/5 * * * * /var/moon-rabbit/runtime/restart.sh
+delete pm2 processes:
+```bash
+pm2 delete moon-rabbit-discord  # delete a specific app
+pm2 save                        # save changes so they don't restart on boot
+```
 
-that wil restart and create backup every 5 minutes - to check if it really works.
-Wait for 10 minutes and then check
-> cat /var/moon-rabbit/runtime/restart_date.txt
-> ls -al /mnt/backup/
+To modify PM2 parameters for this specific production instance, you can create a local copy of the config:
+```bash
+cp ecosystem.config.cjs ecosystem.config.local.cjs
+# Edit ecosystem.config.local.cjs as needed
+pm2 start ecosystem.config.local.cjs
+```
 
-then update crontab to make it more rate
-
-2 5 * * * /var/moon-rabbit/runtime/pg_backup.sh
-4 */3 * * * /var/moon-rabbit/runtime/restart.sh
+When you update parameters in your custom config, apply changes using:
+```bash
+pm2 restart ecosystem.config.local.cjs --update-env
+```
 
 # how to work with DB
 

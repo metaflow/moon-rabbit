@@ -148,13 +148,15 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
     https://moon-robot.tative.net/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
 - [x] drop auth entities
 - [x] check that bot cannot connect to my twitch, authenticate and check that now it does
-- [ ] Set up pm2 for backup and bot itself
-- [ ] format files in project to ruff - is there a way to add this to check?
+- [x] Set up pm2 for backup and bot itself
+- [ ] check discord bot working
+- [ ] check that bot restarts after server restart
+- [x] format files in project to ruff - is there a way to add this to check?
+- [ ] update twitch channel to july_in_july, check
+- [ ] update discord to jl - check
 - [ ] shut down old bot
 - [x] start a new one and ask to authenticate
 - [x] dump old database and compare with the new - are there any mismatches?
-- [ ] check discord bot working
-- [ ] update twitch channel to july_in_july
 - [ ] stop old droplet
 - [ ] after a week - drop old droplet
 - [ ] review documentation, most of setup.md should go to readme

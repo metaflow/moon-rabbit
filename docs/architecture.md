@@ -237,14 +237,33 @@ Both Discord and Twitch clients support periodic cron tasks:
 
 ---
 
-## Graceful Shutdown & Loop Lifecycle
+## App Lifecycle
 
-The bot implements a clean shutdown sequence to ensure all network sessions are closed and background tasks are terminated without errors (e.g., "Unclosed client session").
+The bot is designed to be run and managed by PM2, with robust handling for graceful shutdown.
+
+### PM2 Process Management
+The application is run via PM2 using `ecosystem.config.cjs`, which defines three applications:
+- `moon-rabbit-discord`: The Discord bot process.
+- `moon-rabbit-twitch`: The Twitch bot process.
+- `moon-rabbit-backup`: A cron job for database backups.
+
+If you need to override settings for a specific production instance, fork the config:
+```bash
+cp ecosystem.config.cjs ecosystem.config.prod.cjs
+```
+Edit the values inside your custom config, then run `pm2 start ecosystem.config.prod.cjs`.
+To apply new configuration changes dynamically (such as environment variables or arguments), use:
+```bash
+pm2 restart ecosystem.config.prod.cjs --update-env
+```
+
+### Graceful Shutdown
+The bot implements a clean shutdown sequence to ensure all network sessions are closed and background tasks are terminated without errors (e.g., "Unclosed client session"), particularly when restarted/stopped by PM2 handling SIGINT.
 
 ### Main Loop Runner (`run_loop`)
 The `run_loop()` function in `main.py` wraps the event loop execution:
 - Calls `loop.run_forever()` within a `try...finally` block.
-- Catches `KeyboardInterrupt` (Ctrl+C) and `GracefulExit` (from aiohttp).
+- Catches `KeyboardInterrupt` (Ctrl+C/SIGINT) and `GracefulExit` (from aiohttp).
 - Ensures the `shutdown()` sequence is called even if an unexpected error occurs.
 
 ### Shutdown Sequence (`shutdown`)
@@ -254,6 +273,7 @@ When the bot stops, the following happens:
 2. **Timeout Protection**: The client closing tasks are wrapped in `asyncio.wait_for` with a 10-second timeout.
 3. **Task Cancellation**: All remaining background tasks (like `cron` and `expireVariables`) are explicitly canceled and awaited to prevent "Task was destroyed but it is pending!" warnings.
 4. **Loop Termination**: After all tasks are settled, the event loop is explicitly closed via `loop.close()`.
+
 
 ---
 
