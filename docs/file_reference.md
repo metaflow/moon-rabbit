@@ -55,46 +55,45 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 
 ---
 
-### [commands.py](file:///home/gem/src/moon-rabbit/commands.py) — Command Registry & Processing
-**Role:** All command logic, message processing pipeline (largest file in the project)
+### commands/ Package — Command Registry & Processing
+**Role:** All command logic, message processing pipeline (split into multiple files for SRP)
 
-**Central function:** `process_message(msg: Message) → List[Action]`
-- Iterates through all commands (built-in + persistent)
-- Checks permissions (mod, platform, event type)
-- Runs each command; a command returns `(actions, continue_flag)`
-- Appends any `additionalActions` from template-side `message()` calls
+**commands/pipeline.py**
+- `process_message(msg: Message) → List[Action]`: Iterates through all commands, checks permissions, executes them.
+- `PersistentCommand`: Wraps a `CommandData` from DB, compiles regex pattern, renders action templates.
+- `get_commands()`: Builds and caches the command list for a channel.
+- `command_prefix()`: Central utility for checking command prefixes.
 
-**Built-in Command Classes:**
+**commands/builtins.py**
+Built-in Command Classes for functionality and moderation:
 
 | Class | Chat Trigger | Purpose |
 |---|---|---|
-| `HelpCommand` | `+help` / `+commands` | Lists available commands; shows detailed help for specific command |
-| `Eval` | `+eval` | Evaluate a Jinja2 expression and return the result |
-| `SetCommand` | `+command` | Create/update/delete a persistent command (JSON or plain text) |
+| `HelpCommand` | `+help` / `+commands` | Lists available commands; shows detailed help |
+| `Eval` | `+eval` | Evaluate a Jinja2 expression |
+| `SetCommand` | `+command` | Create/update/delete a persistent command |
 | `SetPrefix` | `+prefix-set` | Change the command prefix for current platform |
+| `Multiline` | `+multiline` | Execute multiple commands from one message |
+| `Debug` | `+debug` | View recent logs or get JSON of a command |
+| `InvalidateCache` | `+invalidate_cache` | Clear the commands cache |
+
+**commands/text.py**
+Commands and logic for Text & Tag manipulation:
+
+| Class | Chat Trigger | Purpose |
+|---|---|---|
 | `TextSet` | `+add` | Add or update a text entry (CSV-like syntax: `text;id;tags`) |
 | `TextNew` | `+new` | Auto-analyze text morphology and print the `+add` command |
 | `TextSetNew` | `+setnew` | Like `+new` but immediately inserts the text |
 | `TextDescribe` | `+describe` | Show full info about a text by ID |
 | `TextSearch` | `+search` | Search texts by substring and optional tag query |
 | `TextRemove` | `+rm` | Delete a text by ID or unique substring match |
-| `TextUpload` | `+upload` | Bulk import texts from an attached CSV file (Discord only) |
-| `TextDownload` | `+download` | Export texts to CSV file (Discord only) |
+| `TextUpload` | `+upload` | Bulk import texts from an attached CSV file |
+| `TextDownload` | `+download` | Export texts to CSV file |
 | `TagList` | `+tags` | List all tags with their IDs |
 | `TagDelete` | `+tag-rm` | Delete a tag by ID or name |
-| `Multiline` | `+multiline` | Execute multiple commands from one message (newline-separated) |
-| `Debug` | `+debug` | View recent logs or get JSON of a command (private message only) |
-| `InvalidateCache` | `+invalidate_cache` | Clear the commands cache |
 
-**`PersistentCommand`**: Wraps a `CommandData` from DB. Compiles regex pattern, renders action templates via Jinja2 on match.
-
-**Key helper functions:**
-- `command_prefix()` — checks if message starts with prefix+keyword, returns remainder
-- `get_commands()` — builds and caches the command list for a channel
-- `import_text_row()` — imports a single text row with tags (used by `TextSet` and `TextUpload`)
-- `str_to_tags()` / `tag_values_to_str()` — serialize/deserialize tag dicts
-- `text_to_row()` — format a text entry as CSV row
-- `morph_text()` — auto-generate morphological inflections for a text
+Provides helpers like `import_text_row()`, `str_to_tags()`, `text_to_row()`, `morph_text()`.
 
 **Depends on:** `data`, `storage`, `query`, `words`
 

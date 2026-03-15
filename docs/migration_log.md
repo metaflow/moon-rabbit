@@ -206,6 +206,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-12 | Implemented `twitch_tokens` database storage for TwitchIO tokens to replace local `.tio.tokens.json`. |
 | 2026-03-14 | Fixed "Unclosed client session" errors by implementing graceful shutdown in `run_loop()` with a 10s timeout. |
 | 2026-03-15 | Fixed OAuth `redirect_mismatch` by allowing custom `TWITCH_OAUTH_DOMAIN` in `.env`. |
+| 2026-03-15 | Split `commands.py` into `commands` package (`pipeline.py`, `builtins.py`, `text.py`) to resolve SRP violations. |
 
 ---
 

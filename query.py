@@ -36,7 +36,9 @@ _tag = re.compile(r"^(\w|[-.,])+$", re.IGNORECASE)
 
 def good_tag_name(s: str) -> bool:
     s = s.strip().lower()
-    return not (s in ["", "and", "or", "not", "&", "|", "(", ")"] or not _tag.match(s))
+    if s in ["", "and", "or", "not", "&", "|", "(", ")"]:
+        return False
+    return bool(_tag.match(s))
 
 
 class Normalize(Transformer):

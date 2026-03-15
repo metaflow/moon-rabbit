@@ -94,7 +94,7 @@ class MockDB:
 @pytest.fixture
 def mock_db():
     mdb = MockDB()
-    with patch("templates.db", return_value=mdb), patch("commands.db", return_value=mdb):
+    with patch("templates.db", return_value=mdb), patch("storage.db", return_value=mdb):
         yield mdb
 
 

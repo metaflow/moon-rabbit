@@ -19,9 +19,9 @@ graph TD
     end
 
     subgraph "Command Processing"
-        CP["commands.process_message()"]
-        BC["Built-in Commands<br/>(HelpCommand, Eval, TextSet, etc.)"]
-        PC["PersistentCommand<br/>(user-defined, from DB)"]
+        CP["commands.process_message()<br/>commands/pipeline.py"]
+        BC["Built-in Commands<br/>commands/builtins.py, text.py"]
+        PC["PersistentCommand<br/>commands/pipeline.py"]
     end
 
     subgraph "Template Engine"
