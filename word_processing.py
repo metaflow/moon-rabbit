@@ -18,55 +18,59 @@
 
 import logging
 import sys
+
 from words import morph
 
 if __name__ == "__main__":
-    cases = ['nomn', 'gent', 'datv', 'accs', 'ablt', 'loct']
-    with open(sys.argv[1], encoding='utf-8') as f, open(sys.argv[2], encoding='utf-8', mode='at') as fw:
+    cases = ["nomn", "gent", "datv", "accs", "ablt", "loct"]
+    with (
+        open(sys.argv[1], encoding="utf-8") as f,
+        open(sys.argv[2], encoding="utf-8", mode="a") as fw,
+    ):
         for line in f:
             row = []
-            s, manual_tags = line.strip().split('\t')
+            s, manual_tags = line.strip().split("\t")
             mm = morph.parse(s)
-            masc = [x for x in mm if ('masc' in x.tag or 'ms-f' in x.tag)]
+            masc = [x for x in mm if ("masc" in x.tag or "ms-f" in x.tag)]
             row.append(s)
             suggested = []
             ii = []
             for p in morph.parse(s):
                 tags = list(p.tag.grammemes)
-                if 'nomn' not in tags:
+                if "nomn" not in tags:
                     continue
-                if ('ADJF' in tags) or ('ADJS' in tags) or ('PRTF' in tags) or ('PRTS' in tags):
-                    tags.append('FEAT')
-                if ('ms-f' in tags):
-                    tags.append('masc')
-                    tags.append('femn')
-                tags = ["_" + x for x in tags if x != 'nomn']
+                if ("ADJF" in tags) or ("ADJS" in tags) or ("PRTF" in tags) or ("PRTS" in tags):
+                    tags.append("FEAT")
+                if "ms-f" in tags:
+                    tags.append("masc")
+                    tags.append("femn")
+                tags = ["_" + x for x in tags if x != "nomn"]
                 tags.append("morph")
-                logging.debug(f'morph parse {p} {p.tag.grammemes} {tags}')
-                suggested.append(' '.join(tags))
+                logging.debug(f"morph parse {p} {p.tag.grammemes} {tags}")
+                suggested.append(" ".join(tags))
                 inf = []
                 for c in cases:
                     x = p.inflect({c})
                     if not x:
-                        inf.append('X')
+                        inf.append("X")
                     else:
                         inf.append(x.word)
                 for c in cases:
-                    x = p.inflect({c, 'plur'})
+                    x = p.inflect({c, "plur"})
                     if not x:
-                        inf.append('X')
+                        inf.append("X")
                     else:
                         inf.append(x.word)
-                ii.append(','.join(inf))
+                ii.append(",".join(inf))
             if suggested:
-                row.append(manual_tags + ' ' + suggested[0])
+                row.append(manual_tags + " " + suggested[0])
                 row.append(manual_tags)
-                row.append('"' + '\n'.join(suggested) + '"')
-                row.append('"' + '\n'.join(ii) + '"')
+                row.append('"' + "\n".join(suggested) + '"')
+                row.append('"' + "\n".join(ii) + '"')
             else:
                 row.append(manual_tags)
-                row.append('')
-                row.append('')
-                row.append('')
-            fw.write('\t'.join(row) + '\n')
+                row.append("")
+                row.append("")
+                row.append("")
+            fw.write("\t".join(row) + "\n")
             # fw.write('\t'.join([p.inflect({c}).word for c in cases]) + '\n')

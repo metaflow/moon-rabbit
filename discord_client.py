@@ -1,40 +1,45 @@
-from io import BytesIO
-
-from urllib.parse import urlparse
-from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message, is_dev
-import discord
-import logging
-import random
-import ttldict2
-from storage import db
-from typing import Any, Dict, List, Optional
 import dataclasses
-import traceback
-import commands
-import time
-import logging.handlers
-from PIL import Image, ImageFont, ImageDraw
-import os
 import hashlib
+import logging
+import logging.handlers
+import os
+import random
+import time
+import traceback
+from io import BytesIO
+from typing import Any
+from urllib.parse import urlparse
+
+import discord
 import requests
+import ttldict2
+from PIL import Image, ImageDraw, ImageFont
+
+import commands
+from data import Action, ActionKind, EventType, InvocationLog, Lazy, Message, is_dev
+from storage import db
+
 
 def discord_literal(t):
-    return t.replace('<@!', '<@')
+    return t.replace("<@!", "<@")
+
 
 def download_file(url: str) -> str:
     url_parts = urlparse(url)
     name, ext = os.path.splitext(url_parts.path)
-    h = hashlib.new('SHA1')
-    h.update(url.encode('utf8'))
+    h = hashlib.new("SHA1")
+    h.update(url.encode("utf8"))
     url_hash = h.hexdigest()
-    file_name = f'{h.hexdigest()}{ext}'
-    logging.debug(f'parts {url_parts.path} hash {url_hash} name {name} ext {ext}')
+    file_name = f"{h.hexdigest()}{ext}"
+    logging.debug(f"parts {url_parts.path} hash {url_hash} name {name} ext {ext}")
     if os.path.isfile(file_name):
         logging.debug(f'"{file_name}" already exist')
         return file_name
     r = requests.get(url, allow_redirects=True)
-    open(file_name, 'wb').write(r.content)
+    with open(file_name, "wb") as f:
+        f.write(r.content)
     return file_name
+
 
 @dataclasses.dataclass
 class BannerOverlay:
@@ -46,48 +51,52 @@ class BannerOverlay:
     b: int
     text: str
 
-def create_banner_image(url: str, overlays: List[BannerOverlay], full_text_for_hash: str) -> BytesIO:
+
+def create_banner_image(
+    url: str, overlays: list[BannerOverlay], full_text_for_hash: str
+) -> BytesIO:
     img_path = download_file(url)
     image = Image.open(img_path)
     image_editable = ImageDraw.Draw(image)
 
     for o in overlays:
-        title_font = ImageFont.truetype('arial.ttf', size=o.size)
+        title_font = ImageFont.truetype("arial.ttf", size=o.size)
         image_editable.text((o.x, o.y), o.text, (o.r, o.g, o.b), font=title_font)
 
     if is_dev():
-        h = hashlib.new('SHA1')
-        h.update(full_text_for_hash.encode('utf8'))
-        result_file = f'{h.hexdigest()}.png'
-        logging.info(f'saving dev result {result_file}')
+        h = hashlib.new("SHA1")
+        h.update(full_text_for_hash.encode("utf8"))
+        result_file = f"{h.hexdigest()}.png"
+        logging.info(f"saving dev result {result_file}")
         image.save(result_file)
 
     bb = BytesIO()
-    image.save(bb, format='png')
+    image.save(bb, format="png")
     bb.seek(0)
     return bb
 
+
 # https://discordpy.readthedocs.io/en/latest/api.html
 class DiscordClient(discord.Client):
-    def __init__(self, profile: bool, dev_message: Optional[str] = None, *args, **kwargs):
-        self.guild_data: Dict[str, Any] = {}
-        self.channels: Dict[int, Any] = {}
-        self.mods: Dict[str, str] = {}
+    def __init__(self, profile: bool, dev_message: str | None = None, *args, **kwargs):
+        self.guild_data: dict[str, Any] = {}
+        self.channels: dict[int, Any] = {}
+        self.mods: dict[str, str] = {}
         self.profile = profile
         self.dev_message = dev_message
         super().__init__(*args, **kwargs)
 
     async def on_ready(self):
-        print('We have logged in as {0.user}'.format(self))
+        print(f"We have logged in as {self.user}")
         if self.dev_message:
             for guild in self.guilds:
                 for channel in guild.text_channels:
                     try:
                         await channel.send(self.dev_message)
-                        logging.info(f'[dev] sent smoke-test to #{channel.name} in {guild.name}')
+                        logging.info(f"[dev] sent smoke-test to #{channel.name} in {guild.name}")
                         break
                     except Exception as e:
-                        logging.warning(f'[dev] failed to send to #{channel.name}: {e}')
+                        logging.warning(f"[dev] failed to send to #{channel.name}: {e}")
                         continue
 
     async def on_message(self, message: discord.Message):
@@ -95,13 +104,15 @@ class DiscordClient(discord.Client):
         if message.author == self.user:
             return
         # logging.info(f'channel {message.channel} {message.channel.type}')
-        guild_id = ''
+        guild_id = ""
         is_mod = False
         private = False
         if message.channel.type == discord.ChannelType.private:
             g = self.mods.get(str(message.author.id))
             if not g:
-                await message.channel.send('You are not a moderator. First send message in your discord and come back here.')
+                await message.channel.send(
+                    "You are not a moderator. First send message in your discord and come back here."
+                )
                 return
             guild_id = g
             is_mod = True
@@ -115,78 +126,101 @@ class DiscordClient(discord.Client):
             if is_mod:
                 self.mods[str(message.author.id)] = guild_id
         try:
-            channel_id, prefix = db().discord_channel_info(
-                db().conn.cursor(), guild_id)
+            channel_id, prefix = db().discord_channel_info(db().conn.cursor(), guild_id)
         except Exception as e:
-            logging.error(
-                f"'discord_channel_info': {e}\n{traceback.format_exc()}")
+            logging.error(f"'discord_channel_info': {e}\n{traceback.format_exc()}")
             return
         log = InvocationLog(
-            f'guild={guild_id} message_channel={message.channel.id} channel={channel_id} author={message.author.id}')
+            f"guild={guild_id} message_channel={message.channel.id} channel={channel_id} author={message.author.id}"
+        )
         if channel_id not in self.channels:
             self.channels[channel_id] = {
-                'active_users': ttldict2.TTLDict(ttl_seconds=3600.0 * 2),
-                'allowed_channels': db().get_discord_allowed_channels(channel_id)}
-        text = commands.command_prefix(message.content, prefix, ['allow_here'])
+                "active_users": ttldict2.TTLDict(ttl_seconds=3600.0 * 2),
+                "allowed_channels": db().get_discord_allowed_channels(channel_id),
+            }
+        text = commands.command_prefix(message.content, prefix, ["allow_here"])
         discord_channel = str(message.channel.id)
         if text and is_mod:
-            self.channels[channel_id]['allowed_channels'].add(discord_channel)
-            db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
-            log.info(f'discord channel {message.channel.id} is allowed')
-            await message.reply('this channel is now allowed')
+            self.channels[channel_id]["allowed_channels"].add(discord_channel)
+            db().set_discord_allowed_channels(
+                channel_id, self.channels[channel_id]["allowed_channels"]
+            )
+            log.info(f"discord channel {message.channel.id} is allowed")
+            await message.reply("this channel is now allowed")
             return
-        text = commands.command_prefix(message.content, prefix, ['disallow_here'])
+        text = commands.command_prefix(message.content, prefix, ["disallow_here"])
         if text and is_mod:
-            self.channels[channel_id]['allowed_channels'].discard(discord_channel)
-            db().set_discord_allowed_channels(channel_id, self.channels[channel_id]['allowed_channels'])
-            log.info(f'discord channel {message.channel.id} is allowed')
-            await message.reply('this channel is now disallowed')
+            self.channels[channel_id]["allowed_channels"].discard(discord_channel)
+            db().set_discord_allowed_channels(
+                channel_id, self.channels[channel_id]["allowed_channels"]
+            )
+            log.info(f"discord channel {message.channel.id} is allowed")
+            await message.reply("this channel is now disallowed")
             return
-        if (message.channel.type != discord.ChannelType.private) and self.channels[channel_id]['allowed_channels'] and (discord_channel not in self.channels[channel_id]['allowed_channels']):
+        if (
+            (message.channel.type != discord.ChannelType.private)
+            and self.channels[channel_id]["allowed_channels"]
+            and (discord_channel not in self.channels[channel_id]["allowed_channels"])
+        ):
             return
-        text = commands.command_prefix(message.content, prefix, ['cron'])
+        text = commands.command_prefix(message.content, prefix, ["cron"])
         if text and is_mod:
             await self.on_cron()
             return
         if not message.author.bot:
-            self.channels[channel_id]['active_users'][discord_literal(
-                message.author.mention)] = '+'
-        self.channels[channel_id]['active_users'].drop_old_items()
+            self.channels[channel_id]["active_users"][discord_literal(message.author.mention)] = "+"
+        self.channels[channel_id]["active_users"].drop_old_items()
         log.info(f'message "{message.content}"')
-        variables: Optional[Dict] = None
+        variables: dict | None = None
         # postpone variable calculations as much as possible
         message_id = str(message.id)
+
         def get_vars():
             nonlocal variables
             if not variables:
                 if not self.user:
-                    logging.warning('self.user is unset')
+                    logging.warning("self.user is unset")
                     return {}
                 bot = discord_literal(self.user.mention)
                 author = discord_literal(message.author.mention)
                 exclude = [bot, author]
                 variables = {
-                    'author': author,
-                    'author_name': discord_literal(str(message.author.display_name)),
-                    'mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), exclude)),
-                    'direct_mention': Lazy(lambda: self.mentions(message)),
-                    'random_mention': Lazy(lambda: self.random_mention(message, self.channels[channel_id]['active_users'].keys(), exclude), stick=False),
-                    'any_mention': Lazy(lambda: self.any_mention(message, self.channels[channel_id]['active_users'].keys(), [bot]), stick=False),
-                    'media': 'discord',
-                    'text': message.content,
-                    'is_mod': is_mod,
-                    'prefix': prefix,
-                    'bot': bot,
-                    'channel_id': channel_id,
-                    '_log': log,
-                    '_discord_message': message,
-                    '_private': private,
-                    '_id': message_id,
+                    "author": author,
+                    "author_name": discord_literal(str(message.author.display_name)),
+                    "mention": Lazy(
+                        lambda: self.any_mention(
+                            message, self.channels[channel_id]["active_users"].keys(), exclude
+                        )
+                    ),
+                    "direct_mention": Lazy(lambda: self.mentions(message)),
+                    "random_mention": Lazy(
+                        lambda: self.random_mention(
+                            message, self.channels[channel_id]["active_users"].keys(), exclude
+                        ),
+                        stick=False,
+                    ),
+                    "any_mention": Lazy(
+                        lambda: self.any_mention(
+                            message, self.channels[channel_id]["active_users"].keys(), [bot]
+                        ),
+                        stick=False,
+                    ),
+                    "media": "discord",
+                    "text": message.content,
+                    "is_mod": is_mod,
+                    "prefix": prefix,
+                    "bot": bot,
+                    "channel_id": channel_id,
+                    "_log": log,
+                    "_discord_message": message,
+                    "_private": private,
+                    "_id": message_id,
                 }
             return variables
+
         msg = Message(
-            id = message_id,
-            log = log,
+            id=message_id,
+            log=log,
             channel_id=channel_id,
             txt=message.content,
             event=EventType.message,
@@ -194,16 +228,18 @@ class DiscordClient(discord.Client):
             is_discord=True,
             is_mod=is_mod,
             private=private,
-            get_variables=get_vars)
+            get_variables=get_vars,
+        )
         if self.profile:
             start = time.time_ns()
             i = 0
             ns = 1000_000_000
-            while (time.time_ns() - start < ns):
+            while time.time_ns() - start < ns:
                 i += 1
                 actions = await commands.process_message(msg)
             actions.append(
-                Action(ActionKind.REPLY, text=f'{i} iterations in {time.time_ns() - start} ns'))
+                Action(ActionKind.REPLY, text=f"{i} iterations in {time.time_ns() - start} ns")
+            )
         else:
             actions = await commands.process_message(msg)
         db().add_log(channel_id, log)
@@ -214,7 +250,12 @@ class DiscordClient(discord.Client):
                 await message.channel.send(a.text)
             if a.kind == ActionKind.REPLY:
                 if a.attachment:
-                    await message.reply(a.text, file=discord.File(BytesIO(a.attachment.encode('utf-8')), filename=a.attachment_name))
+                    await message.reply(
+                        a.text,
+                        file=discord.File(
+                            BytesIO(a.attachment.encode("utf-8")), filename=a.attachment_name
+                        ),
+                    )
                 else:
                     await message.reply(a.text)
             if a.kind == ActionKind.PRIVATE_MESSAGE:
@@ -222,7 +263,7 @@ class DiscordClient(discord.Client):
             if a.kind == ActionKind.REACT_EMOJI:
                 await message.add_reaction(a.text)
 
-    def random_mention(self, msg, users: List[str], exclude: List[str]):
+    def random_mention(self, msg, users: list[str], exclude: list[str]):
         users = [x for x in users if x not in exclude]
         if users:
             return random.choice(users)
@@ -230,10 +271,10 @@ class DiscordClient(discord.Client):
 
     def mentions(self, msg):
         if msg.mentions:
-            return ' '.join([discord_literal(x.mention) for x in msg.mentions])
-        return ''
+            return " ".join([discord_literal(x.mention) for x in msg.mentions])
+        return ""
 
-    def any_mention(self, msg, users: List[str], exclude: List[str]):
+    def any_mention(self, msg, users: list[str], exclude: list[str]):
         direct = self.mentions(msg)
         return direct if direct else self.random_mention(msg, users, exclude)
 
@@ -245,22 +286,23 @@ class DiscordClient(discord.Client):
         return count
 
     async def on_cron(self):
-        logging.info('running discord cron')
+        logging.info("running discord cron")
         g: discord.Guild
         for g in self.guilds:
             try:
-                guild_id_str = f'{g.id}'
-                if 'BANNER' not in g.features:
+                guild_id_str = f"{g.id}"
+                if "BANNER" not in g.features:
                     continue
                 channel_id, prefix = db().discord_channel_info(db().conn.cursor(), guild_id_str)
-                banner_template = db().get_variable(channel_id, 'banner_template', 'admin', '')
-                log = InvocationLog(f'guild={guild_id_str} banner update')
+                banner_template = db().get_variable(channel_id, "banner_template", "admin", "")
+                log = InvocationLog(f"guild={guild_id_str} banner update")
                 log.debug(f'banner template "{banner_template}"')
                 if not banner_template:
                     continue
                 if guild_id_str not in self.guild_data:
-                    self.guild_data[guild_id_str] = {'banner_text': ''}
-                variables: Optional[Dict[str, Any]] = None
+                    self.guild_data[guild_id_str] = {"banner_text": ""}
+                variables: dict[str, Any] | None = None
+
                 def get_vars():
                     nonlocal variables
                     if not variables:
@@ -268,24 +310,27 @@ class DiscordClient(discord.Client):
                             return {}
                         bot = discord_literal(self.user.mention)
                         variables = {
-                            'media': 'discord',
-                            'text': banner_template,
-                            'is_mod': False,
-                            'prefix': prefix,
-                            'bot': bot,
-                            'channel_id': channel_id,
-                            'member_count': g.member_count,
-                            'description': g.description,
-                            'premium_subscription_count': g.premium_subscription_count,
-                            'premium_tier': g.premium_tier,
-                            'active_voice_channels_count': Lazy(lambda: str(self.count_active_voice_channels(g))),
-                            '_log': log,
-                            '_private': False,
+                            "media": "discord",
+                            "text": banner_template,
+                            "is_mod": False,
+                            "prefix": prefix,
+                            "bot": bot,
+                            "channel_id": channel_id,
+                            "member_count": g.member_count,
+                            "description": g.description,
+                            "premium_subscription_count": g.premium_subscription_count,
+                            "premium_tier": g.premium_tier,
+                            "active_voice_channels_count": Lazy(
+                                lambda: str(self.count_active_voice_channels(g))
+                            ),
+                            "_log": log,
+                            "_private": False,
                         }
                     return variables
+
                 msg = Message(
-                    id = 'banner',
-                    log = log,
+                    id="banner",
+                    log=log,
                     channel_id=channel_id,
                     txt=banner_template,
                     event=EventType.message,
@@ -293,31 +338,38 @@ class DiscordClient(discord.Client):
                     is_discord=True,
                     is_mod=True,
                     private=False,
-                    get_variables=get_vars)
+                    get_variables=get_vars,
+                )
                 actions = await commands.process_message(msg)
                 if not actions:
                     continue
                 txt = actions[0].text
-                if self.guild_data[guild_id_str]['banner_text'] == txt:
-                    log.debug('banner text is the same')
+                if self.guild_data[guild_id_str]["banner_text"] == txt:
+                    log.debug("banner text is the same")
                     continue
-                parts = txt.split(';;')
+                parts = txt.split(";;")
                 log.debug(parts[0])
                 url = parts[0].strip()
                 overlays = []
                 for p in parts[1:]:
-                    ox, oy, os, orr, og, ob, ot = p.split(',', 6)
-                    overlays.append(BannerOverlay(
-                        x=int(ox), y=int(oy), size=int(os),
-                        r=int(orr), g=int(og), b=int(ob),
-                        text=ot
-                    ))
+                    ox, oy, os, orr, og, ob, ot = p.split(",", 6)
+                    overlays.append(
+                        BannerOverlay(
+                            x=int(ox),
+                            y=int(oy),
+                            size=int(os),
+                            r=int(orr),
+                            g=int(og),
+                            b=int(ob),
+                            text=ot,
+                        )
+                    )
                 bb = create_banner_image(url, overlays, txt)
                 await g.edit(banner=bb.read())
-                self.guild_data[guild_id_str]['banner_text'] = txt
+                self.guild_data[guild_id_str]["banner_text"] = txt
             except Exception as e:
                 logging.error(f"'cron update': {e}\n{traceback.format_exc()}")
-                if 'guild_id_str' in locals():
+                if "guild_id_str" in locals():
                     if guild_id_str not in self.guild_data:
-                        self.guild_data[guild_id_str] = {'banner_text': ''}
-                    self.guild_data[guild_id_str]['banner_text'] = ''
+                        self.guild_data[guild_id_str] = {"banner_text": ""}
+                    self.guild_data[guild_id_str]["banner_text"] = ""

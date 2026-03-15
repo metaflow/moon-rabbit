@@ -16,7 +16,7 @@
 
 ### Current Auth Flow (as-is)
 
-The Twitch bot (`Twitch3` in [twitch_api.py](file:///home/gem/src/moon-rabbit/twitch_api.py)) uses two separate libraries and auth paths:
+The Twitch bot (`TwitchClient` in [twitch_client.py](file:///home/gem/src/moon-rabbit/twitch_client.py)) uses two separate libraries and auth paths:
 
 | Library | Purpose | Auth Method |
 |---|---|---|
@@ -50,7 +50,7 @@ From `moon_robot.errors.log`:
 
 #### Debug hooks added (2026-03-08)
 
-Added `[lifecycle]`-prefixed logging hooks to `twitch_api.py`:
+Added `[lifecycle]`-prefixed logging hooks to `twitch_client.py`:
 - `event_error`, `event_reconnect`, `event_token_expired`, `event_channel_join_failure`, `event_part`
 - These log only; they do not fix anything. Purpose is to confirm which failure mode triggers on the next disconnect.
 
@@ -113,10 +113,10 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] how to turn the bot "off" properly?
 - [x] reexport schema_backup
 - [x] setup linter checks
-- [ ] check if any other lib updates are necessary
+- [x] check if any other lib updates are necessary
 - [ ] setup review prompt
 - [ ] overall code review and health
-- [ ] any burning todo items?
+- [x] any burning todo items?
 
 ---
 
@@ -144,18 +144,20 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] Clone repo to `/var/moon-rabbit`
 - [x] Configure environment (`DB_CONNECTION`, etc.)
 - [x] Update DNS / IP references if any
-- [ ] test oauth
+- [x] test oauth
     https://moon-robot.tative.net/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
-- [ ] drop auth entities
-- [ ] check that bot cannot connect to my twitch, authenticate and check that now it does
-- [ ] update twitch channel to july_in_july
+- [x] drop auth entities
+- [x] check that bot cannot connect to my twitch, authenticate and check that now it does
+- [ ] Set up pm2 for backup and bot itself
 - [ ] format files in project to ruff - is there a way to add this to check?
 - [ ] shut down old bot
-- [ ] start a new one and ask to authenticate
-- [ ] dump old database and compare with the new - are there any mismatches?
-- [ ] review documentation, most of setup.md should go to readme
-- [ ] Set up pm2 for backup and bot itself
+- [x] start a new one and ask to authenticate
+- [x] dump old database and compare with the new - are there any mismatches?
+- [ ] check discord bot working
+- [ ] update twitch channel to july_in_july
+- [ ] stop old droplet
 - [ ] after a week - drop old droplet
+- [ ] review documentation, most of setup.md should go to readme
 
 
 ### Notes
@@ -217,7 +219,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 |---|---|
 | `requirements.txt` | `twitchio==3.2.1`, removed `twitchapi`, removed `requests` |
 | `schema_backup.sql` | Added `bot_user_id TEXT` to `twitch_bots`; old columns kept, marked obsolete |
-| `twitch_api.py` | **Complete rewrite** — see below |
+| `twitch_client.py` | **Complete rewrite** — see below |
 | `main.py` | Removed unused `twitchCommands` import; `Twitch3` no longer takes `loop` param; use `t.start()` |
 | `server_twitch_auth.py` | **Deleted** — replaced by twitchio's built-in OAuth server (port 4343) |
 | `tests/test_data.py` | **New** — unit tests for `data.py` pure logic |
@@ -225,11 +227,11 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | `tests/conftest.py` | **New** — adds project root to `sys.path` for test imports |
 | `docs/overview.md` | Updated dependencies table |
 | `docs/architecture.md` | Updated component diagram + DB schema |
-| `docs/file_reference.md` | Updated `twitch_api.py` section, removed `server_twitch_auth.py` |
+| `docs/file_reference.md` | Updated `twitch_client.py` section, removed `server_twitch_auth.py` |
 
-### twitch_api.py Rewrite Summary
+### twitch_client.py Rewrite Summary
 
-- `Twitch3.__init__` now takes `client_id`, `client_secret`, `bot_id` (from `bot_user_id` column); no `loop` param
+- `TwitchClient.__init__` now takes `client_id`, `client_secret`, `bot_id` (from `bot_user_id` column); no `loop` param
 - `setup_hook()` resolves broadcaster IDs via `fetch_users()` and calls `multi_subscribe()` for:
   - `ChatMessageSubscription` (all channels)
   - `ChannelPointsCustomRewardRedemptionAddSubscription` (if `twitch_reward_redemption` in events)
@@ -237,6 +239,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 - Event handlers renamed/reshaped: `event_message(payload: ChatMessage)`, `event_channel_points_redemption_add(payload)`, `event_channel_hype_train_end(payload)`
 - Sending: `PartialUser.send_message(sender=bot_user_id, message=text)` instead of `channel.send()`
 - Auth: twitchio-managed; tokens persisted to `.tio.tokens.json`; no manual refresh
+ - Tokens persisted to the PostgreSQL `twitch_tokens` table via overrides in `TwitchClient`
 
 ### New Auth Flow (one-time setup)
 

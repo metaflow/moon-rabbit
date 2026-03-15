@@ -34,8 +34,8 @@ A **multi-platform chatbot** that runs simultaneously on **Discord** and **Twitc
 └──────┬───────┘     └──────┬───────┘
        │                    │
        ▼                    ▼
-  DiscordClient         Twitch3
-  (discord_client.py)   (twitch_api.py)
+  DiscordClient         TwitchClient
+  (discord_client.py)   (twitch_client.py)
        │                    │
        └────────┬───────────┘
                 │
@@ -63,7 +63,7 @@ A **multi-platform chatbot** that runs simultaneously on **Discord** and **Twitc
 | Platform | Client Class | Events Handled |
 |---|---|---|
 | **Discord** | `DiscordClient` in `discord_client.py` | Messages, cron (banner updates) |
-| **Twitch** | `Twitch3` in `twitch_api.py` | Messages, channel point redemptions, hype train events, cron |
+| **Twitch** | `TwitchClient` in `twitch_client.py` | Messages, channel point redemptions, hype train events, cron |
 
 Both platforms share the same command processing pipeline (`commands.process_message()`), text database, and Jinja2 template engine. The `media` variable (`"discord"` or `"twitch"`) allows templates to branch per-platform via `{{ dt('discord text', 'twitch text') }}`.
 

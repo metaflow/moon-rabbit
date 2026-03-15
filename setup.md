@@ -57,12 +57,14 @@ sudo -u postgres psql chatbot -t -A -c "
   SELECT format('ALTER SEQUENCE %I OWNER TO bot;', sequence_name) FROM information_schema.sequences WHERE sequence_schema='public'
 " | sudo -u postgres psql chatbot
 
-# test that bot can connect to db
+# Test that bot can connect to db
 
 create file in /var/moon-rabbit/.env
 
 DB_CONNECTION="dbname=chatbot user=bot password=***** host=localhost"
 DISCORD_TOKEN=*****
+
+Use psql postgres://bot:<password>@localhost/chatbot to inspect the database.
 
 Use a token to dev discord first and only run for discord.
 
@@ -222,17 +224,17 @@ VALUES ('<bot_username>', '<client_id>', '<client_secret>', '<numeric_bot_user_i
 
 Open this http://localhost:4343/oauth?scopes=user:read:chat+user:write:chat+user:bot&force_verify=true in a browser **while logged in as the bot Twitch account**.
 
+App prints this URL at the start time as "Bot Account Authorization URL.."
+
 If the bot is running on a remote server, replace `localhost:4343` with your `TWITCH_OAUTH_DOMAIN`.
 
 ## 7. Add a Twitch channel
 
 Your Twitch channel name is your Twitch username (lowercase), visible in the URL: `twitch.tv/<channel_name>`.
 
-The bot looks up channels by the `twitch_bot` column in the `channels` table. On first message, it auto-creates a channel entry — no manual DB insert needed.
+Open URL **while logged in as the channel owner**: http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
 
-**Channel owner** — open this URL **while logged in as the channel owner**: http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
-
-Again, replace `localhost:4343` with your `TWITCH_OAUTH_DOMAIN` if remote.
+Bot prints this URL at the start time as "Channel Owner Authorization URL.."
 
 Add mod rights to the bot: `/mod <bot_username>`
 

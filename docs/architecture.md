@@ -15,7 +15,7 @@ graph TD
 
     subgraph "Client Layer"
         DC["DiscordClient<br/>discord_client.py"]
-        TC["Twitch3<br/>twitch_api.py"]
+        TC["TwitchClient<br/>twitch_client.py"]
     end
 
     subgraph "Command Processing"
@@ -67,7 +67,7 @@ graph TD
 ```mermaid
 sequenceDiagram
     participant User
-    participant Client as DiscordClient / Twitch3
+    participant Client as DiscordClient / TwitchClient
     participant Cmd as commands.process_message()
     participant DB as storage.DB
     participant J2 as Jinja2 Engine
@@ -230,7 +230,7 @@ Both Discord and Twitch clients support periodic cron tasks:
   - Template output format: `image_url;;x,y,size,r,g,b,text;;...`
   - Downloads the base image, overlays text using Pillow/arial.ttf, uploads as guild banner
 
-### Twitch Cron (`Twitch3.on_cron`)
+### Twitch Cron (`TwitchClient.on_cron`)
 - For each channel with recent activity (within 30 min), sends a synthetic `_cron` message
 - This triggers any persistent command whose regex matches `<prefix>_cron`
 - Allows scheduled automated messages in active Twitch channels

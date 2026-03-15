@@ -1,31 +1,27 @@
 import re
 
-from commands import (
-    PersistentCommand,
-    HelpCommand,
-    SetCommand,
-    Eval,
-    morph_text
-)
+from commands import Eval, HelpCommand, PersistentCommand, SetCommand, morph_text
 from data import dictToCommandData
+
 
 def test_morph_text_inflection():
     # Test pymorph via txt() inflection-related `morph_text` util.
     # When text is processed for adding to DB, it gets inflected into cases.
     res = morph_text("синий кот")
     assert res != {}
-    assert 'рд' in res  # Genitive
-    assert 'дт' in res  # Dative
-    assert 'тв' in res  # Instrumental
+    assert "рд" in res  # Genitive
+    assert "дт" in res  # Dative
+    assert "тв" in res  # Instrumental
     # Checking specific inflections:
     # "синий кот" -> "синего кота" (Gen/Acc animate)
-    assert res['рд'] == "синего кота"
-    assert res['дт'] == "синему коту"
-    assert res['тв'] == "синим котом"
+    assert res["рд"] == "синего кота"
+    assert res["дт"] == "синему коту"
+    assert res["тв"] == "синим котом"
 
     # Test handling words that cannot be morphed or shouldn't be
     res2 = morph_text("hello 123")
     assert res2 == {}
+
 
 def test_persistent_command_formats():
     # Example commands from /tmp/commands.txt
@@ -40,14 +36,14 @@ def test_persistent_command_formats():
                 "kind": "message",
                 "text": "{{ mention }} you are {{ txt('adj') }} {{ txt('adj') }} {{ txt('noun') }}",
                 "attachment": "",
-                "attachment_name": ""
+                "attachment_name": "",
             }
         ],
         "discord": True,
         "pattern": "!prefixlaud\\b",
         "version": 1,
         "help_full": "",
-        "event_type": "message"
+        "event_type": "message",
     }
 
     cmd_data = dictToCommandData(cmd_json)
@@ -68,6 +64,7 @@ def test_persistent_command_formats():
     assert cmd.help("!") == "!laud"
     assert cmd.help_full("!") == "!laud"
 
+
 def test_persistent_command_custom_help():
     cmd_json = {
         "mod": False,
@@ -79,7 +76,7 @@ def test_persistent_command_custom_help():
         "actions": [{"kind": "message", "text": "test"}],
         "discord": True,
         "pattern": "!prefix(hug|обнять)\\b",
-        "version": 1
+        "version": 1,
     }
     cmd_data = dictToCommandData(cmd_json)
     cmd = PersistentCommand(cmd_data, "!")
@@ -91,6 +88,7 @@ def test_persistent_command_custom_help():
     cmd = PersistentCommand(cmd_data, "?")
     assert cmd.help("?") == "?hug"
     assert cmd.help_full("?") == "?hug <имя человека>"
+
 
 def test_builtin_commands_help_full():
     help_cmd = HelpCommand()

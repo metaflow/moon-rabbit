@@ -21,24 +21,24 @@
 # TODO DB indexes
 """Bot entry point."""
 
-import asyncio
-import traceback
 import argparse
-import discord
-import twitchio
+import asyncio
+import datetime
 import logging
+import logging.handlers
 import os
 import sys
+import traceback
+
+import discord
+import twitchio
 from dotenv import load_dotenv
-from storage import DB, db, set_db
-from typing import Optional, Union
-import datetime
-from data import set_is_dev
-import logging.handlers
-import twitch_api
-from discord_client import DiscordClient
 
 import templates
+import twitch_client
+from data import set_is_dev
+from discord_client import DiscordClient
+from storage import DB, db, set_db
 
 
 async def expireVariables():
@@ -48,21 +48,23 @@ async def expireVariables():
         await asyncio.sleep(300)
 
 
-async def shutdown(discord_client: Optional[DiscordClient], twitch_client: Optional[twitch_api.Twitch3]):
+async def shutdown(
+    discord_client: DiscordClient | None, twitch_bot: twitch_client.TwitchClient | None
+):
     """Gracefully close all client sessions and cancel background tasks."""
     shutdown_tasks = []
     if discord_client:
         logging.info("Closing Discord client...")
         shutdown_tasks.append(discord_client.close())
-    if twitch_client:
+    if twitch_bot:
         logging.info("Closing Twitch client...")
-        shutdown_tasks.append(twitch_client.close())
+        shutdown_tasks.append(twitch_bot.close())
 
     if shutdown_tasks:
         try:
             # Wait for up to 10 seconds for clients to close
             await asyncio.wait_for(asyncio.gather(*shutdown_tasks), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logging.warning("Shutdown timed out after 10 seconds.")
         except Exception as e:
             logging.error(f"Error during shutdown: {e}\n{traceback.format_exc()}")
@@ -78,8 +80,8 @@ async def shutdown(discord_client: Optional[DiscordClient], twitch_client: Optio
 
 def run_loop(
     loop: asyncio.AbstractEventLoop,
-    discord_client: Optional[DiscordClient],
-    twitch_client: Optional[twitch_api.Twitch3],
+    discord_client: DiscordClient | None,
+    twitch_bot: twitch_client.TwitchClient | None,
     cron_interval_s: int,
 ):
     """Run the main event loop and handle graceful shutdown."""
@@ -94,12 +96,12 @@ def run_loop(
     finally:
         logging.info("Commencing shutdown...")
         # Run the shutdown tasks until complete
-        loop.run_until_complete(shutdown(discord_client, twitch_client))
+        loop.run_until_complete(shutdown(discord_client, twitch_bot))
         loop.close()
         logging.info("Shutdown complete.")
 
 
-async def cron(client: Union[DiscordClient, twitch_api.Twitch3], cron_interval_s: int):
+async def cron(client: DiscordClient | twitch_client.TwitchClient, cron_interval_s: int):
     while True:
         await client.on_cron()
         await asyncio.sleep(cron_interval_s)
@@ -161,7 +163,9 @@ def main():
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--cron_interval_s", default="600")
     parser.add_argument(
-        "--dev", action="store_true", help="Dev mode: send a smoke-test message to all channels on connect"
+        "--dev",
+        action="store_true",
+        help="Dev mode: send a smoke-test message to all channels on connect",
     )
     args = parser.parse_args()
     setup_logging(args.log, args.also_log_to_stdout)
@@ -180,7 +184,7 @@ def main():
         dev_msg = f"\U0001f407 moon-rabbit dev mode — connected at {now}"
         logging.info(f"dev mode enabled, smoke-test message: {dev_msg}")
     discordClient = None
-    twitch_client = None
+    twitch_bot = None
     if args.discord:
         try:
             logging.info("starting Discord Bot")
@@ -194,23 +198,23 @@ def main():
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch:
         try:
-            twitch_client = twitch_api.Twitch3(
+            twitch_bot = twitch_client.TwitchClient(
                 twitch_bot=args.twitch,
                 dev_message=dev_msg,
-                domain=require_env("TWITCH_OAUTH_DOMAIN").removesuffix('/'),
+                domain=require_env("TWITCH_OAUTH_DOMAIN").removesuffix("/"),
             )
             logging.info(
-                f"Channel Owner Authorization URL {twitch_client.adapter.get_authorization_url(scopes=twitchio.Scopes(channel_bot=True, channel_read_redemptions=True, channel_read_hype_train=True), force_verify=True)}"  # type: ignore[attr-defined]
+                f"Channel Owner Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(channel_bot=True, channel_read_redemptions=True, channel_read_hype_train=True), force_verify=True)}"  # type: ignore[attr-defined]
             )
             logging.info(
-                f"Bot Account Authorization URL {twitch_client.adapter.get_authorization_url(scopes=twitchio.Scopes(user_read_chat=True, user_write_chat=True, user_bot=True), force_verify=True)}"  # type: ignore[attr-defined]
+                f"Bot Account Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(user_read_chat=True, user_write_chat=True, user_bot=True), force_verify=True)}"  # type: ignore[attr-defined]
             )
-            loop.create_task(twitch_client.start())
-            loop.create_task(cron(twitch_client, int(args.cron_interval_s)))
+            loop.create_task(twitch_bot.start())
+            loop.create_task(cron(twitch_bot, int(args.cron_interval_s)))
         except Exception as e:
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch or args.discord:
-        run_loop(loop, discordClient, twitch_client, int(args.cron_interval_s))
+        run_loop(loop, discordClient, twitch_bot, int(args.cron_interval_s))
         sys.exit(0)
     print("add --twitch or --discord argument to run bot")
     sys.exit(1)

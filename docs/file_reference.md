@@ -34,7 +34,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 | `shutdown()` | Asynchronous helper: closes clients and cancels remaining tasks on exit |
 | `main()` | CLI entry point |
 
-**Depends on:** `data`, `storage`, `commands`, `discord_client`, `twitch_api`
+**Depends on:** `data`, `storage`, `commands`, `discord_client`, `twitch_client`
 
 ---
 
@@ -121,10 +121,10 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 
 ---
 
-### [twitch_api.py](file:///home/gem/src/moon-rabbit/twitch_api.py) — Twitch Integration
+### [twitch_client.py](file:///home/gem/src/moon-rabbit/twitch_client.py) — Twitch Integration
 **Role:** Twitch chat + EventSub (redemptions, hype trains) via twitchio 3.x
 
-**`Twitch3(twitchio.Client)`:**
+**`TwitchClient(twitchio.Client)`:**
 - Constructor reads `api_app_id`, `api_app_secret`, `bot_user_id` from `twitch_bots` table; loads per-channel config from `channels` table
 - `setup_hook()` — called by twitchio after login. Resolves broadcaster user IDs via `fetch_users()`, then calls `multi_subscribe()` to create EventSub WebSocket subscriptions:
   - `ChatMessageSubscription` — for all channels (chat messages)
@@ -138,7 +138,7 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 - `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
 - `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
 
-**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343. The `TWITCH_OAUTH_DOMAIN` environment variable is used to configure the domain for redirect URIs (e.g., when running behind a proxy). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `Twitch3` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343. The `TWITCH_OAUTH_DOMAIN` environment variable is used to configure the domain for redirect URIs (e.g., when running behind a proxy). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `TwitchClient` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters
@@ -271,7 +271,7 @@ main.py
 ├── storage (DB, db, set_db, cursor)
 ├── commands
 ├── discord_client (DiscordClient, discord_literal)
-├── twitch_api
+├── twitch_client
 └── words (implicitly through txt() → storage → query)
 
 commands.py
@@ -286,7 +286,7 @@ discord_client.py
 ├── commands
 └── Pillow
 
-twitch_api.py
+twitch_client.py
 ├── data (*)
 ├── storage (cursor, db)
 ├── commands
