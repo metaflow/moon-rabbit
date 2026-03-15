@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import asyncio
 import csv
 import dataclasses
 import io
@@ -21,6 +22,7 @@ import json
 import logging
 import re
 import traceback
+import urllib.request
 from typing import Protocol
 
 import discord
@@ -79,7 +81,7 @@ async def process_message(msg: Message) -> list[Action]:
     messages[msg.id] = msg
     actions: list[Action] = []
     try:
-        cmds = get_commands(msg.channel_id, msg.prefix)
+        cmds = await asyncio.to_thread(get_commands, msg.channel_id, msg.prefix)
         for cmd in cmds:
             if cmd.mod_only() and not msg.is_mod:
                 continue
@@ -89,7 +91,7 @@ async def process_message(msg: Message) -> list[Action]:
                 continue
             if (not msg.is_discord) and not cmd.for_twitch():
                 continue
-            a, next = await cmd.run(msg)
+            a, next = await asyncio.to_thread(cmd.run, msg)
             actions.extend(a)
             if not next:
                 break
@@ -113,7 +115,8 @@ def command_prefix(txt: str, prefix: str, s: list[str]) -> str:
 
 
 class Command(Protocol):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    # Note that command run is not async, for perfom
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         return [], True
 
     def help(self, prefix: str):
@@ -189,7 +192,7 @@ class PersistentCommand(Command):
     def for_twitch(self):
         return self.data.twitch
 
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         if msg.event != self.data.event_type or not re.search(self.regex, msg.txt):
             return [], True
         variables = msg.get_variables()
@@ -229,7 +232,7 @@ class PersistentCommand(Command):
 
 
 class Eval(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["eval"])
         if not text:
             return [], True
@@ -252,7 +255,7 @@ class Eval(Command):
 
 
 class SetCommand(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["command"])
         if not text:
             return [], True
@@ -322,7 +325,7 @@ It is the only way to customize a command to match a different regex, allow only
 
 
 class SetPrefix(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["prefix-set"])
         if not text:
             return [], True
@@ -351,7 +354,7 @@ class SetPrefix(Command):
 
 
 class TagDelete(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["tag-rm"])
         if not text:
             return [], True
@@ -377,7 +380,7 @@ class TagDelete(Command):
 
 
 class TagList(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["tags"])
         if not text:
             return [], True
@@ -396,7 +399,7 @@ class TagList(Command):
 
 
 class TextSet(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["add"])
         if not text:
             return [], True
@@ -445,7 +448,7 @@ def text_to_row(channel_id: int, text_id: int) -> str | None:
 
 
 class TextDescribe(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["describe"])
         if not text:
             return [], True
@@ -494,7 +497,7 @@ def morph_text(text_value: str) -> dict[str, str | None]:
 
 
 class TextNew(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["new"])
         if not text:
             return [], True
@@ -520,7 +523,7 @@ class TextNew(Command):
 
 
 class TextSetNew(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["setnew"])
         if not text:
             return [], True
@@ -604,7 +607,7 @@ def import_text_row(
 
 
 class TextUpload(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         if msg.txt.strip() != msg.prefix + "upload":
             return [], True
         v = msg.get_variables()
@@ -614,7 +617,8 @@ class TextUpload(Command):
         log.info("looking for attachments")
         for att in discord_msg.attachments:
             log.info(f"attachment {att.filename} {att.size} {att.content_type}")
-            content = (await att.read()).decode("utf-8")
+            req = urllib.request.Request(att.url, headers={"User-Agent": "Mozilla/5.0"})
+            content = urllib.request.urlopen(req).read().decode("utf-8")
             break
         channel_id = msg.channel_id
         all_tags: set[str] = set()
@@ -656,7 +660,7 @@ class TextUpload(Command):
 
 
 class TextDownload(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["download"])
         if not text:
             return [], True
@@ -718,7 +722,7 @@ class TextDownload(Command):
 
 
 class TextSearch(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["search"])
         if not text:
             return [], True
@@ -752,7 +756,7 @@ class TextSearch(Command):
 
 
 class TextRemove(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["rm"])
         if not text:
             return [], True
@@ -794,7 +798,7 @@ class TextRemove(Command):
 
 
 class Multiline(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["multiline"])
         if not text:
             return [], True
@@ -820,7 +824,7 @@ class Multiline(Command):
                     continue
                 cp = dataclasses.replace(msg)
                 cp.txt = line
-                a, next = await cmd.run(cp)
+                a, next = cmd.run(cp)
                 actions.extend(a)
                 if not next:
                     break
@@ -834,7 +838,7 @@ class Multiline(Command):
 
 
 class Debug(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["debug"])
         if not text:
             return [], True
@@ -880,7 +884,7 @@ class Debug(Command):
 
 
 class HelpCommand(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["commands", "help"])
         if not text:
             return [], True
@@ -957,7 +961,7 @@ class HelpCommand(Command):
 
 
 class InvalidateCache(Command):
-    async def run(self, msg: Message) -> tuple[list[Action], bool]:
+    def run(self, msg: Message) -> tuple[list[Action], bool]:
         text = command_prefix(msg.txt, msg.prefix, ["invalidate_cache"])
         if not text:
             return [], True

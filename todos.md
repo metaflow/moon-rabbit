@@ -3,3 +3,4 @@
 - Check sandbox settings for Jinja2
 - Test performance of compiled templates vs `from_string`
 - Remove legacy `morph` tag migration code in `TextDownload`
+- Consider migrating `psycopg2` to `asyncpg` (or `psycopg` v3's async implementation) to avoid DB thread overheads.

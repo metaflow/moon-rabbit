@@ -139,14 +139,14 @@ class TwitchClient(twitchio.Client):
     async def add_token(self, token: str, refresh: str):
         resp = await super().add_token(token, refresh)
         if resp.user_id:
-            db().save_twitch_token(resp.user_id, token, refresh)
+            await asyncio.to_thread(db().save_twitch_token, resp.user_id, token, refresh)
             logging.info(f"[auth] Added token to the database for user: {resp.user_id}")
         else:
             logging.warning("no user_id in response")
         return resp
 
     async def load_tokens(self, path: str | None = None) -> None:
-        tokens = db().load_twitch_tokens()
+        tokens = await asyncio.to_thread(db().load_twitch_tokens)
         logging.info(f"loaded {len(tokens)} auth tokens")
         for token, refresh in tokens:
             try:
@@ -352,7 +352,7 @@ class TwitchClient(twitchio.Client):
             )
 
             actions = await commands.process_message(msg)
-            db().add_log(channel_id, log)
+            await asyncio.to_thread(db().add_log, channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
@@ -423,7 +423,7 @@ class TwitchClient(twitchio.Client):
             )
 
             actions = await commands.process_message(msg)
-            db().add_log(channel_id, log)
+            await asyncio.to_thread(db().add_log, channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
@@ -487,7 +487,7 @@ class TwitchClient(twitchio.Client):
             )
 
             actions = await commands.process_message(msg)
-            db().add_log(channel_id, log)
+            await asyncio.to_thread(db().add_log, channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE or a.kind == ActionKind.REPLY:
                     await self.send_message(info, a.text)
@@ -572,7 +572,7 @@ class TwitchClient(twitchio.Client):
             )
 
             actions = await commands.process_message(msg)
-            db().add_log(info.channel_id, log)
+            await asyncio.to_thread(db().add_log, info.channel_id, log)
             for a in actions:
                 if a.kind == ActionKind.NEW_MESSAGE:
                     await self.send_message(info, a.text)

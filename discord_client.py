@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import hashlib
 import logging
@@ -126,7 +127,9 @@ class DiscordClient(discord.Client):
             if is_mod:
                 self.mods[str(message.author.id)] = guild_id
         try:
-            channel_id, prefix = db().discord_channel_info(db().conn.cursor(), guild_id)
+            channel_id, prefix = await asyncio.to_thread(
+                db().discord_channel_info, db().conn.cursor(), guild_id
+            )
         except Exception as e:
             logging.error(f"'discord_channel_info': {e}\n{traceback.format_exc()}")
             return
@@ -134,16 +137,21 @@ class DiscordClient(discord.Client):
             f"guild={guild_id} message_channel={message.channel.id} channel={channel_id} author={message.author.id}"
         )
         if channel_id not in self.channels:
+            allowed_channels = await asyncio.to_thread(
+                db().get_discord_allowed_channels, channel_id
+            )
             self.channels[channel_id] = {
                 "active_users": ttldict2.TTLDict(ttl_seconds=3600.0 * 2),
-                "allowed_channels": db().get_discord_allowed_channels(channel_id),
+                "allowed_channels": allowed_channels,
             }
         text = commands.command_prefix(message.content, prefix, ["allow_here"])
         discord_channel = str(message.channel.id)
         if text and is_mod:
             self.channels[channel_id]["allowed_channels"].add(discord_channel)
-            db().set_discord_allowed_channels(
-                channel_id, self.channels[channel_id]["allowed_channels"]
+            await asyncio.to_thread(
+                db().set_discord_allowed_channels,
+                channel_id,
+                self.channels[channel_id]["allowed_channels"],
             )
             log.info(f"discord channel {message.channel.id} is allowed")
             await message.reply("this channel is now allowed")
@@ -151,8 +159,10 @@ class DiscordClient(discord.Client):
         text = commands.command_prefix(message.content, prefix, ["disallow_here"])
         if text and is_mod:
             self.channels[channel_id]["allowed_channels"].discard(discord_channel)
-            db().set_discord_allowed_channels(
-                channel_id, self.channels[channel_id]["allowed_channels"]
+            await asyncio.to_thread(
+                db().set_discord_allowed_channels,
+                channel_id,
+                self.channels[channel_id]["allowed_channels"],
             )
             log.info(f"discord channel {message.channel.id} is allowed")
             await message.reply("this channel is now disallowed")
@@ -242,7 +252,7 @@ class DiscordClient(discord.Client):
             )
         else:
             actions = await commands.process_message(msg)
-        db().add_log(channel_id, log)
+        await asyncio.to_thread(db().add_log, channel_id, log)
         for a in actions:
             if len(a.text) > 2000:
                 a.text = a.text[:1997] + "..."
@@ -293,8 +303,12 @@ class DiscordClient(discord.Client):
                 guild_id_str = f"{g.id}"
                 if "BANNER" not in g.features:
                     continue
-                channel_id, prefix = db().discord_channel_info(db().conn.cursor(), guild_id_str)
-                banner_template = db().get_variable(channel_id, "banner_template", "admin", "")
+                channel_id, prefix = await asyncio.to_thread(
+                    db().discord_channel_info, db().conn.cursor(), guild_id_str
+                )
+                banner_template = await asyncio.to_thread(
+                    db().get_variable, channel_id, "banner_template", "admin", ""
+                )
                 log = InvocationLog(f"guild={guild_id_str} banner update")
                 log.debug(f'banner template "{banner_template}"')
                 if not banner_template:
