@@ -144,8 +144,8 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] Clone repo to `/var/moon-rabbit`
 - [x] Configure environment (`DB_CONNECTION`, etc.)
 - [x] Update DNS / IP references if any
-- [ ] move from using twitch settings from the database - just load them from the .env
 - [ ] test oauth
+    https://moon-robot.tative.net/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
 - [ ] drop auth entities
 - [ ] check that bot cannot connect to my twitch, authenticate and check that now it does
 - [ ] update twitch channel to july_in_july
