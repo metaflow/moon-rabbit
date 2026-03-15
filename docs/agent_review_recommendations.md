@@ -1,9 +1,5 @@
 # Improvement Proposals
 
-## Direct Fixes Applied
-- Ran `ruff check --extend-select UP,I,C4,SIM --fix .` to auto-fix and modernize Python idioms, sort imports, replace `Optional` and `Dict` with `| None` and `dict` (since Python 3.13 is used), and simplify boolean logic.
-- Fixed local variable shadowing of the imported module `twitch_client` in `main.py`.
-
 ## Nits
 <!-- low priority, optional -->
 - `data.py` — The dataclasses have some default values defined ambiguously. `CommandData.actions` is a mutable field using `field(default_factory=list)`, which is great, but could use better type bounds now that `Action` is modernized.
