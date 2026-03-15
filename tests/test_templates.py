@@ -64,9 +64,7 @@ class MockDB:
         return sum(1 for k in self.variables if k[0] == channel_id and k[2] == category)
 
     def delete_category(self, channel_id, category):
-        keys_to_delete = [
-            k for k in self.variables if k[0] == channel_id and k[2] == category
-        ]
+        keys_to_delete = [k for k in self.variables if k[0] == channel_id and k[2] == category]
         for k in keys_to_delete:
             del self.variables[k]
 

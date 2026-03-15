@@ -60,9 +60,7 @@ class TwitchClient(twitchio.Client):
     Stores auth tokens in database and executes custom commands defined in the database.
     """
 
-    def __init__(
-        self, twitch_bot: str, dev_message: str | None = None, domain: str | None = None
-    ):
+    def __init__(self, twitch_bot: str, dev_message: str | None = None, domain: str | None = None):
         self.dev_message = dev_message
         logging.info(f"creating twitch bot {twitch_bot}")
 

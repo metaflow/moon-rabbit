@@ -18,6 +18,7 @@ run_check() {
     echo ""
 }
 
+run_check "ruff format" "uv run ruff format --check ." "uv run ruff format --check ."
 run_check "ruff linter" "uv run ruff check ." "uv run ruff check ."
 run_check "ty" "uv run ty check ." "uv run ty check ."
 run_check "deptry" "uv run deptry ." "uv run deptry ."

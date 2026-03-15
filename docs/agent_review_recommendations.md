@@ -1,7 +1,6 @@
 # Improvement Proposals
 
 ## Direct Fixes Applied
-- Ran `ruff format .` to auto-format the codebase.
 - Ran `ruff check --extend-select UP,I,C4,SIM --fix .` to auto-fix and modernize Python idioms, sort imports, replace `Optional` and `Dict` with `| None` and `dict` (since Python 3.13 is used), and simplify boolean logic.
 - Fixed local variable shadowing of the imported module `twitch_client` in `main.py`.
 
@@ -18,14 +17,14 @@
   Currently almost 1000 lines long, `commands.py` contains the router pipeline (`process_message`) AND every built-in command class (`HelpCommand`, `SetCommand`, etc.).
   *Fix:* Split into a package: `commands/pipeline.py` (registry/routing) and `commands/builtins.py` (the actual implementations). `PersistentCommand` could go in `commands/persistent.py`.
 
-- `storage.py` and `commands.py` **(Synchronous DB in Async Handlers)** 
+- `storage.py` and `commands.py` **(Synchronous DB in Async Handlers)**
   The project extensively uses `psycopg2` (which is synchronous) and calls `db().get_text()`, `db().set_text()`, etc. inside `async def process_message()` and the Discord/Twitch event handlers. This blocks the asyncio event loop on database I/O, destroying concurrency.
-  *Fix:* Migrate `psycopg2` to `asyncpg` (or `psycopg` v3's async implementation). Alternatively, wrap all DB calls in `asyncio.to_thread()`. 
+  *Fix:* Migrate `psycopg2` to `asyncpg` (or `psycopg` v3's async implementation). Alternatively, wrap all DB calls in `asyncio.to_thread()`.
 
 - `storage.py` **(Dependency Injection / Singleton Pattern)**
-  The `set_db(DB(db_connection))` and global `db()` singleton makes testing commands very difficult without a live database. 
-  *Fix:* Pass an interface of the `DB` or a context object containing the `DB` instance into the command `run(msg)` methods explicitly. 
-  
+  The `set_db(DB(db_connection))` and global `db()` singleton makes testing commands very difficult without a live database.
+  *Fix:* Pass an interface of the `DB` or a context object containing the `DB` instance into the command `run(msg)` methods explicitly.
+
 - `commands.py` **(Broad Error Handling)**
   In `process_message()`, the entire command execution is wrapped in a `try...except Exception as e:` which logs broadly. This can swallow `KeyError` or `ValueError` that represent real bugs, making them hard to trace and silently failing user commands.
   *Fix:* Catch only specific execution exceptions, or re-raise `Exception` in Dev mode so tests and developers can see the failure directly stack-traced in standard output rather than just log files.
