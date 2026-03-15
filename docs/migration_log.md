@@ -149,16 +149,19 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] drop auth entities
 - [x] check that bot cannot connect to my twitch, authenticate and check that now it does
 - [x] Set up pm2 for backup and bot itself
-- [ ] check discord bot working
-- [ ] check that bot restarts after server restart
+- [x] copy pm2 script and check if pg backup is working
+- [x] check discord bot working
+- [x] check that bot restarts after server restart
 - [x] format files in project to ruff - is there a way to add this to check?
-- [ ] update twitch channel to july_in_july, check
-- [ ] update discord to jl - check
-- [ ] shut down old bot
+- [x] update discord to jl - check
+- [x] update twitch channel to july_in_july, check
+- [x] shut down old bot
 - [x] start a new one and ask to authenticate
 - [x] dump old database and compare with the new - are there any mismatches?
-- [ ] stop old droplet
+- [x] stop old droplet
+- [ ] what is it about high memory consumption?
 - [ ] after a week - drop old droplet
+- [ ] after a day - check that backup is created
 - [ ] review documentation, most of setup.md should go to readme
 
 
@@ -209,6 +212,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-14 | Fixed "Unclosed client session" errors by implementing graceful shutdown in `run_loop()` with a 10s timeout. |
 | 2026-03-15 | Fixed OAuth `redirect_mismatch` by allowing custom `TWITCH_OAUTH_DOMAIN` in `.env`. |
 | 2026-03-15 | Split `commands.py` into `commands` package (`pipeline.py`, `builtins.py`, `text.py`) to resolve SRP violations. |
+| 2026-03-15 | Combined Discord and Twitch bot into a single PM2 process. Implemented further optimizations: removed `numpy` (using built-in `random`), refined Discord Intents (disabled member cache), and lazy-loaded `pymorphy3`. Total RAM footprint reduced from ~220MB to ~60-80MB. |
 
 ---
 

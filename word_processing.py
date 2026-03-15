@@ -19,9 +19,10 @@
 import logging
 import sys
 
-from words import morph
+from words import get_morph
 
 if __name__ == "__main__":
+    morph = get_morph()
     cases = ["nomn", "gent", "datv", "accs", "ablt", "loct"]
     with (
         open(sys.argv[1], encoding="utf-8") as f,

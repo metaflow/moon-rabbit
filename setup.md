@@ -108,14 +108,14 @@ pm2 save                        # save changes so they don't restart on boot
 
 To modify PM2 parameters for this specific production instance, you can create a local copy of the config:
 ```bash
-cp ecosystem.config.cjs ecosystem.config.local.cjs
-# Edit ecosystem.config.local.cjs as needed
-pm2 start ecosystem.config.local.cjs
+cp ecosystem.config.cjs runtime/ecosystem.config.cjs
+# Edit runtime/ecosystem.config.cjs as needed
+pm2 start runtime/ecosystem.config.cjs
 ```
 
 When you update parameters in your custom config, apply changes using:
 ```bash
-pm2 restart ecosystem.config.local.cjs --update-env
+pm2 restart runtime/ecosystem.config.cjs --update-env
 ```
 
 # how to work with DB

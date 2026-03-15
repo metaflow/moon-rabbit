@@ -18,11 +18,11 @@ import collections
 import dataclasses
 import functools
 import logging
+import random
 import time
 from typing import Any
 
 import lark
-import numpy as np
 import psycopg2
 import psycopg2.extensions
 import psycopg2.extras
@@ -80,7 +80,7 @@ class DB:
         self.conn.set_session(autocommit=True)
         self.channels: dict[int, ChannelCache] = {}
         self.logs = {}
-        self.rng = np.random.default_rng()
+        self.rng = random
 
     def channel(self, channel_id: int) -> ChannelCache:
         if channel_id in self.channels:
@@ -391,7 +391,11 @@ class DB:
                 raise Exception(f"query with id {qid} not found in query_to_id")
         if qq.queue.size == 0:
             return None
-        j = int(self.rng.pareto(4) * qq.queue.size) % qq.queue.size
+        # Pareto distribution with alpha=4, normalized to [0, 1) range
+        # paretovariate(4) returns values in [1, infinity)
+        # (paretovariate(4) - 1) returns values in [0, infinity)
+        p = self.rng.paretovariate(4.0) - 1.0
+        j = int(p * qq.queue.size) % qq.queue.size
         # Move picked text to the end of all queues.
         node = qq.queue.nodeat(j)
         t = node.value

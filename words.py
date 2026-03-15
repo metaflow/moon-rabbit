@@ -19,7 +19,15 @@ import logging
 import pymorphy3
 
 # Docs: https://pymorphy2.readthedocs.io/en/latest/user/index.html
-morph = pymorphy3.MorphAnalyzer(lang="ru")
+_morph = None
+
+
+def get_morph():
+    global _morph
+    if _morph is None:
+        _morph = pymorphy3.MorphAnalyzer(lang="ru")
+    return _morph
+
 
 morph_tags: dict[str, str] = {
     "_actv": "actv",
@@ -62,6 +70,7 @@ case_tags = ["рд", "дт", "вн", "тв", "пр", "мн", "рд,мн", "дт,
 
 
 def inflect_word(s: str, inf: str, tagFilter: list[str] = [], n: int | None = None) -> str:
+    morph = get_morph()
     inf = morph.cyr2lat(inf)
     ss = set(inf.split(","))
     if logging.getLogger().isEnabledFor(logging.DEBUG):

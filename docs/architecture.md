@@ -242,9 +242,8 @@ Both Discord and Twitch clients support periodic cron tasks:
 The bot is designed to be run and managed by PM2, with robust handling for graceful shutdown.
 
 ### PM2 Process Management
-The application is run via PM2 using `ecosystem.config.cjs`, which defines three applications:
-- `moon-rabbit-discord`: The Discord bot process.
-- `moon-rabbit-twitch`: The Twitch bot process.
+The application is run via PM2 using `ecosystem.config.cjs`, which defines:
+- `moon-rabbit`: Combined Discord and Twitch bot process.
 - `moon-rabbit-backup`: A cron job for database backups.
 
 If you need to override settings for a specific production instance, fork the config:

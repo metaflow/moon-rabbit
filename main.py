@@ -188,8 +188,10 @@ def main():
     if args.discord:
         try:
             logging.info("starting Discord Bot")
+            intents = discord.Intents.default()
+            intents.message_content = True
             discordClient = DiscordClient(
-                intents=discord.Intents.all(), loop=loop, profile=args.profile, dev_message=dev_msg
+                intents=intents, loop=loop, profile=args.profile, dev_message=dev_msg
             )
             discord_token = require_env("DISCORD_TOKEN")
             loop.create_task(discordClient.start(discord_token))

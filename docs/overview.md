@@ -95,8 +95,8 @@ On startup:
 ## Deployment
 
 - Runs on a DigitalOcean droplet at `/var/moon-rabbit`
-- Two separate processes: one for Discord (`--discord`), one for Twitch (`--twitch moon_robot`)
-- `restart.sh` kills and restarts both processes
+- Single process manages both platforms: `uv run python3 main.py --discord --twitch moon_robot`
+- `restart.sh` kills and restarts both processes (handled by PM2 in production)
 - `pg_backup.sh` creates gzipped PostgreSQL dumps to `/mnt/backup`
 - Both scripts scheduled via `crontab`
 - Detailed setup instructions in [setup.md](file:///home/gem/src/moon-rabbit/setup.md)

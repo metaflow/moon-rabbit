@@ -78,13 +78,13 @@ def morph_text(text_value: str) -> dict[str, str | None]:
     name_value: dict[str, str | None] = {}
     parts = re.split(r"(\s+)", text_value.strip())
     ww = [parts[i] for i in range(0, len(parts), 2)]
-    parses = [words.morph.parse(w) for w in ww]
+    parses = [words.get_morph().parse(w) for w in ww]
     for i in range(len(parses)):
         parses[i] = [p for p in parses[i] if "nomn" in list(p.tag.grammemes)]
     logging.debug(f"morph parses for parts {parses}")
     if any(parses):
         for inf in words.case_tags:
-            ss = set(words.morph.cyr2lat(inf).split(","))
+            ss = set(words.get_morph().cyr2lat(inf).split(","))
             t = ""
             for i in range(len(parts)):
                 j = i // 2

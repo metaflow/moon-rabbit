@@ -3,7 +3,6 @@ import time
 import typing
 
 import jinja2
-import numpy as np
 
 import commands
 from data import Action, ActionKind, Message, render, templates
@@ -28,9 +27,8 @@ def render_text_item(ctx, q: str | int | list[str | float], inf: str = ""):
         text_id = db().get_random_text_id(channel_id, q)
     else:
         queries = q[::2]
-        weights = np.array([abs(float(x)) for x in q[1::2]])
-        weights /= np.sum(weights)
-        query_text: str = db().rng.choice(queries, p=weights)
+        weights = [abs(float(x)) for x in q[1::2]]
+        query_text: str = str(random.choices(queries, weights=weights, k=1)[0])
         if inf:
             query_text = f"({query_text}) and {inf}"
         text_id = db().get_random_text_id(channel_id, query_text)

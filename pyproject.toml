@@ -13,7 +13,6 @@ dependencies = [
     "jinja2",  # templating
     "lark",  # language parsing
     "llist",  # linked list for non-unified diffs
-    "numpy",
     "pillow",  # image manipulations
     "psycopg2-binary",  # postgres
     "pymorphy3",  # auto-generation of russian morphems (maintained fork of pymorphy2)
