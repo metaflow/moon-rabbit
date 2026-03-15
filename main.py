@@ -184,7 +184,12 @@ def main():
             logging.error(f'{e}\n{traceback.format_exc()}')
     if args.twitch:
         try:
-            twitch_client = twitch_api.Twitch3(twitch_bot=args.twitch, dev_message=dev_msg)
+            redirect_uri = require_env('TWITCH_REDIRECT_URI')
+            twitch_client = twitch_api.Twitch3(
+                twitch_bot=args.twitch,
+                dev_message=dev_msg,
+                redirect_uri=redirect_uri,
+            )
             loop.create_task(twitch_client.start())
             loop.create_task(cron(twitch_client, int(args.cron_interval_s)))
         except Exception as e:

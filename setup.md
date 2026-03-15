@@ -184,10 +184,9 @@ The bot uses `discord_guild_id` in the `channels` table to identify which server
 1. Go to [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)
 2. Click **Register Your Application**:
    - Name: anything unique
-   - OAuth Redirect URL: `http://localhost:4343` ← must be exactly this (twitchio's built-in OAuth server)
+   - OAuth Redirect URL: `http://moon-robot.tative.net/oauth/callback`
    - Category: Chat Bot
 3. Copy the **Client ID** (`api_app_id`) and generate a **Client Secret** (`api_app_secret`)
-4. **Important**: The bot account must be modded in your dev channel: `/mod <bot_username>`
 
 ### Get the bot's numeric user ID (`bot_user_id`)
 
@@ -231,6 +230,8 @@ The bot looks up channels by the `twitch_bot` column in the `channels` table. On
 
 **Channel owner** — open this URL **while logged in as the channel owner**: http://localhost:4343/oauth?scopes=channel:bot+channel:read:redemptions+channel:read:hype_train&force_verify=true
 
+Add mod rights to the bot: `/mod <bot_username>`
+
 ## 8. Patch channel data for dev
 
 If you imported production data, update the channel and bot entries to point at your dev accounts:
@@ -261,6 +262,7 @@ Create (or update) `.env` in the project root:
 ```bash
 DB_CONNECTION="dbname=chatbot user=bot password=bot host=localhost"
 DISCORD_TOKEN=<your_discord_bot_token>
+TWITCH_REDIRECT_URI="https://your-domain.com/oauth/callback"
 ```
 
 Source it before running:

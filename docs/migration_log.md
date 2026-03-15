@@ -136,13 +136,16 @@ Yes, migrating to version 3 definitively fixes this issue for several reasons:
 - [x] Install remote editor
 - [x] Install dependencies (Python, uv, PostgreSQL, etc.)
 - [x] do I need a separate mount disk for backups - no it's better to backup / snaphot the whole thing
-- [ ] drop old rabbit databas for clarity and create a new one
-- [ ] Transfer PostgreSQL data from dev machine
-- [ ] setup auth nginx redirect and test it
-- [ ] confirm that no changes from old db are missing
-- [ ] Clone repo to `/var/moon-rabbit`
-- [ ] Configure environment (`DB_CONNECTION`, etc.)
-- [ ] Update DNS / IP references if any
+- [x] drop old rabbit databas for clarity and create a new one
+- [x] Transfer PostgreSQL data from dev machine
+- [ ] setup auth nginx redirect
+    set up https://moon-robot.tative.net/oauth/callback
+- [x] confirm that no changes from old db are missing
+- [x] Clone repo to `/var/moon-rabbit`
+- [x] Configure environment (`DB_CONNECTION`, etc.)
+- [x] Update DNS / IP references if any
+- [ ] move from using twitch settings from the database - just load them from the .env
+- [ ] test oauth
 - [ ] drop auth entities
 - [ ] check that bot cannot connect to my twitch, authenticate and check that now it does
 - [ ] update twitch channel to july_in_july
@@ -199,6 +202,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-10 | Completed TwitchIO 3.x migration (see section 4 below). |
 | 2026-03-12 | Implemented `twitch_tokens` database storage for TwitchIO tokens to replace local `.tio.tokens.json`. |
 | 2026-03-14 | Fixed "Unclosed client session" errors by implementing graceful shutdown in `run_loop()` with a 10s timeout. |
+| 2026-03-15 | Fixed OAuth `redirect_mismatch` by allowing custom `TWITCH_REDIRECT_URI` in `.env`. |
 
 ---
 

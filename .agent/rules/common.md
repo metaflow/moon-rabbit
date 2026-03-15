@@ -33,3 +33,4 @@ The project uses a `.env` file in the project root containing secrets (`DB_CONNE
 5. **Proactiveness**: Try to anticipate edge cases and handle errors gracefully.
 6. **Concise Communication**: Keep your explanations brief and focus on actionable steps or code changes.
 7. Use `uv` for all dependency management and running scripts (e.g. `uv pip install`, `uv run`). Do not use `python`, `pipenv` or `Pipfile` directly.
+8. After completing the task make sure to run `check.sh` to check tests and linters.

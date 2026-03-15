@@ -58,7 +58,7 @@ class Twitch3(twitchio.Client):
     Stores auth tokens in database and executes custom commands defined in the database.
     """
 
-    def __init__(self, twitch_bot: str, dev_message: Optional[str] = None):
+    def __init__(self, twitch_bot: str, dev_message: Optional[str] = None, redirect_uri: Optional[str] = None):
         self.dev_message = dev_message
         logging.info(f'creating twitch bot {twitch_bot}')
 
@@ -111,6 +111,7 @@ class Twitch3(twitchio.Client):
             client_id=self.app_id,
             client_secret=self.app_secret,
             bot_id=self.bot_user_id,
+            redirect_uri=redirect_uri,
         )
 
     # ------------------------------------------------------------------
