@@ -25,21 +25,34 @@ def discord_literal(t):
     return t.replace("<@!", "<@")
 
 
-def download_file(url: str) -> str:
+def download_file(url: str) -> str | None:
     url_parts = urlparse(url)
     name, ext = os.path.splitext(url_parts.path)
     h = hashlib.new("SHA1")
     h.update(url.encode("utf8"))
     url_hash = h.hexdigest()
-    file_name = f"{h.hexdigest()}{ext}"
-    logging.debug(f"parts {url_parts.path} hash {url_hash} name {name} ext {ext}")
+    os.makedirs("runtime/img", exist_ok=True)
+    file_name = f"runtime/img/{url_hash}{ext}"
+    existing_error = False
     if os.path.isfile(file_name):
-        logging.debug(f'"{file_name}" already exist')
+        with open(file_name, "rb") as f:
+            if f.read(6) == b"ERROR:":
+                existing_error = True
+        if not existing_error:
+            logging.debug(f'"{file_name}" already exist')
+            return file_name
+    try:
+        r = requests.get(url, allow_redirects=True)
+        r.raise_for_status()
+        with open(file_name, "wb") as f:
+            f.write(r.content)
         return file_name
-    r = requests.get(url, allow_redirects=True)
-    with open(file_name, "wb") as f:
-        f.write(r.content)
-    return file_name
+    except Exception as e:
+        with open(file_name, "w", encoding="utf-8") as f:
+            f.write(f"ERROR: {e}")
+        if not existing_error:
+            raise e
+        return None
 
 
 @dataclasses.dataclass
@@ -55,9 +68,17 @@ class BannerOverlay:
 
 def create_banner_image(
     url: str, overlays: list[BannerOverlay], full_text_for_hash: str
-) -> BytesIO:
+) -> BytesIO | None:
     img_path = download_file(url)
-    image = Image.open(img_path)
+    if img_path is None:
+        return None
+    try:
+        image = Image.open(img_path)
+        image.load()
+    except Exception as e:
+        if os.path.isfile(img_path):
+            os.remove(img_path)
+        raise e
     image_editable = ImageDraw.Draw(image)
 
     for o in overlays:
@@ -67,7 +88,8 @@ def create_banner_image(
     if is_dev():
         h = hashlib.new("SHA1")
         h.update(full_text_for_hash.encode("utf8"))
-        result_file = f"{h.hexdigest()}.png"
+        os.makedirs("runtime/img", exist_ok=True)
+        result_file = f"runtime/img/{h.hexdigest()}.png"
         logging.info(f"saving dev result {result_file}")
         image.save(result_file)
 
@@ -379,6 +401,8 @@ class DiscordClient(discord.Client):
                         )
                     )
                 bb = create_banner_image(url, overlays, txt)
+                if bb is None:
+                    continue
                 await g.edit(banner=bb.read())
                 self.guild_data[guild_id_str]["banner_text"] = txt
             except Exception as e:
