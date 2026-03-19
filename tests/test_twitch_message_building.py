@@ -44,6 +44,7 @@ def _make_twitchio_stub():
             self.exception = exception
 
     twitchio.Client = Client  # type: ignore
+    twitchio.AutoClient = Client  # type: ignore
     twitchio.PartialUser = PartialUser  # type: ignore
     twitchio.ChatMessage = ChatMessage  # type: ignore
     twitchio.EventErrorPayload = EventErrorPayload  # type: ignore

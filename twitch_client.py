@@ -54,7 +54,7 @@ def is_moderator(payload: twitchio.ChatMessage) -> bool:
         return False
 
 
-class TwitchClient(twitchio.Client):
+class TwitchClient(twitchio.AutoClient):
     """Twitch bot client based on twitchio.
 
     Stores auth tokens in database and executes custom commands defined in the database.
@@ -185,9 +185,9 @@ class TwitchClient(twitchio.Client):
             return
 
         user_map: dict[str, str] = {u.name.lower(): str(u.id) for u in users if u.name}
-        # Create EventSub subscriptions. subscribe_websocket() is per-payload on plain Client.
-        # - Chat message: as_bot=True uses the bot's user token (requires user:read:chat + user:bot)
-        # - Redemptions/hype train: token_for=uid uses the channel owner's token
+
+        subs: list[eventsub.SubscriptionPayload] = []
+
         for channel_name, info in self.channels.items():
             uid = user_map.get(channel_name.lower())
             if not uid:
@@ -198,46 +198,38 @@ class TwitchClient(twitchio.Client):
             info.twitch_user_id = uid
 
             # Chat messages — always subscribed for every managed channel
-            try:
-                await self.subscribe_websocket(
-                    eventsub.ChatMessageSubscription(
-                        broadcaster_user_id=uid,
-                        user_id=self.bot_user_id,
-                    ),
-                    as_bot=True,
+            subs.append(
+                eventsub.ChatMessageSubscription(
+                    broadcaster_user_id=uid,
+                    user_id=self.bot_user_id,
                 )
-                logging.info(f"[setup_hook] subscribed to chat in #{channel_name}")
-            except Exception as e:
-                logging.warning(f"[setup_hook] chat sub failed for #{channel_name}: {e}")
+            )
 
             for event_type in info.events:
                 if event_type == EventType.twitch_reward_redemption:
-                    try:
-                        await self.subscribe_websocket(
-                            eventsub.ChannelPointsRedeemAddSubscription(
-                                broadcaster_user_id=uid,
-                            ),
-                            token_for=uid,
+                    subs.append(
+                        eventsub.ChannelPointsRedeemAddSubscription(
+                            broadcaster_user_id=uid,
                         )
-                        logging.info(f"[setup_hook] subscribed to redemptions in #{channel_name}")
-                    except Exception as e:
-                        logging.warning(
-                            f"[setup_hook] redemption sub failed for #{channel_name}: {e}"
-                        )
-
+                    )
                 elif event_type == EventType.twitch_hype_train:
-                    try:
-                        await self.subscribe_websocket(
-                            eventsub.HypeTrainEndSubscription(
-                                broadcaster_user_id=uid,
-                            ),
-                            token_for=uid,
+                    subs.append(
+                        eventsub.HypeTrainEndSubscription(
+                            broadcaster_user_id=uid,
                         )
-                        logging.info(f"[setup_hook] subscribed to hype train in #{channel_name}")
-                    except Exception as e:
-                        logging.warning(
-                            f"[setup_hook] hype train sub failed for #{channel_name}: {e}"
-                        )
+                    )
+
+        if subs:
+            try:
+                resp = await self.multi_subscribe(subs)
+                if resp.errors:
+                    logging.warning(f"[setup_hook] some subscriptions failed: {resp.errors}")
+                else:
+                    logging.info(
+                        f"[setup_hook] successfully subscribed to {len(subs)} EventSub topics via Conduit"
+                    )
+            except Exception as e:
+                logging.error(f"[setup_hook] multi_subscribe failed: {e}\n{traceback.format_exc()}")
 
     async def event_ready(self) -> None:
         logging.info(f"event_ready {self.user}")

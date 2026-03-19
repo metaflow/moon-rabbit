@@ -318,7 +318,6 @@ class DiscordClient(discord.Client):
         return count
 
     async def on_cron(self):
-        logging.info("running discord cron")
         g: discord.Guild
         for g in self.guilds:
             try:

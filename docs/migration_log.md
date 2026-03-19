@@ -214,6 +214,7 @@ Detailed steps in [setup.md](file:///home/gem/src/moon-rabbit/setup.md) under "L
 | 2026-03-15 | Split `commands.py` into `commands` package (`pipeline.py`, `builtins.py`, `text.py`) to resolve SRP violations. |
 | 2026-03-15 | Combined Discord and Twitch bot into a single PM2 process. Implemented further optimizations: removed `numpy` (using built-in `random`), refined Discord Intents (disabled member cache), and lazy-loaded `pymorphy3`. Total RAM footprint reduced from ~220MB to ~60-80MB. |
 | 2026-03-19 | Fixed infinite loop of `UnidentifiedImageError` in Discord banner cron update by removing broken cached images and skipping save on HTTP error. |
+| 2026-03-19 | Fixed permanent drop of Twitch EventSub subscriptions upon websocket reconnect failure (HTTP 400). Migrated `TwitchClient` to use Conduits via `twitchio.AutoClient`. |
 
 ---
 
