@@ -96,10 +96,8 @@ On startup:
 
 - Runs on a DigitalOcean droplet at `/var/moon-rabbit`
 - Single process manages both platforms: `uv run python3 main.py --discord --twitch moon_robot`
-- `restart.sh` kills and restarts both processes (handled by PM2 in production)
-- `pg_backup.sh` creates gzipped PostgreSQL dumps to `/mnt/backup`
-- Both scripts scheduled via `crontab`
-- Detailed setup instructions in [setup.md](file:///home/gem/src/moon-rabbit/setup.md)
+- Managed by PM2 (`ecosystem.config.cjs`); `pg_backup.sh` creates gzipped PostgreSQL dumps to `/mnt/backup`
+- Detailed setup instructions in [README.md](file:///home/gem/src/moon-rabbit/README.md)
 
 ---
 
@@ -116,7 +114,6 @@ All managed via `requirements.txt` (uv). Key libraries:
 | `lark` | PEG parser for tag query grammar |
 | `pymorphy3` | Russian morphological analyzer |
 | `llist` | Doubly-linked list for queue-based random text selection |
-| `numpy` | RNG & Pareto distribution for "smart" random selection |
 | `ttldict2` | TTL-expiring dictionaries for caching |
 | `pillow` | Image manipulation (Discord banner generation) |
 | `dacite` | Dataclass deserialization from dicts |

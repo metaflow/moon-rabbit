@@ -1,4 +1,3 @@
-- add setup.md reference to docs
 - Allow commands without prefix in private bot conversations
 - Check sandbox settings for Jinja2
 - Test performance of compiled templates vs `from_string`

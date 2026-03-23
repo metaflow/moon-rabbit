@@ -137,7 +137,7 @@ Provides helpers like `import_text_row()`, `str_to_tags()`, `text_to_row()`, `mo
 - `on_cron()` — sends synthetic `<prefix>_cron` to active channels (within 30 min)
 - `send_message()` — sends via `PartialUser.send_message(sender=bot_user_id, message=text)`, rate-limited (1 msg/sec), truncates to 500 chars
 
-**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343. The `TWITCH_OAUTH_DOMAIN` environment variable is used to configure the domain for redirect URIs (e.g., when running behind a proxy). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `TwitchClient` (notably `save_tokens`, which is asynchronous/awaited). See `setup.md` for details.
+**Auth:** twitchio 3.x runs a built-in OAuth server on port 4343. The `TWITCH_OAUTH_DOMAIN` environment variable is used to configure the domain for redirect URIs (e.g., when running behind a proxy). On first run, the bot account and each channel owner visit OAuth URLs. Tokens auto-refresh and persist to the PostgreSQL `twitch_tokens` table via overrides in `TwitchClient` (notably `save_tokens`, which is asynchronous/awaited). See [README.md](file:///home/gem/src/moon-rabbit/README.md) for setup details.
 
 **Per-channel state (`ChannelInfo`):**
 - `active_users` — TTLDict (1h TTL) of recent chatters
@@ -174,7 +174,7 @@ Provides helpers like `import_text_row()`, `str_to_tags()`, `text_to_row()`, `mo
 
 **Module-level helpers:** `set_db()`, `db()`, `cursor()`
 
-**Depends on:** `data`, `query`, `psycopg2`, `llist`, `numpy`, `ttldict2`, `lark`
+**Depends on:** `data`, `query`, `psycopg2`, `llist`, `ttldict2`, `lark`
 
 ---
 
@@ -219,13 +219,6 @@ Provides helpers like `import_text_row()`, `str_to_tags()`, `text_to_row()`, `mo
 
 ---
 
-### [restart.sh](file:///home/gem/src/moon-rabbit/restart.sh) — Process Manager
-
-- Kills all existing bot processes (by virtualenv path pattern)
-- Starts Discord and Twitch bots as background processes
-- Records restart timestamp
-
----
 
 ### [pg_backup.sh](file:///home/gem/src/moon-rabbit/pg_backup.sh) — Database Backup
 
@@ -245,8 +238,8 @@ Full PostgreSQL schema dump. See [architecture.md#database-schema](architecture.
 ### [uv.lock](file:///home/gem/src/moon-rabbit/uv.lock) — Python Dependencies
 Versions for all dependencies are managed via the lock file. See [overview.md#dependencies](overview.md#dependencies) for table.
 
-### [setup.md](file:///home/gem/src/moon-rabbit/setup.md) — Server Setup Guide
-Step-by-step instructions for deploying to a new DigitalOcean droplet.
+### [README.md](file:///home/gem/src/moon-rabbit/README.md) — Setup Guide
+Step-by-step instructions for dev and production deployment, registering bots, and adding channels.
 
 ### [playbooks.md](file:///home/gem/src/moon-rabbit/playbooks.md) — Operational Runbook
 Currently just one entry: how to restart the bot remotely via SSH.
@@ -296,7 +289,6 @@ storage.py
 ├── query
 ├── psycopg2
 ├── llist
-├── numpy
 └── ttldict2
 
 query.py
