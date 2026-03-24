@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import collections
+import contextlib
 import dataclasses
 import functools
 import logging
@@ -75,12 +76,26 @@ class ChannelCache:
 
 
 class DB:
-    def __init__(self, connection):
+    def __init__(self, connection: str):
+        self.connection_string: str = connection
         self.conn = psycopg2.connect(connection)
         self.conn.set_session(autocommit=True)
         self.channels: dict[int, ChannelCache] = {}
         self.logs = {}
         self.rng = random
+
+    def _reconnect(self):
+        logging.warning("DB connection closed; reconnecting")
+        with contextlib.suppress(Exception):
+            self.conn.close()
+        self.conn = psycopg2.connect(self.connection_string)
+        self.conn.set_session(autocommit=True)
+
+    def cursor(self) -> psycopg2.extensions.cursor:
+        """Return a cursor, reconnecting first if the connection is closed."""
+        if self.conn.closed:
+            self._reconnect()
+        return self.conn.cursor()
 
     def channel(self, channel_id: int) -> ChannelCache:
         if channel_id in self.channels:
@@ -145,7 +160,7 @@ class DB:
         return id, prefix
 
     def reload_tags(self, ch: ChannelCache):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             ch.tag_by_id.clear()
             ch.tag_by_value.clear()
             cur.execute("SELECT id, value FROM tags WHERE channel_id = %s", [ch.channel_id])
@@ -160,7 +175,7 @@ class DB:
         ch.active_queries.clear()
         ch.all_text_by_id.clear()
         z: dict[int, set[int]] = {}
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT id FROM texts t WHERE t.channel_id = %s", [ch.channel_id])
             for row in cur.fetchall():
                 z[row[0]] = set()
@@ -181,7 +196,7 @@ class DB:
             te.in_all = ch.all_texts_list.append(te)
 
     def new_channel_id(self):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT MAX(channel_id) FROM channels")
             row = cur.fetchone()
             if row and (row[0] is not None):
@@ -197,7 +212,7 @@ class DB:
     def add_tag(self, channel_id: int, tag_name: str):
         if not query.good_tag_name(tag_name):
             raise Exception("bad tag name")
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "INSERT INTO tags (channel_id, value) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
                 (channel_id, tag_name),
@@ -205,7 +220,7 @@ class DB:
             self.reload_tags(self.channel(channel_id))
 
     def delete_tag(self, channel_id: int, tag_id: int):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("DELETE FROM tags WHERE channel_id = %s AND id = %s", (channel_id, tag_id))
             ch = self.channel(channel_id)
             self.reload_tags(ch)
@@ -220,7 +235,7 @@ class DB:
 
     def get_text_tag_values(self, channel_id: int, text_id: int) -> dict[int, str | None]:
         z = {}
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT tt.tag_id, tt.value FROM text_tags tt JOIN texts t ON t.channel_id = %s AND t.id = tt.text_id WHERE tt.text_id = %s",
                 [channel_id, text_id],
@@ -230,7 +245,7 @@ class DB:
             return z
 
     def get_text_tag_value(self, channel_id: int, text_id: int, tag_id: int) -> str | None:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT tt.value FROM text_tags tt JOIN texts t ON t.channel_id = %s AND t.id = tt.text_id WHERE tt.text_id = %s and tt.tag_id = %s",
                 [channel_id, text_id, tag_id],
@@ -250,7 +265,7 @@ class DB:
             logging.warning(f"text {text_id} is not found")
             return (None, False)
         previous_tags = self.get_text_tag_values(channel_id, text_id)
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("DELETE FROM text_tags WHERE text_id = %s", (text_id,))
             for name, value in new_tags.items():
                 cur.execute(
@@ -284,14 +299,14 @@ class DB:
                 node.owner().remove(node)
             if te.in_all:
                 te.in_all.owner().remove(te.in_all)
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "DELETE FROM texts WHERE id = %s AND channel_id = %s", (text_id, channel_id)
             )
             return cur.rowcount
 
     def get_text(self, channel_id: int, id: int) -> str | None:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT value FROM texts WHERE channel_id = %s AND id = %s", [channel_id, id]
             )
@@ -301,7 +316,7 @@ class DB:
             return row[0]
 
     def find_text(self, channel_id: int, value: str) -> int | None:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT id FROM texts WHERE channel_id = %s and value = %s", (channel_id, value)
             )
@@ -311,7 +326,7 @@ class DB:
             return None
 
     def add_text(self, channel_id: int, value: str) -> int:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "INSERT INTO texts (channel_id, value) VALUES (%s, %s) ON CONFLICT ON CONSTRAINT uniq_text_value DO UPDATE SET value = %s RETURNING id;",
                 (channel_id, value, value),
@@ -328,7 +343,7 @@ class DB:
         txt = self.get_text(channel_id, id)
         if not txt:
             return None
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "UPDATE texts SET value = %s WHERE channel_id = %s and id = %s",
                 (value, channel_id, id),
@@ -338,7 +353,7 @@ class DB:
     def text_search(
         self, channel_id: int, txt: str, q: str = ""
     ) -> list[tuple[int, str, set[int]]]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "select id, value from texts WHERE (channel_id = %s) AND (value LIKE %s)",
                 (channel_id, "%" + escape_like(txt.strip()) + "%"),
@@ -358,7 +373,7 @@ class DB:
             return z
 
     def all_texts(self, channel_id: int) -> list[tuple[int, str, set[int]]]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT id, value from texts t WHERE (channel_id = %s)", (channel_id,))
             # tt = self.get_text_tags(channel_id)
             # self.get_tags(channel_id)
@@ -414,7 +429,7 @@ class DB:
         return t.id
 
     def get_commands(self, channel_id, prefix) -> list[CommandData]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT data FROM commands WHERE channel_id = %s;", [channel_id])
             dicts = [x[0] for x in cur.fetchall()]
             return [dictToCommandData(x) for x in dicts]
@@ -438,7 +453,7 @@ class DB:
         return cur.fetchone()[0]
 
     def set_variable(self, channel_id: int, name: str, value: str, category: str, expires: int):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             if value == "":
                 cur.execute(
                     "DELETE FROM variables WHERE channel_id = %s AND name = %s AND category = %s",
@@ -461,7 +476,7 @@ class DB:
             )
 
     def get_variable(self, channel_id: int, name: str, category: str, default_value: str):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT value, expires FROM variables WHERE name = %s AND channel_id = %s AND category = %s",
                 [name, channel_id, category],
@@ -475,7 +490,7 @@ class DB:
             return value
 
     def count_variables_in_category(self, channel_id: int, category: str) -> int:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT count(*) FROM variables WHERE channel_id = %s AND category = %s",
                 [channel_id, category],
@@ -483,7 +498,7 @@ class DB:
             return cur.fetchone()[0]
 
     def list_variables(self, channel_id: int, category: str) -> list[tuple[str, str]]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT name, value FROM variables WHERE channel_id = %s AND category = %s",
                 [channel_id, category],
@@ -494,7 +509,7 @@ class DB:
             return z
 
     def delete_category(self, channel_id: int, category: str) -> int:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "DELETE FROM variables WHERE channel_id = %s AND category = %s",
                 [channel_id, category],
@@ -502,7 +517,7 @@ class DB:
             return cur.rowcount
 
     def expire_variables(self):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("DELETE FROM variables WHERE expires < %s", [int(time.time())])
             n = cur.rowcount
             if n:
@@ -519,7 +534,7 @@ class DB:
         return list(self.logs[channel_id])
 
     def set_twitch_prefix(self, channel_id: int, prefix: str):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "UPDATE channels SET twitch_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id],
@@ -528,7 +543,7 @@ class DB:
             self.twitch_channel_info.cache_clear()
 
     def set_discord_prefix(self, channel_id: int, prefix: str):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "UPDATE channels SET discord_command_prefix = %s WHERE channel_id = %s",
                 [prefix, channel_id],
@@ -537,7 +552,7 @@ class DB:
             self.discord_channel_info.cache_clear()
 
     def get_discord_allowed_channels(self, channel_id: int) -> set[str]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "SELECT discord_allowed_channels FROM channels WHERE channel_id = %s", [channel_id]
             )
@@ -547,7 +562,7 @@ class DB:
             return set(row[0].split(","))
 
     def set_discord_allowed_channels(self, channel_id: int, allowed: set[str]):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 "UPDATE channels SET discord_allowed_channels = %s WHERE channel_id = %s",
                 [",".join(allowed), channel_id],
@@ -571,13 +586,13 @@ class DB:
                 ch.query_to_id.pop(query_text, None)
 
     def check_database(self):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT id, discord_guild_id, twitch_channel_name FROM channels")
             for row in cur.fetchall():
                 logging.info(row)
 
     def save_twitch_token(self, user_id: str, token: str, refresh: str):
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO twitch_tokens (user_id, token, refresh)
@@ -590,7 +605,7 @@ class DB:
             )
 
     def load_twitch_tokens(self) -> list[tuple[str, str]]:
-        with self.conn.cursor() as cur:
+        with self.cursor() as cur:
             cur.execute("SELECT token, refresh FROM twitch_tokens")
             return cur.fetchall()
 
@@ -610,4 +625,4 @@ def db() -> DB:
 
 
 def cursor() -> psycopg2.extensions.cursor:
-    return db().conn.cursor()
+    return db().cursor()

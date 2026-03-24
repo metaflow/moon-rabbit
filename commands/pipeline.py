@@ -19,6 +19,7 @@ import dataclasses
 import json
 import logging
 import re
+import time
 import traceback
 from typing import Protocol
 
@@ -37,6 +38,10 @@ from storage import db
 
 # id: str -> Message
 messages = ttldict2.TTLDict(ttl_seconds=600.0)
+
+# channel_id -> timestamp of the last "error occurred" chat reply
+_ERROR_REPLY_COOLDOWN_SECS = 30 * 60
+_last_error_reply: dict[int, float] = {}
 
 
 async def process_message(msg: Message) -> list[Action]:
@@ -62,8 +67,11 @@ async def process_message(msg: Message) -> list[Action]:
         log_actions = [a for a in actions if a.attachment == ""]
         msg.log.debug(f"actions (except download) {log_actions}")
     except Exception as e:
-        actions.append(Action(kind=ActionKind.REPLY, text="error ocurred"))
         msg.log.error(f"{e}\n{traceback.format_exc()}")
+        now = time.monotonic()
+        if now - _last_error_reply.get(msg.channel_id, 0.0) >= _ERROR_REPLY_COOLDOWN_SECS:
+            _last_error_reply[msg.channel_id] = now
+            actions.append(Action(kind=ActionKind.REPLY, text="error occurred"))
         if is_dev():
             raise
     return actions
@@ -73,9 +81,9 @@ def command_prefix(txt: str, prefix: str, s: list[str]) -> str:
     for x in s:
         if txt.startswith(prefix + x):
             # TODO: don't append an empty string and return additional bool instead.
-            return txt[len(prefix + x) :] + " "
+            return txt[len(prefix + x) :]  + " "  # type: ignore[index]
         if txt.startswith(prefix + " " + x):
-            return txt[len(prefix + " " + x) :] + " "
+            return txt[len(prefix + " " + x) :]  + " "  # type: ignore[index]
     return ""
 
 
