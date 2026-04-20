@@ -41,6 +41,11 @@ pillow = "PIL"
 psycopg2-binary = "psycopg2"
 python-dotenv = "dotenv"
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:twitchio",
+]
+
 [tool.ruff]
 line-length = 100
 

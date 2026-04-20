@@ -150,7 +150,7 @@ class DiscordClient(discord.Client):
                 self.mods[str(message.author.id)] = guild_id
         try:
             channel_id, prefix = await asyncio.to_thread(
-                db().discord_channel_info, db().conn.cursor(), guild_id
+                db().discord_channel_info, db().cursor(), guild_id
             )
         except Exception as e:
             logging.error(f"'discord_channel_info': {e}\n{traceback.format_exc()}")
@@ -325,7 +325,7 @@ class DiscordClient(discord.Client):
                 if "BANNER" not in g.features:
                     continue
                 channel_id, prefix = await asyncio.to_thread(
-                    db().discord_channel_info, db().conn.cursor(), guild_id_str
+                    db().discord_channel_info, db().cursor(), guild_id_str
                 )
                 banner_template = await asyncio.to_thread(
                     db().get_variable, channel_id, "banner_template", "admin", ""

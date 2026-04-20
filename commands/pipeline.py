@@ -81,9 +81,9 @@ def command_prefix(txt: str, prefix: str, s: list[str]) -> str:
     for x in s:
         if txt.startswith(prefix + x):
             # TODO: don't append an empty string and return additional bool instead.
-            return txt[len(prefix + x) :]  + " "  # type: ignore[index]
+            return txt[len(prefix + x) :] + " "
         if txt.startswith(prefix + " " + x):
-            return txt[len(prefix + " " + x) :]  + " "  # type: ignore[index]
+            return txt[len(prefix + " " + x) :] + " "
     return ""
 
 

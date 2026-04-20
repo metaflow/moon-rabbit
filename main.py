@@ -43,8 +43,11 @@ from storage import DB, db, set_db
 
 async def expireVariables():
     while True:
-        db().expire_variables()
-        db().expire_old_queries()
+        try:
+            await asyncio.to_thread(db().expire_variables)
+            await asyncio.to_thread(db().expire_old_queries)
+        except Exception:
+            logging.exception("expireVariables failed")
         await asyncio.sleep(300)
 
 

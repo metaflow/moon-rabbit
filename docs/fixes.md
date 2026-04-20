@@ -6,57 +6,21 @@ Source: `/tmp/moon-rabbit/moon-rabbit/runtime/merged.errors.log` (2026-03-15 to 
 
 ## Error Categories
 
-### A. DB Connection Not Resilient — HIGH PRIORITY (active, ~1836 occurrences)
+### A. DB Connection Not Resilient — FIXED (2026-04-20)
 
 **Symptoms**
 - `psycopg2.InterfaceError: connection already closed` in `discord_channel_info`
 - `psycopg2.OperationalError: SSL connection has been closed unexpectedly` in `expireVariables`
 
-**Root causes**
+**Root causes & fixes applied**
 
-1. `discord_client.py:153` calls `db().conn.cursor()` directly, bypassing the `db().cursor()` method that checks `conn.closed` and reconnects:
-   ```python
-   # current (broken)
-   db().discord_channel_info, db().conn.cursor(), guild_id
-   # fix
-   db().discord_channel_info, db().cursor(), guild_id
-   ```
+1. `discord_client.py:153,328` — was calling `db().conn.cursor()` directly, bypassing the reconnect logic. Changed to `db().cursor()` at both call sites.
 
-2. `db().cursor()` only checks `conn.closed` (set when explicitly closed). A connection that is silently dropped by the DB server / SSL layer appears open until a query fails. When a query raises `OperationalError`, the code doesn't reconnect and retry.
+2. `storage.py:DB.cursor()` — only checked `conn.closed`, which isn't set for silently dropped SSL connections. Added a `SELECT 1` liveness probe and `OperationalError` catch that triggers `_reconnect()` before returning a fresh cursor.
 
-3. `expireVariables` in `main.py` runs `db().expire_variables()` inside an `async def` without `asyncio.to_thread`. If the DB call blocks, it starves the event loop. Also, when it throws an unhandled exception the whole background task dies (logged as `Task exception was never retrieved`) with no restart.
+3. `main.py:expireVariables` — DB calls were blocking the event loop (no `asyncio.to_thread`) and an unhandled exception killed the loop permanently. Wrapped body in `try/except Exception` with `logging.exception`, and moved both DB calls to `asyncio.to_thread`.
 
-**Fix plan**
-
-1. `discord_client.py:153` — change `db().conn.cursor()` → `db().cursor()`.
-
-2. `storage.py` — add `OperationalError` catch + reconnect in `cursor()`:
-   ```python
-   def cursor(self):
-       if self.conn.closed:
-           self._reconnect()
-       try:
-           cur = self.conn.cursor()
-           # Cheap liveness probe
-           cur.execute("SELECT 1")
-           return cur
-       except psycopg2.OperationalError:
-           self._reconnect()
-           return self.conn.cursor()
-   ```
-   (Or use psycopg2's `autocommit` + connection pool instead.)
-
-3. `main.py:expireVariables` — wrap the body in `try/except` so the loop survives individual failures, and call via `asyncio.to_thread`:
-   ```python
-   async def expireVariables():
-       while True:
-           try:
-               await asyncio.to_thread(db().expire_variables)
-               await asyncio.to_thread(db().expire_old_queries)
-           except Exception:
-               logging.exception("expireVariables failed")
-           await asyncio.sleep(300)
-   ```
+Tests added in `tests/test_db_resilience.py` covering all three scenarios.
 
 ---
 

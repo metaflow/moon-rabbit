@@ -95,7 +95,13 @@ class DB:
         """Return a cursor, reconnecting first if the connection is closed."""
         if self.conn.closed:
             self._reconnect()
-        return self.conn.cursor()
+        try:
+            cur = self.conn.cursor()
+            cur.execute("SELECT 1")
+            return cur
+        except psycopg2.OperationalError:
+            self._reconnect()
+            return self.conn.cursor()
 
     def channel(self, channel_id: int) -> ChannelCache:
         if channel_id in self.channels:
