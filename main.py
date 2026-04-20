@@ -81,6 +81,35 @@ async def shutdown(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+def _twitchio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """Custom asyncio exception handler that demotes known twitchio transient errors from ERROR to WARNING.
+
+    D1: aiohttp logs 'Unclosed connection' when twitchio replaces an eventsub WebSocket session
+        without closing the old aiohttp ClientSession (internal twitchio bug).
+    D3: twitchio conduit shards raise WebsocketConnectionException when Twitch doesn't send a
+        welcome message in time; the task dies silently and asyncio logs it as an unretrieved
+        task exception.
+    """
+    exc = context.get("exception")
+    msg = context.get("message", "")
+
+    # D3: conduit shard welcome-message timeout — transient network issue, not actionable
+    if (
+        exc is not None
+        and type(exc).__name__ == "WebsocketConnectionException"
+        and "welcome message" in str(exc)
+    ):
+        logging.warning(f"[twitchio] conduit shard welcome timeout (transient): {exc}")
+        return
+
+    # D1: aiohttp unclosed connection from twitchio eventsub session teardown
+    if "Unclosed" in msg and "eventsub.wss.twitch.tv" in str(context):
+        logging.warning(f"[twitchio] {msg} (eventsub session not closed by twitchio internals)")
+        return
+
+    loop.default_exception_handler(context)
+
+
 def run_loop(
     loop: asyncio.AbstractEventLoop,
     discord_client: DiscordClient | None,
@@ -90,6 +119,7 @@ def run_loop(
     """Run the main event loop and handle graceful shutdown."""
     try:
         logging.info("running the async loop")
+        loop.set_exception_handler(_twitchio_exception_handler)
         loop.create_task(expireVariables())
         loop.run_forever()
     except KeyboardInterrupt:
@@ -209,10 +239,10 @@ def main():
                 domain=require_env("TWITCH_OAUTH_DOMAIN").removesuffix("/"),
             )
             logging.info(
-                f"Channel Owner Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(channel_bot=True, channel_read_redemptions=True, channel_read_hype_train=True), force_verify=True)}"  # type: ignore[attr-defined]
+                f"Channel Owner Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(channel_bot=True, channel_read_redemptions=True, channel_read_hype_train=True), force_verify=True)}"  # type: ignore
             )
             logging.info(
-                f"Bot Account Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(user_read_chat=True, user_write_chat=True, user_bot=True), force_verify=True)}"  # type: ignore[attr-defined]
+                f"Bot Account Authorization URL {twitch_bot.adapter.get_authorization_url(scopes=twitchio.Scopes(user_read_chat=True, user_write_chat=True, user_bot=True), force_verify=True)}"  # type: ignore
             )
             loop.create_task(twitch_bot.start())
             loop.create_task(cron(twitch_bot, int(args.cron_interval_s)))

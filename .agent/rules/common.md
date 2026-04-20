@@ -13,9 +13,9 @@ Before making any changes, analyzing the project, or proposing solutions, you MU
 - `docs/overview.md`: For high-level project goals and general context.
 - `docs/architecture.md`: For system design, patterns, and component interactions.
 - `docs/file_reference.md`: For specific file purposes and references.
-- `docs/migration_log.md`: Running log for the current project — Twitch auth fix & DigitalOcean migration.
+- `docs/log.md`: Dated records of completed migrations, bug-fix campaigns, and significant changes.
 
-Whenever you add new features, change the architecture, or modify key files, you must update these documentation files to keep them accurate.
+Whenever you add new features, change the architecture, or modify key files, you must update these documentation files to keep them accurate. Significant changes (migrations, bug-fix campaigns) should also be recorded as a new dated entry in `docs/log.md`.
 
 ## External Documentation
 

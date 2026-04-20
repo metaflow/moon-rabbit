@@ -32,6 +32,8 @@ import commands
 from data import ActionKind, EventType, InvocationLog, Lazy, Message
 from storage import cursor, db
 
+_MSG_DEDUP_SECS = 30.0
+
 
 @dataclasses.dataclass
 class ChannelInfo:
@@ -42,6 +44,8 @@ class ChannelInfo:
     twitch_user_id: str
     events: list[EventType]
     last_activity: float
+    last_sent_text: str = ""
+    last_sent_at: float = 0.0
 
 
 def is_moderator(payload: twitchio.ChatMessage) -> bool:
@@ -496,19 +500,35 @@ class TwitchClient(twitchio.AutoClient):
         if self.user is None:
             logging.warning("send_message: bot not logged in")
             return
+        now = time.time()
+        if txt == info.last_sent_text and now - info.last_sent_at < _MSG_DEDUP_SECS:
+            logging.warning(f"[send_message] skipping duplicate within {_MSG_DEDUP_SECS}s: {txt!r}")
+            return
         async with self.throttler:
             logging.info(f"> {txt!r}")
-            try:
-                broadcaster = self.create_partialuser(
-                    user_id=info.twitch_user_id,
-                    user_login="",
-                )
-                await broadcaster.send_message(
-                    sender=self.user,
-                    message=txt,
-                )
-            except Exception as e:
-                logging.error(f"[send_message] failed: {e}")
+            broadcaster = self.create_partialuser(user_id=info.twitch_user_id, user_login="")
+            for attempt in range(2):
+                try:
+                    await broadcaster.send_message(sender=self.user, message=txt)
+                    info.last_sent_text = txt
+                    info.last_sent_at = time.time()
+                    break
+                except Exception as e:
+                    err = str(e)
+                    if "user_timed_out" in err:
+                        logging.warning(
+                            f"[send_message] bot is timed out in channel {info.channel_id}, dropping"
+                        )
+                        break
+                    if "msg_duplicate" in err:
+                        logging.warning(f"[send_message] duplicate rejected by Twitch: {txt!r}")
+                        break
+                    if ("429" in err or "Too Many Requests" in err) and attempt == 0:
+                        logging.warning("[send_message] rate limited (429), retrying after backoff")
+                        await asyncio.sleep(2)
+                        continue
+                    logging.error(f"[send_message] failed: {e}")
+                    break
 
     def any_mention(self, txt: str, info: ChannelInfo, author: str) -> str:
         direct = self.mentions(txt)
