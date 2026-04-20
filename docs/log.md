@@ -4,6 +4,14 @@ Dated records of significant changes, migrations, and bug-fix campaigns. Newest 
 
 ---
 
+## 2026-04-20 — ntfy push notification handler
+
+Added `notifier.py`: a self-contained `NtfyHandler(logging.Handler)` that sends ERROR+ log records to an ntfy topic. Integrated into `main.py:setup_logging()` — enabled automatically when `NTFY_TOPIC` env var is set. Deduplicates by error fingerprint (exception type+message or call-site+message prefix) within a configurable window (default 1 hour). No new pip dependencies. Tests in `tests/test_notifier.py`.
+
+Also moved `load_dotenv()` before `setup_logging()` in `main()` so env vars from `.env` are available at handler construction time.
+
+---
+
 ## 2026-04-20 — Error fixes from recent logs (A/B/C/D)
 
 Source: `/tmp/moon-rabbit/moon-rabbit/runtime/merged.errors.log` (2026-03-15 to 2026-04-15, 2321 total ERROR entries)

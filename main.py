@@ -38,6 +38,7 @@ import templates
 import twitch_client
 from data import set_is_dev
 from discord_client import DiscordClient
+from notifier import NtfyHandler
 from storage import DB, db, set_db
 
 
@@ -173,6 +174,11 @@ def setup_logging(log_prefix: str, also_log_to_stdout: bool):
         stdoutHandler = logging.StreamHandler()
         stdoutHandler.setFormatter(log_fmt)
         logging.getLogger().addHandler(stdoutHandler)
+    ntfy = NtfyHandler.from_env()
+    if ntfy is not None:
+        logging.getLogger().addHandler(ntfy)
+        logging.info("ntfy notifications enabled")
+        ntfy.send("moon-rabbit started", "Application has started successfully.")
 
 
 def require_env(name: str) -> str:
@@ -201,8 +207,8 @@ def main():
         help="Dev mode: send a smoke-test message to all channels on connect",
     )
     args = parser.parse_args()
-    setup_logging(args.log, args.also_log_to_stdout)
     load_dotenv()
+    setup_logging(args.log, args.also_log_to_stdout)
     db_connection = require_env("DB_CONNECTION")
     logging.info(f"connecting to {db_connection}")
     set_db(DB(db_connection))

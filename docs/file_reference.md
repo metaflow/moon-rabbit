@@ -38,6 +38,24 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 
 ---
 
+### [notifier.py](file:///home/gem/src/moon-rabbit/notifier.py) — ntfy Push Notification Handler
+**Role:** Self-contained, reusable `logging.Handler` that forwards ERROR+ records to an ntfy topic with deduplication.
+
+- `NtfyHandler(topic, server, dedup_window_s, timeout_s)` — logging handler subclass; sends HTTP POST to ntfy on each new error
+- `NtfyHandler.from_env()` — constructs handler from `NTFY_TOPIC` / `NTFY_SERVER` env vars; returns `None` if `NTFY_TOPIC` is unset
+- Deduplication: errors are fingerprinted by exception type+message (if exc_info present) or by call-site pathname+lineno+message prefix. Repeated firings within `dedup_window_s` (default 1 hour) are suppressed. Failed HTTP calls do not advance the dedup clock so the next occurrence retries.
+- No third-party dependencies — stdlib only (`urllib.request`, `hashlib`)
+
+**Env vars:**
+| Var | Required | Default |
+|---|---|---|
+| `NTFY_TOPIC` | yes | — |
+| `NTFY_SERVER` | no | `https://ntfy.sh` |
+
+**Integrated in:** `main.py:setup_logging()` — attached automatically when `NTFY_TOPIC` is set.
+
+---
+
 ### [data.py](file:///home/gem/src/moon-rabbit/data.py) — Shared Data Types
 **Role:** Core data structures, enums, and the Jinja2 environment
 
