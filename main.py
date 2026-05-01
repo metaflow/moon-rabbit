@@ -82,17 +82,45 @@ async def shutdown(
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def _twitchio_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
-    """Custom asyncio exception handler that demotes known twitchio transient errors from ERROR to WARNING.
+class DiscordClientFilter(logging.Filter):
+    """Demotes discord.py's self-handled reconnect errors from ERROR to WARNING.
+
+    discord.py logs 'Attempting a reconnect' at ERROR level internally but handles
+    reconnection itself with exponential backoff. These are transient external failures
+    (Discord/Cloudflare outages) and are not actionable from application code.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno == logging.ERROR and record.getMessage().startswith(
+            "Attempting a reconnect"
+        ):
+            record.levelno = logging.WARNING
+            record.levelname = "WARNING"
+        return True
+
+
+def exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """Custom asyncio exception handler that demotes known transient errors from ERROR to WARNING.
 
     D1: aiohttp logs 'Unclosed connection' when twitchio replaces an eventsub WebSocket session
         without closing the old aiohttp ClientSession (internal twitchio bug).
     D3: twitchio conduit shards raise WebsocketConnectionException when Twitch doesn't send a
         welcome message in time; the task dies silently and asyncio logs it as an unretrieved
         task exception.
+    E1: asyncio logs 'Task was destroyed but it is pending!' at ERROR during shutdown when the
+        loop closes before cancelled tasks finish propagating — always harmless at shutdown time.
     """
     exc = context.get("exception")
     msg = context.get("message", "")
+
+    # E1: tasks cancelled during shutdown that didn't finish before loop.close()
+    if msg == "Task was destroyed but it is pending!":
+        task = context.get("task")
+        task_repr = repr(task)[:200] if task else "(unknown)"
+        logging.warning(
+            f"[shutdown] task destroyed while pending (expected at shutdown): {task_repr}"
+        )
+        return
 
     # D3: conduit shard welcome-message timeout — transient network issue, not actionable
     if (
@@ -115,12 +143,11 @@ def run_loop(
     loop: asyncio.AbstractEventLoop,
     discord_client: DiscordClient | None,
     twitch_bot: twitch_client.TwitchClient | None,
-    cron_interval_s: int,
 ):
     """Run the main event loop and handle graceful shutdown."""
     try:
         logging.info("running the async loop")
-        loop.set_exception_handler(_twitchio_exception_handler)
+        loop.set_exception_handler(exception_handler)
         loop.create_task(expireVariables())
         loop.run_forever()
     except KeyboardInterrupt:
@@ -174,6 +201,7 @@ def setup_logging(log_prefix: str, also_log_to_stdout: bool):
         stdoutHandler = logging.StreamHandler()
         stdoutHandler.setFormatter(log_fmt)
         logging.getLogger().addHandler(stdoutHandler)
+    logging.getLogger("discord.client").addFilter(DiscordClientFilter())
     ntfy = NtfyHandler.from_env()
     if ntfy is not None:
         logging.getLogger().addHandler(ntfy)
@@ -255,7 +283,7 @@ def main():
         except Exception as e:
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch or args.discord:
-        run_loop(loop, discordClient, twitch_bot, int(args.cron_interval_s))
+        run_loop(loop, discordClient, twitch_bot)
         sys.exit(0)
     print("add --twitch or --discord argument to run bot")
     sys.exit(1)

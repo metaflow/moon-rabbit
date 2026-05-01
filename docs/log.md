@@ -4,6 +4,44 @@ Dated records of significant changes, migrations, and bug-fix campaigns. Newest 
 
 ---
 
+## 2026-05-01 — Error suppression: shutdown task noise + Discord reconnect storm
+
+Source: `/var/moon-rabbit/runtime/merged.errors.log` (2026-04-20 to 2026-05-01, ~36 post-cutoff ERROR entries)
+
+### E1. "Task was destroyed but it is pending!" at shutdown — SUPPRESSED
+
+**Symptoms**
+- 14 ERROR entries at `2026-04-20 14:36:58` during app restart
+- Twitchio internal websocket tasks (`Websocket._process_keepalive`, `Websocket._listen`) and our own background tasks (`cron()`, `expireVariables()`, `Client.start()`) all logged at ERROR
+
+**Root cause**: asyncio emits this via the exception handler when a Task object is garbage-collected while still in `PENDING` state. Occurs because `loop.close()` is called before cancellation of all tasks fully propagates. Always harmless at shutdown — all tasks have already been asked to cancel by `shutdown()`.
+
+**Fix**: Extended `_twitchio_exception_handler` in `main.py` to intercept `"Task was destroyed but it is pending!"` messages and log them at WARNING instead, with the task repr for diagnostics.
+
+---
+
+### E2. Discord reconnect storm — SUPPRESSED
+
+**Symptoms**
+- 3 occurrences on 2026-04-28: `WSServerHandshakeError: 520` (Cloudflare/Discord-side)
+- ~15 occurrences on 2026-05-01 00:44–05:29: `ClientConnectionResetError: Cannot write to closing transport` and `TimeoutError` (wrapping `CancelledError`) during reconnect attempts
+
+**Root cause**: Transient Discord gateway outage. discord.py's internal `connect()` loop catches all these exceptions, logs them at ERROR (from inside the library), and retries with exponential backoff. The bot reconnected successfully after ~90 minutes; no data loss or stuck state. Same category as D2 from the 2026-04-20 log.
+
+**Fix**: Added `_DiscordReconnectFilter` (a `logging.Filter` subclass) in `main.py`. Applied to the `discord.client` logger in `setup_logging()`. Downgrades any record with level ERROR whose message starts with `"Attempting a reconnect"` to WARNING before it reaches any handler. The reconnect loop itself and discord.py behaviour are unchanged.
+
+---
+
+### Occurrence Summary
+
+| # | Issue | Occurrences | Status |
+|---|-------|-------------|--------|
+| E1 | Task destroyed at shutdown | 14 | Suppressed to WARNING |
+| E2 | Discord reconnect storm (Apr 28) | 3 | Suppressed to WARNING |
+| E2 | Discord reconnect storm (May 1) | ~15 | Suppressed to WARNING |
+
+---
+
 ## 2026-04-20 — ntfy push notification handler
 
 Added `notifier.py`: a self-contained `NtfyHandler(logging.Handler)` that sends ERROR+ log records to an ntfy topic. Integrated into `main.py:setup_logging()` — enabled automatically when `NTFY_TOPIC` env var is set. Deduplicates by error fingerprint (exception type+message or call-site+message prefix) within a configurable window (default 1 hour). No new pip dependencies. Tests in `tests/test_notifier.py`.
