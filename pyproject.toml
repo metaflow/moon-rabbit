@@ -50,6 +50,9 @@ filterwarnings = [
 line-length = 100
 
 [tool.ruff.lint]
+# Explicit baseline = ruff's pre-0.17 default rule set. ruff 0.17 widened its defaults a lot
+# (~150 new findings); pin the old set so upgrades don't change lint behaviour silently.
+select = ["E4", "E7", "E9", "F"]
 extend-select = ["UP", "I", "C4", "SIM"]
 # F403: 'from module import *' used; unable to detect undefined names
 # F405: Name may be undefined, or defined from star imports

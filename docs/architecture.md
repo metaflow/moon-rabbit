@@ -246,6 +246,8 @@ The application is run via PM2 using `ecosystem.config.cjs`, which defines:
 - `moon-rabbit`: Combined Discord and Twitch bot process.
 - `moon-rabbit-backup`: A cron job for database backups.
 
+`moon-rabbit` runs `.venv/bin/python3 main.py ...` directly rather than through `uv run`: PM2 measures the process it spawns, so the `uv` wrapper made the bot's memory invisible (it showed ~2 MB for a ~1 GB process) and `max_memory_restart` could never trigger. It is set to `400M` as a safety net (a healthy process is ~150 MB). Because `uv run` no longer auto-syncs, run `uv sync --no-dev --frozen` after pulling dependency changes.
+
 If you need to override settings for a specific production instance, fork the config:
 ```bash
 cp ecosystem.config.cjs ecosystem.config.prod.cjs

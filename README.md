@@ -215,6 +215,10 @@ pm2 save
 pm2 startup
 ```
 
+PM2 launches `.venv/bin/python3` directly (not `uv run`), so that PM2 reports the bot's real memory and
+`max_memory_restart` works. This means dependencies are **not** synced automatically on restart: after pulling
+new code or a changed `uv.lock`, run `uv sync --no-dev --frozen` before `pm2 restart moon-rabbit --update-env`.
+
 Check status:
 
 ```bash
@@ -231,6 +235,25 @@ pm2 start runtime/ecosystem.config.cjs
 # Apply config changes later:
 pm2 restart runtime/ecosystem.config.cjs --update-env
 ```
+
+### Deploying updates
+
+From the dev machine (on `main`, tree clean):
+
+```bash
+./deploy.sh --dry-run   # read-only preview of files that would change / be deleted on the server
+./deploy.sh             # pull --rebase, check.sh, push, rsync, uv sync, restart, verify
+```
+
+The script deploys the committed files by `rsync` over ssh (the server directory does not need to be a git
+checkout and needs no GitHub access). It never touches the server's `.env`, `runtime/`, `.venv/` or `.git/`.
+On the server it runs `uv sync --no-dev --locked`, smoke-tests the imports (the old process keeps running if that
+fails), re-registers the PM2 app from `ecosystem.config.cjs` (`pm2 delete` + `pm2 start` + `pm2 save`, so changes to
+script/args are picked up and survive a reboot), then checks that the process stays `online` with 0 restarts and
+prints its RSS and the last log lines. It records the deployed commit in `/var/moon-rabbit/.deployed_revision`.
+
+Defaults: `DEPLOY_HOST=a-cmd` (ssh alias), `REMOTE_DIR=/var/moon-rabbit`; override via environment variables.
+To roll back, check out the previous commit locally and run `./deploy.sh` again.
 
 ### Set up database backups
 

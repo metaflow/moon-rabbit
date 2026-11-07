@@ -16,6 +16,8 @@ Every file in the repository, grouped by role. Each entry describes purpose, key
 - Registers all Jinja2 template globals (`txt`, `get`, `set`, `randint`, `dt`, `timestamp`, `message`, `category_size`, `list_category`, `delete_category`)
 - Creates the async event loop and starts platform clients
 - Launches background tasks: `expireVariables()` (5-min cycle) and `cron()` (configurable)
+- `setup_logging()` keeps the root at DEBUG for application lines but caps `NOISY_LIBRARY_LOGGERS` (`twitchio`, `discord.gateway`, `discord.http`) at INFO
+- Calls `twitchio_patches.apply_all()` right before creating the `TwitchClient`
 
 **Key functions:**
 | Function | Purpose |
@@ -165,6 +167,24 @@ Provides helpers like `import_text_row()`, `str_to_tags()`, `text_to_row()`, `mo
 
 **Depends on:** `data`, `storage`, `commands`, `twitchio 3.x`, `ttldict2`, `asyncio-throttle`
 
+### [twitchio_patches.py](file:///home/gem/src/moon-rabbit/twitchio_patches.py) — Upstream twitchio Workarounds
+**Role:** Runtime monkeypatches for known twitchio bugs, applied from `main()` via `apply_all()` before `TwitchClient` is created.
+
+| Function | Purpose |
+|---|---|
+| `patch_websocket_close_leak()` | Wraps `Websocket._create_connection_task` in a shielded task so `close()` can no longer cancel itself when called from the keepalive watchdog (otherwise every stale-socket trip leaks an open connection; see [log.md](log.md) 2026-11-07). Idempotent; logs a warning and skips if twitchio's internals changed. |
+| `apply_all()` | Applies every patch. |
+
+Tests: [tests/test_twitchio_patches.py](file:///home/gem/src/moon-rabbit/tests/test_twitchio_patches.py) — uses a local fake EventSub server; includes an `xfail(strict=True)` canary that starts failing once upstream fixes the bug (then delete the module). Upstream report draft: [twitchio_websocket_leak_report.md](twitchio_websocket_leak_report.md).
+
+### [deploy.sh](file:///home/gem/src/moon-rabbit/deploy.sh) — Production Deploy
+**Role:** One-command deploy to the production server (`a-cmd`, `/var/moon-rabbit`). `--dry-run` previews the rsync (files to send/delete) without touching the server.
+
+Flow: require `main` + clean tree → `git pull --rebase` → `check.sh` → `git push` → rsync the committed files (checksum compare; protects the server's `.env`, `.git/`, `runtime/`, `.venv/`) → on the server `uv sync --no-dev --locked`, import smoke test, `pm2 delete` + `pm2 start ecosystem.config.cjs --only moon-rabbit` + `pm2 save` → verify the process is `online` with 0 restarts and the twitchio patch was logged. Writes `/var/moon-rabbit/.deployed_revision`. Env overrides: `DEPLOY_HOST`, `REMOTE_DIR`.
+
+### [ecosystem.config.cjs](file:///home/gem/src/moon-rabbit/ecosystem.config.cjs) — PM2 Config
+Runs `.venv/bin/python3 main.py ...` directly, `max_memory_restart: '400M'`, `kill_timeout: 15000` (graceful shutdown saves Twitch tokens). See [architecture.md](architecture.md#app-lifecycle).
+
 ---
 
 ## Data & Query Layer
@@ -282,6 +302,7 @@ main.py
 ├── commands
 ├── discord_client (DiscordClient, discord_literal)
 ├── twitch_client
+├── twitchio_patches (twitchio monkeypatches, applied before TwitchClient is built)
 └── words (implicitly through txt() → storage → query)
 
 commands.py

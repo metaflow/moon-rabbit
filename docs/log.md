@@ -4,6 +4,33 @@ Dated records of significant changes, migrations, and bug-fix campaigns. Newest 
 
 ---
 
+## 2026-11-07 — Memory investigation: twitchio websocket leak (~1 GB RSS), dependency upgrade
+
+Trigger: the bot used ~1 GB on the a-cmd server (process up 14 days, 996 MB RSS + 522 MB swapped, peak 1.35 GB). A fresh process with all imports and pymorphy loaded is ~88 MB; DB data is tiny (1,853 texts), so this was not a cache problem.
+
+### Root cause — twitchio `Websocket.close()` cancels its own task (upstream bug)
+
+- `Websocket._process_keepalive` (the `_keep_alive_task`) calls `_create_connection_task()` → `close()`, and `close()` calls `self._keep_alive_task.cancel()` — cancelling the very task that is running it. The cancel fires at `await self._socket.close()` as a `CancelledError` (not caught by `except Exception`), so `close()` aborts half-way: socket stays open, `_closing` stays `True` forever, no "Successfully closed" log.
+- Every stale-socket trip leaves one extra live Conduit connection while `Client` opens a replacement shard. Evidence in the production logs: 1,000 distinct EventSub session ids alive at once (~380k `session_keepalive` DEBUG lines/hour), Twitch answering new connections with HTTP 429, "needs to close unexpectedly" per day growing from ~15 (Oct 27) to ~3,500 (Nov 6), chat events no longer arriving after the last successful shard association.
+- Reproduced locally with a fake EventSub server (`docs/twitchio_websocket_leak_report.md`, MRE). Present in twitchio 3.2.2, 3.3.2 (latest) and upstream `main`; no matching upstream issue found.
+- Caveat: the MRE proves the half-aborted `close()`. In production the leaked sockets were additionally still being read, so another leak route may exist; the metrics after deploy (RSS, count of live sessions) will tell.
+
+### Changes
+
+- `twitchio_patches.py` (+ `tests/test_twitchio_patches.py`): shielded-task workaround, applied in `main()`.
+- `ecosystem.config.cjs`: launch `.venv/bin/python3` directly (PM2 now sees the real process) and `max_memory_restart: '400M'`. Deploys must now run `uv sync --no-dev --frozen`.
+- `main.py`: `twitchio`, `discord.gateway`, `discord.http` loggers capped at INFO (debug log was rotating a 50 MB file hourly, mostly keepalives).
+- Dependencies upgraded (`uv lock --upgrade`): twitchio 3.2.2→3.3.2, aiohttp 3.13.5→3.14.5, pillow 12.2→13.0, psycopg2-binary 2.9.11→2.9.13, cachetools, requests, urllib3, etc.; dev: ruff 0.15→0.17, ty 0.0.31→0.0.99, pytest 9.2. discord.py unchanged (2.7.1 current). ruff 0.17 widened its default rule set (~150 new findings), so `pyproject.toml` now pins the previous baseline (`select = ["E4","E7","E9","F"]` + existing `extend-select`).
+
+- `deploy.sh` rewritten for a-cmd: the server dir is not a git checkout (copied with a tar pipe during the migration, no GitHub key on the server), so it now rsyncs the committed files (`--checksum`, `--delete`, protecting `.env`/`.git`/`runtime`/`.venv`), runs `uv sync --no-dev --locked`, smoke-tests imports, re-registers the PM2 app (`delete` + `start` + `save`, because `pm2 restart` keeps the old script/args and the PM2 dump still held the `uv run` command) and verifies the process. Added `--dry-run`. `ecosystem.config.cjs` also got `kill_timeout: 15000`. The first deploy will also delete two stale hash-named PNG files in the server root (legacy image cache; current code uses `runtime/img/`).
+
+### Not done / follow-ups
+
+- Minor, not memory-critical: `commands.messages` TTLDict is only pruned when a template calls `message()`; `lru_cache` on `DB.discord_channel_info`/`twitch_channel_info` includes a fresh cursor in the key, so it never hits and pins up to 1,000 cursors.
+- Upstream report is a draft, not filed.
+
+---
+
 ## 2026-05-01 — Error suppression: shutdown task noise + Discord reconnect storm
 
 Source: `/var/moon-rabbit/runtime/merged.errors.log` (2026-04-20 to 2026-05-01, ~36 post-cutoff ERROR entries)

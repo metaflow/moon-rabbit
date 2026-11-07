@@ -36,10 +36,13 @@ from dotenv import load_dotenv
 
 import templates
 import twitch_client
+import twitchio_patches
 from data import set_is_dev
 from discord_client import DiscordClient
 from notifier import NtfyHandler
 from storage import DB, db, set_db
+
+NOISY_LIBRARY_LOGGERS = ("twitchio", "discord.gateway", "discord.http")
 
 
 async def expireVariables():
@@ -202,6 +205,10 @@ def setup_logging(log_prefix: str, also_log_to_stdout: bool):
         stdoutHandler.setFormatter(log_fmt)
         logging.getLogger().addHandler(stdoutHandler)
     logging.getLogger("discord.client").addFilter(DiscordClientFilter())
+    # Library DEBUG chatter (EventSub keepalives ~100/s, gateway events) used to fill a 50 MB
+    # debug file every hour and drown out the application's own DEBUG lines.
+    for noisy in NOISY_LIBRARY_LOGGERS:
+        logging.getLogger(noisy).setLevel(logging.INFO)
     ntfy = NtfyHandler.from_env()
     if ntfy is not None:
         logging.getLogger().addHandler(ntfy)
@@ -267,6 +274,7 @@ def main():
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch:
         try:
+            twitchio_patches.apply_all()
             twitch_bot = twitch_client.TwitchClient(
                 twitch_bot=args.twitch,
                 dev_message=dev_msg,
