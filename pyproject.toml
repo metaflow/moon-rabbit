@@ -33,6 +33,11 @@ dev = [
     "ty",
 ]
 
+# Fix for the websocket leak (https://github.com/PythonistaGuild/TwitchIO/issues/548) is on main (3.3.4)
+# but not on PyPI yet. Once 3.3.4+ is released, delete this section and run `uv lock --upgrade-package twitchio`.
+[tool.uv.sources]
+twitchio = { git = "https://github.com/PythonistaGuild/TwitchIO.git", rev = "1db6da4d9bcf501e44fde5a664bfaf3d7c2f116f" }
+
 [tool.deptry.per_rule_ignores]
 DEP002 = ["cachetools", "pymorphy3-dicts-ru", "setuptools", "dawg-python"]
 

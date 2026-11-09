@@ -4,6 +4,15 @@ Dated records of significant changes, migrations, and bug-fix campaigns. Newest 
 
 ---
 
+## 2026-11-09 — Upstream fix adopted, leak monitoring, rollout
+
+- Reported as [PythonistaGuild/TwitchIO#548](https://github.com/PythonistaGuild/TwitchIO/issues/548). The maintainer fixed it on `main` the next day (commit 2fb21008 "Fix websocket connection issues and leaking memory bug", `close()` no longer cancels the current task; version bumped to 3.3.4). The MRE from the report passes unpatched on that commit. **3.3.4 was not on PyPI yet**, so `pyproject.toml` pins twitchio to commit `1db6da4d…` via `[tool.uv.sources]` (the server has git and GitHub is public). TODO once 3.3.4+ is released: drop `[tool.uv.sources]` and `uv lock --upgrade-package twitchio`.
+- Removed `twitchio_patches.py` and its tests (superseded by the upstream fix).
+- Added `health_monitor.py`: logs `health rss=… sockets=… fds=… tasks=…` every 10 min and a WARNING when RSS > 300 MB / sockets > 100 / tasks > 500. Combined with PM2's now-real memory reading and `max_memory_restart: 400M`, a regression of the leak is visible within a day. Healthy baseline to be recorded after the first days of production data.
+- `deploy.sh` verification now checks for the first `health` heartbeat instead of the patch log line.
+
+---
+
 ## 2026-11-07 — Memory investigation: twitchio websocket leak (~1 GB RSS), dependency upgrade
 
 Trigger: the bot used ~1 GB on the a-cmd server (process up 14 days, 996 MB RSS + 522 MB swapped, peak 1.35 GB). A fresh process with all imports and pymorphy loaded is ~88 MB; DB data is tiny (1,853 texts), so this was not a cache problem.
@@ -17,7 +26,7 @@ Trigger: the bot used ~1 GB on the a-cmd server (process up 14 days, 996 MB RSS 
 
 ### Changes
 
-- `twitchio_patches.py` (+ `tests/test_twitchio_patches.py`): shielded-task workaround, applied in `main()`.
+- Interim workaround (a shielded `_create_connection_task` monkeypatch, `twitchio_patches.py`) was written, then removed again once upstream fixed the bug (see the 2026-11-09 entry below).
 - `ecosystem.config.cjs`: launch `.venv/bin/python3` directly (PM2 now sees the real process) and `max_memory_restart: '400M'`. Deploys must now run `uv sync --no-dev --frozen`.
 - `main.py`: `twitchio`, `discord.gateway`, `discord.http` loggers capped at INFO (debug log was rotating a 50 MB file hourly, mostly keepalives).
 - Dependencies upgraded (`uv lock --upgrade`): twitchio 3.2.2→3.3.2, aiohttp 3.13.5→3.14.5, pillow 12.2→13.0, psycopg2-binary 2.9.11→2.9.13, cachetools, requests, urllib3, etc.; dev: ruff 0.15→0.17, ty 0.0.31→0.0.99, pytest 9.2. discord.py unchanged (2.7.1 current). ruff 0.17 widened its default rule set (~150 new findings), so `pyproject.toml` now pins the previous baseline (`select = ["E4","E7","E9","F"]` + existing `extend-select`).
@@ -27,7 +36,6 @@ Trigger: the bot used ~1 GB on the a-cmd server (process up 14 days, 996 MB RSS 
 ### Not done / follow-ups
 
 - Minor, not memory-critical: `commands.messages` TTLDict is only pruned when a template calls `message()`; `lru_cache` on `DB.discord_channel_info`/`twitch_channel_info` includes a fresh cursor in the key, so it never hits and pins up to 1,000 cursors.
-- Upstream report is a draft, not filed.
 
 ---
 

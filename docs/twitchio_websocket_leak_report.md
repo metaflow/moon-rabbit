@@ -1,8 +1,7 @@
 # DRAFT — upstream bug report for PythonistaGuild/TwitchIO
 
-> Not filed yet. Intended for https://github.com/PythonistaGuild/TwitchIO/issues/new?template=bug.yml
-> (sections below mirror the fields of their bug template). Review, then paste in.
-> Checked on 2026-11-07: no existing issue covers this (open: #547, #495, #494; related closed: #522, #492).
+> **Status: filed as https://github.com/PythonistaGuild/TwitchIO/issues/548 and fixed upstream on `main` (commit 2fb21008, 3.3.4).**
+> The MRE below passes unpatched on that commit (verified 2026-11-09). Kept as a record of the analysis.
 
 **Title:** `[Bug]: Websocket.close() cancels its own task when called from the keepalive watchdog → socket never closed, leaks one connection per trip (Conduit shards hit 429 after ~1000)`
 

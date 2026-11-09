@@ -34,9 +34,9 @@ import discord
 import twitchio
 from dotenv import load_dotenv
 
+import health_monitor
 import templates
 import twitch_client
-import twitchio_patches
 from data import set_is_dev
 from discord_client import DiscordClient
 from notifier import NtfyHandler
@@ -152,6 +152,7 @@ def run_loop(
         logging.info("running the async loop")
         loop.set_exception_handler(exception_handler)
         loop.create_task(expireVariables())
+        loop.create_task(health_monitor.run())
         loop.run_forever()
     except KeyboardInterrupt:
         logging.info("Caught KeyboardInterrupt, shutting down...")
@@ -274,7 +275,6 @@ def main():
             logging.error(f"{e}\n{traceback.format_exc()}")
     if args.twitch:
         try:
-            twitchio_patches.apply_all()
             twitch_bot = twitch_client.TwitchClient(
                 twitch_bot=args.twitch,
                 dev_message=dev_msg,

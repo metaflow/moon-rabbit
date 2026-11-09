@@ -713,7 +713,7 @@ requires-dist = [
     { name = "requests" },
     { name = "setuptools" },
     { name = "ttldict2" },
-    { name = "twitchio" },
+    { name = "twitchio", git = "https://github.com/PythonistaGuild/TwitchIO.git?rev=1db6da4d9bcf501e44fde5a664bfaf3d7c2f116f" },
 ]
 
 [package.metadata.requires-dev]
@@ -1241,14 +1241,10 @@ wheels = [
 
 [[package]]
 name = "twitchio"
-version = "3.3.2"
-source = { registry = "https://pypi.org/simple" }
+version = "3.3.4"
+source = { git = "https://github.com/PythonistaGuild/TwitchIO.git?rev=1db6da4d9bcf501e44fde5a664bfaf3d7c2f116f#1db6da4d9bcf501e44fde5a664bfaf3d7c2f116f" }
 dependencies = [
     { name = "aiohttp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/32/a177d7769e5b5949e84dc2c693f13cd087106c3a8584b195ced652c9b834/twitchio-3.3.2.tar.gz", hash = "sha256:0d6da251fcc01d3fa6c3e6d44b18aa81509f8163893db3a9a2bee8ce74342dab", size = 260623 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/31/d5623b8780dde7efc09eeaeba2bd037c5bde30fb170b6dd230159a81f003/twitchio-3.3.2-py3-none-any.whl", hash = "sha256:73de8d3e3cff0df6c134207188978bd4433dce7c5740676d99a5504be46caf5e", size = 335187 },
 ]
 
 [[package]]

@@ -104,7 +104,7 @@ echo "==> [server] uv sync (locked, no dev deps)..."
 uv sync --no-dev --locked
 
 echo "==> [server] Import smoke test (old process keeps running if this fails)..."
-.venv/bin/python3 -c "import main, twitchio_patches"
+.venv/bin/python3 -c "import main, health_monitor"
 
 previous="$(cat .deployed_revision 2>/dev/null || echo 'none')"
 echo "==> [server] Restarting $app (previous deploy: $previous)"
@@ -144,12 +144,14 @@ if [[ "$state" != "online" || "$restarts" != "0" ]]; then
 fi
 
 cd "$dir"
-# Only count the line if it came after the latest startup ("args Namespace" is logged by main()).
-if awk '/ INFO args Namespace\(/{found=0} /twitchio_patches: applied/{found=1} END{exit !found}' \
-    runtime/merged.info.log 2>/dev/null; then
-    echo "twitchio leak workaround: applied"
+# The health heartbeat is logged right at startup; only count it if it came after the latest start
+# ("args Namespace" is logged by main()), so a line from the previous process cannot give a false pass.
+health="$(awk '/ INFO args Namespace\(/{h=""} / INFO health rss=/{h=$0} END{print h}' \
+    runtime/merged.info.log 2>/dev/null || true)"
+if [[ -n "$health" ]]; then
+    echo "health heartbeat: ${health#* INFO }"
 else
-    echo "WARNING: 'twitchio_patches: applied' not found in runtime/merged.info.log yet"
+    echo "WARNING: no 'health rss=' line in runtime/merged.info.log since the latest start yet"
 fi
 echo "--- last log lines ---"
 tail -n 8 runtime/merged.info.log 2>/dev/null | cut -c1-200 || true
