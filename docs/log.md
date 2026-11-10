@@ -6,10 +6,12 @@ Dated records of significant changes, migrations, and bug-fix campaigns. Newest 
 
 ## 2026-11-09 — Upstream fix adopted, leak monitoring, rollout
 
-- Reported as [PythonistaGuild/TwitchIO#548](https://github.com/PythonistaGuild/TwitchIO/issues/548). The maintainer fixed it on `main` the next day (commit 2fb21008 "Fix websocket connection issues and leaking memory bug", `close()` no longer cancels the current task; version bumped to 3.3.4). The MRE from the report passes unpatched on that commit. **3.3.4 was not on PyPI yet**, so `pyproject.toml` pins twitchio to commit `1db6da4d…` via `[tool.uv.sources]` (the server has git and GitHub is public). TODO once 3.3.4+ is released: drop `[tool.uv.sources]` and `uv lock --upgrade-package twitchio`.
+- Reported as [PythonistaGuild/TwitchIO#548](https://github.com/PythonistaGuild/TwitchIO/issues/548). The maintainer fixed it on `main` the next day (commit 2fb21008 "Fix websocket connection issues and leaking memory bug", `close()` no longer cancels the current task; version bumped to 3.3.4). The MRE from the report passes unpatched on that commit. **3.3.4 was not on PyPI yet**, so `pyproject.toml` pins twitchio to commit `1db6da4d…` via `[tool.uv.sources]` (the server has git and GitHub is public).
 - Removed `twitchio_patches.py` and its tests (superseded by the upstream fix).
 - Added `health_monitor.py`: logs `health rss=… sockets=… fds=… tasks=…` every 10 min and a WARNING when RSS > 300 MB / sockets > 100 / tasks > 500. Combined with PM2's now-real memory reading and `max_memory_restart: 400M`, a regression of the leak is visible within a day. Healthy baseline to be recorded after the first days of production data.
 - `deploy.sh` verification now checks for the first `health` heartbeat instead of the patch log line.
+- Verified on prod 2026-11-10 (36 h uptime, 0 restarts): rss 46-85 MB, sockets 11-12 flat, 0 leak warnings, 0 "needs to close unexpectedly".
+- **TODO (when twitchio 3.3.4+ is on PyPI, check occasionally with `pip index versions twitchio`):** stop depending on a git commit of upstream `main`: delete the `[tool.uv.sources]` block (and its comment) in `pyproject.toml`, run `uv lock --upgrade-package twitchio`, `bash check.sh`, `./deploy.sh`. Optionally keep `health_monitor.py` (cheap, independent of the bug).
 
 ---
 
